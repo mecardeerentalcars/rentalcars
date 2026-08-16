@@ -1,0 +1,4 @@
+# Copy this file to .dev.vars and use Railway's public PostgreSQL URL locally.
+# Never commit the real value.
+DATABASE_URL="postgresql://postgres:password@host:port/railway"
+DATABASE_POOL_MAX="5"
