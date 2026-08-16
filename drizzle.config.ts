@@ -1,9 +1,12 @@
 import { defineConfig } from "drizzle-kit";
 
-try {
-  process.loadEnvFile(".dev.vars");
-} catch {
-  // Railway injects DATABASE_URL; a local .dev.vars file is optional.
+for (const file of [".env", ".dev.vars"]) {
+  if (process.env.DATABASE_URL) break;
+  try {
+    process.loadEnvFile(file);
+  } catch {
+    // Railway injects DATABASE_URL; local environment files are optional.
+  }
 }
 
 export default defineConfig({

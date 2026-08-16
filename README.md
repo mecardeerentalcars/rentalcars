@@ -48,7 +48,7 @@ Database commands:
 
 ```bash
 npm run db:generate  # generate a migration after schema edits
-npm run db:migrate   # apply committed migrations
+npm run db:migrate   # apply committed migrations with the production-safe runner
 npm run db:seed      # load/update the matching demo records
 npm run db:studio    # inspect data with Drizzle Studio
 ```

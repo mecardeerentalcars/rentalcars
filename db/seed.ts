@@ -1,9 +1,12 @@
 export {};
 
-try {
-  process.loadEnvFile(".dev.vars");
-} catch {
-  // DATABASE_URL can also be supplied by Railway or the current shell.
+for (const file of [".env", ".dev.vars"]) {
+  if (process.env.DATABASE_URL) break;
+  try {
+    process.loadEnvFile(file);
+  } catch {
+    // DATABASE_URL can also be supplied by Railway or the current shell.
+  }
 }
 
 const [{ getDb, getPool }, schema] = await Promise.all([import("./index"), import("./schema")]);
