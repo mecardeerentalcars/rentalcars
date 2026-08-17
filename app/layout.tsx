@@ -24,6 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title: "Mecardee — Rental management, made simple",
     description,
+    manifest: "/manifest.webmanifest",
     openGraph: {
       title: "Mecardee — Rental management, made simple",
       description,

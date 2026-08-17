@@ -1,15 +1,19 @@
 {
+  "id": "/",
   "name": "Mecardee Rental Manager",
   "short_name": "Mecardee",
   "description": "Mobile rental car management for fleet, customers, rentals, payments and accounts.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#f6f6fa",
   "theme_color": "#5d50cf",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/icons/mecardee-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icons/mecardee-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/mecardee-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/mecardee-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/mecardee-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/mecardee-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

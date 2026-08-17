@@ -48,6 +48,12 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import pdfMake from "pdfmake/build/pdfmake";
+import pdfFonts from "pdfmake/build/vfs_fonts";
+
+const pdfMakeClient = pdfMake as any;
+if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addVirtualFileSystem(pdfFonts);
+else pdfMakeClient.vfs = pdfFonts;
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts" | "reports" | "settings";
 type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
@@ -252,17 +258,44 @@ export default function Home() {
   }, [notificationsOpen]);
 
   useEffect(() => {
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const dismissedThisSession = () => sessionStorage.getItem("mecardee-install-dismissed-session") === "1";
+
+    // v8 used a permanent localStorage dismissal. Clear that old flag once so Android users
+    // who dismissed the early version are eligible to see the improved prompt again.
+    localStorage.removeItem("mecardee-install-dismissed");
+
     if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-      void navigator.serviceWorker.register("/sw.js").catch((error) => console.warn("Service worker registration failed", error));
+      void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch((error) => console.warn("Service worker registration failed", error));
     }
+
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
       const promptEvent = event as BeforeInstallPromptEvent;
       setInstallPrompt(promptEvent);
-      if (localStorage.getItem("mecardee-install-dismissed") !== "1") setInstallBannerVisible(true);
+      if (!isStandalone && !dismissedThisSession()) setInstallBannerVisible(true);
     };
+    const onInstalled = () => {
+      setInstallBannerVisible(false);
+      setInstallPrompt(null);
+      sessionStorage.removeItem("mecardee-install-dismissed-session");
+    };
+
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+
+    // Chrome can delay beforeinstallprompt until its engagement checks are satisfied.
+    // Still show our own small website banner on Android so the install option is discoverable.
+    const fallbackTimer = window.setTimeout(() => {
+      if (isAndroid && !isStandalone && !dismissedThisSession()) setInstallBannerVisible(true);
+    }, 4500);
+
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, []);
 
   const searchResults = useMemo(() => {
@@ -332,7 +365,10 @@ export default function Home() {
   }
 
   async function installApp() {
-    if (!installPrompt) return;
+    if (!installPrompt) {
+      showToast("In Chrome, tap ⋮ and choose Install app / Add to Home screen.");
+      return;
+    }
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
     if (choice.outcome === "accepted") {
@@ -343,7 +379,7 @@ export default function Home() {
   }
 
   function dismissInstallPrompt() {
-    localStorage.setItem("mecardee-install-dismissed", "1");
+    sessionStorage.setItem("mecardee-install-dismissed-session", "1");
     setInstallBannerVisible(false);
   }
 
@@ -398,7 +434,7 @@ export default function Home() {
       </main>
 
       <MobileNav view={view} goTo={goTo} openNew={() => setDialog("new-rental")} />
-      {installBannerVisible && installPrompt && <InstallAppPrompt onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
+      {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
@@ -595,7 +631,7 @@ function downloadExcelTable(
   }).join("");
   const mergeAcross = Math.max(0, headers.length - 1);
   const totalMerge = Math.max(0, headers.length - 2);
-  const xml = `<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n<Styles>\n<Style ss:ID="Default"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11"/></Style>\n<Style ss:ID="Title"><Font ss:FontName="Calibri" ss:Size="18" ss:Bold="1" ss:Color="#201A44"/><Alignment ss:Vertical="Center"/></Style>\n<Style ss:ID="Subtitle"><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#666B79"/></Style>\n<Style ss:ID="Header"><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#5B4BDB" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>\n<Style ss:ID="Cell"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E9F0"/></Borders></Style>\n<Style ss:ID="Number"><Alignment ss:Horizontal="Right"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E9F0"/></Borders></Style>\n<Style ss:ID="Currency"><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="₹#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E9F0"/></Borders></Style>\n<Style ss:ID="TotalLabel"><Font ss:Bold="1"/><Interior ss:Color="#F2F0FF" ss:Pattern="Solid"/></Style>\n<Style ss:ID="TotalValue"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="₹#,##0.00"/><Interior ss:Color="#F2F0FF" ss:Pattern="Solid"/></Style>\n</Styles>\n<Worksheet ss:Name="Report"><Table>\n${widths.map((width) => `<Column ss:Width="${width.toFixed(0)}"/>`).join("\n")}\n<Row ss:Height="30"><Cell ss:MergeAcross="${mergeAcross}" ss:StyleID="Title"><Data ss:Type="String">${xmlEscape(title)}</Data></Cell></Row>\n<Row ss:Height="22"><Cell ss:MergeAcross="${mergeAcross}" ss:StyleID="Subtitle"><Data ss:Type="String">${xmlEscape(subtitle)}</Data></Cell></Row>\n<Row ss:Height="8"></Row>\n<Row ss:Height="24">${headers.map((header) => `<Cell ss:StyleID="Header"><Data ss:Type="String">${xmlEscape(header)}</Data></Cell>`).join("")}</Row>\n${rows.map((row) => `<Row ss:Height="21">${cells(row)}</Row>`).join("\n")}\n<Row ss:Height="24"><Cell ss:MergeAcross="${totalMerge}" ss:StyleID="TotalLabel"><Data ss:Type="String">${xmlEscape(totalLabel)}</Data></Cell><Cell ss:StyleID="TotalValue"><Data ss:Type="Number">${total}</Data></Cell></Row>\n</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane></WorksheetOptions></Worksheet>\n</Workbook>`;
+  const xml = `<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n<Styles>\n<Style ss:ID="Default"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11"/></Style>\n<Style ss:ID="Title"><Font ss:FontName="Calibri" ss:Size="18" ss:Bold="1" ss:Color="#071A17"/><Alignment ss:Vertical="Center"/></Style>\n<Style ss:ID="Subtitle"><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#666B79"/></Style>\n<Style ss:ID="Header"><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#071A17" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>\n<Style ss:ID="Cell"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E9F0"/></Borders></Style>\n<Style ss:ID="Number"><Alignment ss:Horizontal="Right"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E9F0"/></Borders></Style>\n<Style ss:ID="Currency"><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="₹#,##0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E8E9F0"/></Borders></Style>\n<Style ss:ID="TotalLabel"><Font ss:Bold="1"/><Interior ss:Color="#EAF0EC" ss:Pattern="Solid"/></Style>\n<Style ss:ID="TotalValue"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="₹#,##0.00"/><Interior ss:Color="#EAF0EC" ss:Pattern="Solid"/></Style>\n</Styles>\n<Worksheet ss:Name="Report"><Table>\n${widths.map((width) => `<Column ss:Width="${width.toFixed(0)}"/>`).join("\n")}\n<Row ss:Height="30"><Cell ss:MergeAcross="${mergeAcross}" ss:StyleID="Title"><Data ss:Type="String">${xmlEscape(title)}</Data></Cell></Row>\n<Row ss:Height="22"><Cell ss:MergeAcross="${mergeAcross}" ss:StyleID="Subtitle"><Data ss:Type="String">${xmlEscape(subtitle)}</Data></Cell></Row>\n<Row ss:Height="8"></Row>\n<Row ss:Height="24">${headers.map((header) => `<Cell ss:StyleID="Header"><Data ss:Type="String">${xmlEscape(header)}</Data></Cell>`).join("")}</Row>\n${rows.map((row) => `<Row ss:Height="21">${cells(row)}</Row>`).join("\n")}\n<Row ss:Height="24"><Cell ss:MergeAcross="${totalMerge}" ss:StyleID="TotalLabel"><Data ss:Type="String">${xmlEscape(totalLabel)}</Data></Cell><Cell ss:StyleID="TotalValue"><Data ss:Type="Number">${total}</Data></Cell></Row>\n</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane></WorksheetOptions></Worksheet>\n</Workbook>`;
   const url = URL.createObjectURL(new Blob(["\ufeff", xml], { type: "application/vnd.ms-excel;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
@@ -604,7 +640,7 @@ function downloadExcelTable(
   URL.revokeObjectURL(url);
 }
 
-function downloadPdfTable(
+async function downloadPdfTable(
   filename: string,
   title: string,
   subtitle: string,
@@ -614,177 +650,190 @@ function downloadPdfTable(
   totalLabel: string,
   total: number,
 ) {
-  // A4 landscape. Use stable report-specific widths so money columns never collapse.
-  const pageWidth = 842;
-  const pageHeight = 595;
-  const margin = 26;
-  const tableWidth = pageWidth - margin * 2;
-  const tableTop = 126;
-  const tableBottom = 548;
-  const headerHeight = 30;
+  const DEEP = "#071a17";
+  const INK = "#10201d";
+  const MUTED = "#64736f";
+  const LINE = "#d9e2de";
+  const PAPER = "#f7f9f8";
+  const SOFT = "#eaf0ec";
 
-  const preferredWidths = (() => {
-    const key = headers.join("|").toLowerCase();
-    if (key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")) return [92, 132, 88, 76, 76, 102, 72, 72, 72];
-    if (key.includes("payment|customer|rental|date|method|amount|received by")) return [112, 118, 105, 90, 78, 84, 118];
-    if (key.includes("date|category|vehicle|method|amount|description")) return [86, 105, 122, 80, 86, 270];
-    if (key.includes("rental|customer|phone|vehicle|expected return|status|balance")) return [100, 104, 94, 126, 92, 132, 86];
-    if (key.includes("vehicle|registration|rentals|rental value|collected|outstanding|expenses|net collected")) return [126, 106, 60, 92, 92, 92, 92, 92];
-    return headers.map((header, columnIndex) => {
-      const sampleMax = Math.max(header.length, ...rows.slice(0, 80).map((row) => safeReportText(row[columnIndex] ?? "").length));
-      return Math.min(150, Math.max(currencyColumns.includes(columnIndex) ? 82 : 70, sampleMax * 5.2));
-    });
-  })();
-  const widthTotal = preferredWidths.reduce((sum, width) => sum + width, 0) || 1;
-  const columnWidths = preferredWidths.map((width) => tableWidth * width / widthTotal);
-
-  const pdfEscape = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-  const toPdfY = (top: number) => pageHeight - top;
-  const text = (value: string, x: number, top: number, size = 8, bold = false, color = "0.13 0.15 0.18") => `${color} rg BT /${bold ? "F2" : "F1"} ${size} Tf ${x.toFixed(2)} ${toPdfY(top).toFixed(2)} Td (${pdfEscape(value)}) Tj ET`;
-  const fillRect = (x: number, top: number, width: number, height: number, color: string) => `${color} rg ${x.toFixed(2)} ${(pageHeight - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`;
-  const strokeRect = (x: number, top: number, width: number, height: number, color = "0.88 0.89 0.93") => `${color} RG 0.55 w ${x.toFixed(2)} ${(pageHeight - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S`;
-  const approxWidth = (value: string, size: number) => value.length * size * 0.50;
-
-  const wrap = (raw: string, width: number, size: number, maxLines = 2) => {
-    const value = safeReportText(raw);
-    const maxChars = Math.max(4, Math.floor((width - 10) / (size * 0.50)));
-    if (value.length <= maxChars) return [value];
-    const words = value.split(" ").filter(Boolean);
-    const lines: string[] = [];
-    let current = "";
-    for (const word of words) {
-      const next = current ? `${current} ${word}` : word;
-      if (next.length <= maxChars) current = next;
-      else {
-        if (current) lines.push(current);
-        current = word.length > maxChars ? word.slice(0, maxChars) : word;
-        if (lines.length >= maxLines - 1) break;
-      }
-    }
-    if (current && lines.length < maxLines) lines.push(current);
-    const consumed = lines.join(" ").length;
-    if (consumed < value.length && lines.length) {
-      const last = lines.length - 1;
-      lines[last] = `${lines[last].slice(0, Math.max(1, maxChars - 3))}...`;
-    }
-    return lines.slice(0, maxLines);
+  const headerIndex = Object.fromEntries(headers.map((header, index) => [header.toLowerCase(), index]));
+  const sumColumn = (label: string) => {
+    const index = headerIndex[label.toLowerCase()];
+    if (index === undefined) return 0;
+    return rows.reduce((sum, row) => sum + (typeof row[index] === "number" ? Number(row[index]) : 0), 0);
+  };
+  const uniqueCount = (label: string) => {
+    const index = headerIndex[label.toLowerCase()];
+    if (index === undefined) return 0;
+    return new Set(rows.map((row) => String(row[index] ?? "").trim()).filter(Boolean)).size;
   };
 
-  const formattedCell = (cell: string | number, columnIndex: number) => typeof cell === "number" && currencyColumns.includes(columnIndex) ? reportCurrency(cell) : safeReportText(cell);
-  const preparedRows = (rows.length ? rows : [["No matching records"]]).map((row) => {
-    const cells = headers.map((_, columnIndex) => {
-      const display = formattedCell(row[columnIndex] ?? "", columnIndex);
-      const maxLines = currencyColumns.includes(columnIndex) ? 1 : 2;
-      return wrap(display, columnWidths[columnIndex] ?? 80, 7.1, maxLines);
-    });
-    const lineCount = Math.max(1, ...cells.map((cell) => cell.length));
-    return { row, cells, height: lineCount === 1 ? 23 : 34 };
-  });
+  const key = headers.join("|").toLowerCase();
+  const reportWidths: (number | string)[] = key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")
+    ? [74, 112, 84, 70, 70, "*", 68, 68, 68]
+    : key.includes("payment|customer|rental|date|method|amount|received by")
+      ? [88, 105, 92, 76, 64, 74, "*"]
+      : key.includes("date|category|vehicle|method|amount|description")
+        ? [70, 92, 115, 72, 76, "*"]
+        : key.includes("rental|customer|phone|vehicle|expected return|status|balance")
+          ? [90, 100, 88, 116, 88, "*", 76]
+          : key.includes("vehicle|registration|rentals|rental value|collected|outstanding|expenses|net collected")
+            ? [118, 98, 54, 82, 82, 82, 82, "*"]
+            : headers.map((_, index) => currencyColumns.includes(index) ? 78 : "*");
 
-  const pages: typeof preparedRows[] = [];
-  let currentPage: typeof preparedRows = [];
-  let usedHeight = 0;
-  const availableHeight = tableBottom - tableTop - headerHeight;
-  for (const prepared of preparedRows) {
-    if (currentPage.length && usedHeight + prepared.height > availableHeight) {
-      pages.push(currentPage);
-      currentPage = [];
-      usedHeight = 0;
-    }
-    currentPage.push(prepared);
-    usedHeight += prepared.height;
+  const kpis: { label: string; value: string }[] = [{ label: "RECORDS", value: String(rows.length) }];
+  if (key.includes("|paid|balance")) {
+    kpis.push(
+      { label: totalLabel.toUpperCase(), value: money(total) },
+      { label: "COLLECTED", value: money(sumColumn("Paid")) },
+      { label: "OUTSTANDING", value: money(sumColumn("Balance")) },
+    );
+  } else if (key.includes("rental value|collected|outstanding|expenses|net collected")) {
+    kpis.push(
+      { label: "RENTAL VALUE", value: money(sumColumn("Rental value")) },
+      { label: "COLLECTED", value: money(sumColumn("Collected")) },
+      { label: "NET COLLECTED", value: money(sumColumn("Net collected")) },
+    );
+  } else if (key.includes("payment|customer|rental|date|method|amount|received by")) {
+    kpis.push(
+      { label: "COLLECTED", value: money(total) },
+      { label: "CUSTOMERS", value: String(uniqueCount("Customer")) },
+      { label: "RECEIVED BY", value: CURRENT_USER_NAME },
+    );
+  } else if (key.includes("date|category|vehicle|method|amount|description")) {
+    kpis.push(
+      { label: "TOTAL EXPENSES", value: money(total) },
+      { label: "VEHICLES", value: String(uniqueCount("Vehicle")) },
+      { label: "CATEGORIES", value: String(uniqueCount("Category")) },
+    );
+  } else {
+    kpis.push({ label: totalLabel.toUpperCase(), value: money(total) });
   }
-  if (currentPage.length) pages.push(currentPage);
-  if (!pages.length) pages.push([]);
 
-  const contentPages = pages.map((pageRows, pageIndex) => {
-    const commands: string[] = [];
-    commands.push(fillRect(0, 0, pageWidth, 8, "0.36 0.29 0.86"));
-    commands.push(text("MECARDEE RENTAL MANAGER", margin, 31, 8, true, "0.36 0.29 0.86"));
-    commands.push(text(safeReportText(title), margin, 54, 18, true));
-    commands.push(text(wrap(safeReportText(subtitle), 500, 8, 2)[0] ?? "", margin, 72, 8, false, "0.38 0.40 0.47"));
-    const subtitleSecond = wrap(safeReportText(subtitle), 500, 8, 2)[1];
-    if (subtitleSecond) commands.push(text(subtitleSecond, margin, 83, 8, false, "0.38 0.40 0.47"));
+  const body: any[][] = [
+    headers.map((header) => ({ text: header.toUpperCase(), style: "tableHeader", fillColor: DEEP, color: "#ffffff" })),
+    ...rows.map((row, rowIndex) => headers.map((_, columnIndex) => {
+      const raw = row[columnIndex] ?? "";
+      const isMoney = typeof raw === "number" && currencyColumns.includes(columnIndex);
+      return {
+        text: isMoney ? money(Number(raw)) : String(raw),
+        alignment: isMoney ? "right" : "left",
+        bold: isMoney,
+        fillColor: rowIndex % 2 ? PAPER : "#ffffff",
+        color: INK,
+        margin: [0, 2, 0, 2],
+      };
+    })),
+  ];
 
-    // Clear summary cards instead of a cramped single line.
-    commands.push(fillRect(574, 28, 116, 56, "0.965 0.960 0.995"));
-    commands.push(fillRect(700, 28, 116, 56, "0.965 0.960 0.995"));
-    commands.push(text(safeReportText(totalLabel).toUpperCase(), 584, 45, 7, true, "0.39 0.35 0.62"));
-    commands.push(text(reportCurrency(total), 584, 66, 11, true, "0.16 0.16 0.23"));
-    commands.push(text("RECORDS", 710, 45, 7, true, "0.39 0.35 0.62"));
-    commands.push(text(String(rows.length), 710, 66, 11, true, "0.16 0.16 0.23"));
-
-    commands.push(fillRect(margin, tableTop, tableWidth, headerHeight, "0.36 0.29 0.86"));
-    let x = margin;
-    headers.forEach((header, columnIndex) => {
-      const width = columnWidths[columnIndex] ?? 80;
-      const lines = wrap(safeReportText(header), width, 7.2, 2);
-      lines.forEach((line, lineIndex) => commands.push(text(line, x + 5, tableTop + 13 + lineIndex * 9, 7.2, true, "1 1 1")));
-      x += width;
-    });
-
-    let top = tableTop + headerHeight;
-    pageRows.forEach((prepared, rowIndex) => {
-      if (rowIndex % 2 === 1) commands.push(fillRect(margin, top, tableWidth, prepared.height, "0.975 0.974 0.995"));
-      x = margin;
-      headers.forEach((_, columnIndex) => {
-        const width = columnWidths[columnIndex] ?? 80;
-        commands.push(strokeRect(x, top, width, prepared.height));
-        const lines = prepared.cells[columnIndex] ?? [""];
-        lines.forEach((line, lineIndex) => {
-          const size = 7.1;
-          const baseline = top + 14 + lineIndex * 10;
-          if (currencyColumns.includes(columnIndex)) {
-            const rightX = Math.max(x + 5, x + width - 5 - approxWidth(line, size));
-            commands.push(text(line, rightX, baseline, size, true, "0.18 0.19 0.25"));
-          } else {
-            commands.push(text(line, x + 5, baseline, size));
-          }
-        });
-        x += width;
-      });
-      top += prepared.height;
-    });
-
-    // Totals strip on every page so printed pages remain understandable independently.
-    commands.push(fillRect(margin, 552, tableWidth, 18, "0.965 0.960 0.995"));
-    commands.push(text(`${safeReportText(totalLabel)}: ${reportCurrency(total)} | ${rows.length} records`, margin + 7, 565, 7.4, true, "0.25 0.22 0.43"));
-    commands.push(text(`Generated by ${CURRENT_USER_NAME} | Page ${pageIndex + 1} of ${pages.length}`, margin, 584, 6.8, false, "0.48 0.50 0.56"));
-    const generated = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
-    commands.push(text(generated, 685, 584, 6.8, false, "0.48 0.50 0.56"));
-    return commands.join("\n");
+  const totalCells = headers.map((_, index) => {
+    if (index === 0) return { text: totalLabel.toUpperCase(), bold: true, color: DEEP, fillColor: SOFT, colSpan: Math.max(1, headers.length - 1) };
+    if (index < headers.length - 1) return {};
+    return { text: money(total), bold: true, alignment: "right", color: DEEP, fillColor: SOFT };
   });
+  body.push(totalCells);
 
-  const objects: string[] = [""];
-  const pageIds = contentPages.map((_, index) => 5 + index * 2);
-  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${contentPages.length} >>`;
-  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
-  objects[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>";
-  const encoder = new TextEncoder();
-  contentPages.forEach((content, index) => {
-    const pageId = 5 + index * 2;
-    const contentId = pageId + 1;
-    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`;
-    objects[contentId] = `<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`;
-  });
+  const doc: any = {
+    pageSize: "A4",
+    pageOrientation: "landscape",
+    pageMargins: [28, 32, 28, 34],
+    info: { title: `Mecardee - ${title}`, author: CURRENT_USER_NAME },
+    content: [
+      {
+        columns: [
+          {
+            width: "*",
+            stack: [
+              { text: "MECARDEE RENTAL MANAGER", style: "brand" },
+              { text: title.toUpperCase(), style: "title", margin: [0, 4, 0, 0] },
+              { text: subtitle, style: "subtitle", margin: [0, 4, 0, 0] },
+            ],
+          },
+          {
+            width: 118,
+            table: {
+              widths: ["*"],
+              body: [[{
+                stack: [
+                  { text: "GENERATED BY", style: "miniLabel" },
+                  { text: CURRENT_USER_NAME, style: "miniValue" },
+                  { text: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()), style: "miniText" },
+                ],
+                fillColor: SOFT,
+                margin: [9, 7, 9, 7],
+              }]],
+            },
+            layout: "noBorders",
+          },
+        ],
+        columnGap: 16,
+        margin: [0, 0, 0, 16],
+      },
+      {
+        columns: kpis.slice(0, 4).map((kpi) => ({
+          width: "*",
+          table: {
+            widths: ["*"],
+            body: [[{
+              stack: [
+                { text: kpi.label, style: "kpiLabel" },
+                { text: kpi.value, style: "kpiValue", margin: [0, 3, 0, 0] },
+              ],
+              fillColor: SOFT,
+              margin: [10, 8, 10, 8],
+            }]],
+          },
+          layout: "noBorders",
+        })),
+        columnGap: 10,
+        margin: [0, 0, 0, 16],
+      },
+      {
+        table: {
+          headerRows: 1,
+          dontBreakRows: true,
+          keepWithHeaderRows: 1,
+          widths: reportWidths,
+          body,
+        },
+        layout: {
+          hLineWidth: (i: number, node: any) => i === 0 || i === node.table.body.length ? 0 : 0.45,
+          vLineWidth: () => 0,
+          hLineColor: () => LINE,
+          paddingLeft: () => 6,
+          paddingRight: () => 6,
+          paddingTop: () => 5,
+          paddingBottom: () => 5,
+        },
+      },
+    ],
+    styles: {
+      brand: { fontSize: 8, bold: true, color: DEEP, characterSpacing: 0.8 },
+      title: { fontSize: 19, bold: true, color: DEEP },
+      subtitle: { fontSize: 8.5, color: MUTED },
+      kpiLabel: { fontSize: 7.5, bold: true, color: MUTED },
+      kpiValue: { fontSize: 14, bold: true, color: INK },
+      tableHeader: { fontSize: 7.4, bold: true },
+      miniLabel: { fontSize: 6.5, bold: true, color: MUTED },
+      miniValue: { fontSize: 9, bold: true, color: INK },
+      miniText: { fontSize: 6.5, color: MUTED, margin: [0, 2, 0, 0] },
+    },
+    defaultStyle: { font: "Roboto", fontSize: 7.5, color: INK },
+    footer(currentPage: number, pageCount: number) {
+      return {
+        columns: [
+          { text: "Mecardee Rental Manager", alignment: "left" },
+          { text: `Page ${currentPage} of ${pageCount}`, alignment: "right" },
+        ],
+        margin: [28, 8, 28, 0],
+        fontSize: 7,
+        color: MUTED,
+      };
+    },
+  };
 
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = new Array(objects.length).fill(0);
-  for (let id = 1; id < objects.length; id += 1) {
-    offsets[id] = encoder.encode(pdf).length;
-    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
-  }
-  const xrefOffset = encoder.encode(pdf).length;
-  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
-  for (let id = 1; id < objects.length; id += 1) pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  const url = URL.createObjectURL(new Blob([encoder.encode(pdf)], { type: "application/pdf" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
-  link.click();
-  URL.revokeObjectURL(url);
+  pdfMakeClient.createPdf(doc).download(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
 }
 
 function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[]; vehicles: Vehicle[] }) {
@@ -872,8 +921,8 @@ function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | 
   </>;
 }
 
-function InstallAppPrompt({ onInstall, onClose }: { onInstall: () => void; onClose: () => void }) {
-  return <aside className="install-app-prompt" role="dialog" aria-label="Install Mecardee app"><span className="brand-mark">M</span><div><strong>Install Mecardee</strong><small>Add it to your Android home screen for an app-like experience.</small></div><button className="install-now" onClick={onInstall}>Install</button><button className="install-close" onClick={onClose} aria-label="Dismiss install prompt"><X size={16} /></button></aside>;
+function InstallAppPrompt({ ready, onInstall, onClose }: { ready: boolean; onInstall: () => void; onClose: () => void }) {
+  return <aside className="install-app-prompt" role="dialog" aria-label="Install Mecardee app"><span className="brand-mark">M</span><div><strong>Install Mecardee</strong><small>{ready ? "Add Mecardee to your Android home screen for faster access." : "Install Mecardee from Chrome for an app-like experience."}</small></div><button className="install-now" onClick={onInstall}>Install</button><button className="install-close" onClick={onClose} aria-label="Dismiss install prompt"><X size={16} /></button></aside>;
 }
 
 function expenseIcon(category: string): LucideIcon {
