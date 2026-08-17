@@ -35,6 +35,36 @@ export type SettlementCalculation = {
 const nonNegative = (value: number) => Math.max(0, Number.isFinite(value) ? value : 0);
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+
+export type LateRentalCharge = {
+  graceHours: number;
+  lateMilliseconds: number;
+  extraRentalDays: number;
+  charge: number;
+};
+
+export function calculateLateRentalCharge(
+  expectedReturnAt: string | Date,
+  actualReturnAt: string | Date,
+  dailyRate: number,
+  graceHours = 3,
+): LateRentalCharge {
+  const expected = expectedReturnAt instanceof Date ? expectedReturnAt : new Date(expectedReturnAt);
+  const actual = actualReturnAt instanceof Date ? actualReturnAt : new Date(actualReturnAt);
+  const graceMs = Math.max(0, graceHours) * 60 * 60 * 1000;
+  if (Number.isNaN(expected.getTime()) || Number.isNaN(actual.getTime())) {
+    return { graceHours, lateMilliseconds: 0, extraRentalDays: 0, charge: 0 };
+  }
+  const lateMilliseconds = Math.max(0, actual.getTime() - expected.getTime() - graceMs);
+  const extraRentalDays = lateMilliseconds > 0 ? Math.ceil(lateMilliseconds / 86_400_000) : 0;
+  return {
+    graceHours,
+    lateMilliseconds,
+    extraRentalDays,
+    charge: roundMoney(extraRentalDays * nonNegative(dailyRate)),
+  };
+}
+
 export function calculateExpectedReturnKilometer(
   startingKilometer: number,
   rentalDays: number,

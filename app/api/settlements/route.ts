@@ -4,6 +4,7 @@ import { bookings, customers, maintenanceRecords, payments, returnSettlements, v
 import {
   buildSettlementWhatsAppMessage,
   buildSettlementWhatsAppUrl,
+  calculateLateRentalCharge,
   calculateSettlement,
 } from "@/lib/rental-calculations";
 
@@ -53,7 +54,6 @@ export async function POST(request: Request) {
     const actualReturnKilometer = wholeNumber(body.actualReturnKilometer, "Actual return kilometer");
     const returnFuelRangeKm = wholeNumber(body.returnFuelRangeKm, "Return fuel range");
     const fuelPricePerLitre = amount(body.fuelPricePerLitre, "Fuel price per litre");
-    const lateFee = amount(body.lateFee ?? 0, "Late fee");
     const cleaningCharge = amount(body.cleaningCharge ?? 0, "Cleaning charge");
     const damageCharge = amount(body.damageCharge ?? 0, "Damage charge");
     const discountAmount = amount(body.discountAmount ?? 0, "Discount amount");
@@ -88,6 +88,13 @@ export async function POST(request: Request) {
         .from(payments)
         .where(eq(payments.bookingId, record.booking.id));
       const amountAlreadyPaid = Number(paidRow?.total ?? 0);
+      const lateRental = calculateLateRentalCharge(
+        record.booking.endAt,
+        actualReturnAt,
+        record.booking.dailyRate,
+        3,
+      );
+      const lateFee = lateRental.charge;
 
       const calculation = calculateSettlement({
         baseRentalAmount: record.booking.baseRentalAmount,
@@ -176,6 +183,8 @@ export async function POST(request: Request) {
         bookingNumber,
         vehicleStatus: sendToMaintenance ? "maintenance" : "available",
         amountAlreadyPaid,
+        lateRentalDays: lateRental.extraRentalDays,
+        lateRentalCharge: lateRental.charge,
         calculation,
         whatsappMessage: buildSettlementWhatsAppMessage(whatsappInput),
         whatsappUrl: buildSettlementWhatsAppUrl(whatsappInput),

@@ -21,7 +21,7 @@
     "db:verify-live": "node db/verify-live-schema.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1111.0",
+    "aws4fetch": "^1.0.20",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.31.0",
     "pg": "^8.23.0",

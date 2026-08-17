@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { calculateExpectedReturnKilometer, calculateSettlement } from "@/lib/rental-calculations";
+import { calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateSettlement } from "@/lib/rental-calculations";
 import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
 import {
@@ -49,7 +49,7 @@ import {
 } from "lucide-react";
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts";
-type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail";
+type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
 type Rental = {
@@ -73,6 +73,8 @@ type Rental = {
   rentalAmount: number;
   bookingDiscount: number;
   otherCharges: number;
+  lateRentalDays: number;
+  lateRentalCharge: number;
   total: number;
   paid: number;
   balance: number;
@@ -154,6 +156,12 @@ function dateInputValue(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 10);
 }
+
+const blankZero = (value: number) => value === 0 ? "" : value;
+const numberFromInput = (value: string) => value === "" ? 0 : Number(value);
+const selectZeroOnFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+  if (event.currentTarget.value === "0") event.currentTarget.select();
+};
 
 async function readApiResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
@@ -260,29 +268,6 @@ export default function Home() {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
-  async function addCustomerPrompt() {
-    const name = window.prompt("Customer name");
-    if (!name?.trim()) return null;
-    const phone = window.prompt("Phone number");
-    if (!phone?.trim()) return null;
-    const drivingLicence = window.prompt("Driving licence number");
-    if (!drivingLicence?.trim()) return null;
-    const city = window.prompt("City (optional)") ?? "";
-    const whatsappNumber = window.prompt("WhatsApp number (leave blank to use phone)") ?? "";
-    try {
-      const response = await fetch("/api/customers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, phone, drivingLicence, city, whatsappNumber }) });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { phone: string } }>(response);
-      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
-      await refreshData();
-      showToast(`${name.trim()} added to customers`);
-      return payload.customer.phone;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not save customer.");
-      return null;
-    }
-  }
-
-
 
   function exportPayments() {
     if (!paymentList.length) return showToast("No payments to export.");
@@ -325,7 +310,7 @@ export default function Home() {
           {view === "dashboard" && <Dashboard rentals={rentalList} metrics={metrics} reminders={reminders} openRental={openRental} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
-          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => void addCustomerPrompt()} />}
+          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
         </div>
@@ -333,11 +318,12 @@ export default function Home() {
 
       <MobileNav view={view} goTo={goTo} openNew={() => setDialog("new-rental")} />
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
-      {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} addCustomer={addCustomerPrompt} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
+      {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
       {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} />}
+      {dialog === "customer" && <CustomerDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></DialogShell>}
       {dialog === "expense" && <ExpenseDialog vehicles={vehicleList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
@@ -582,7 +568,7 @@ function VehicleDialog({ close, done }: { close: () => void; done: (message: str
   return <DialogShell title="Add vehicle" subtitle="Vehicle, documents, service, tyres and photo" close={close} wide>
     <form className="simple-form" onSubmit={submit}>
       <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle details</h3><p>Main fleet information.</p></div></div><div className="field-grid">
-        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Maruti Swift" /></label><label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(e) => setMake(e.target.value)} placeholder="Maruti Suzuki" /></label><label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label><label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(e) => setModelYear(Number(e.target.value))} /></label><label className="field"><span>Fuel type</span><select value={fuelType} onChange={(e) => setFuelType(e.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label><label className="field"><span>Transmission</span><select value={transmission} onChange={(e) => setTransmission(e.target.value)}><option>Manual</option><option>Automatic</option></select></label><label className="field"><span>Daily rental rate (₹)</span><input required min="1" type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} /></label><label className="field"><span>Current odometer (KM)</span><input required min="0" type="number" value={odometerKm} onChange={(e) => setOdometerKm(Number(e.target.value))} /></label><label className="field"><span>Allowed KM / day</span><input required min="1" type="number" value={allowedKmPerDay} onChange={(e) => setAllowedKmPerDay(Number(e.target.value))} /></label><label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(e) => setExtraKmRate(Number(e.target.value))} /></label><label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(e) => setMileageKmPerLitre(Number(e.target.value))} /></label><label className="field"><span>Vehicle image</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={processingImage} onChange={(e) => void chooseImage(e.target.files?.[0] ?? null)} /><small>{processingImage ? "Compressing image…" : "Automatically resized/compressed for fast mobile upload"}</small></label>{imagePreview && <div className="field"><span>Preview</span><img src={imagePreview} alt="Vehicle preview" style={{ width:"100%",height:120,objectFit:"cover",borderRadius:14,border:"1px solid #e5e7eb" }} /></div>}
+        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Maruti Swift" /></label><label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(e) => setMake(e.target.value)} placeholder="Maruti Suzuki" /></label><label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label><label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(e) => setModelYear(Number(e.target.value))} /></label><label className="field"><span>Fuel type</span><select value={fuelType} onChange={(e) => setFuelType(e.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label><label className="field"><span>Transmission</span><select value={transmission} onChange={(e) => setTransmission(e.target.value)}><option>Manual</option><option>Automatic</option></select></label><label className="field"><span>Daily rental rate (₹)</span><input required min="1" type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} /></label><label className="field"><span>Current odometer (KM)</span><input required min="0" type="number" value={blankZero(odometerKm)} onFocus={selectZeroOnFocus} onChange={(e) => setOdometerKm(numberFromInput(e.target.value))} /></label><label className="field"><span>Allowed KM / day</span><input required min="1" type="number" value={allowedKmPerDay} onChange={(e) => setAllowedKmPerDay(Number(e.target.value))} /></label><label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(e) => setExtraKmRate(Number(e.target.value))} /></label><label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(e) => setMileageKmPerLitre(Number(e.target.value))} /></label><label className="field"><span>Vehicle image</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={processingImage} onChange={(e) => void chooseImage(e.target.files?.[0] ?? null)} /><small>{processingImage ? "Compressing image…" : "Automatically resized/compressed for fast mobile upload"}</small></label>{imagePreview && <div className="field"><span>Preview</span><img src={imagePreview} alt="Vehicle preview" style={{ width:"100%",height:120,objectFit:"cover",borderRadius:14,border:"1px solid #e5e7eb" }} /></div>}
       </div></section>
 
       <details><summary><strong>Documents</strong> — Insurance, pollution, RC, fitness, permit and tax</summary><div className="field-grid" style={{marginTop:12}}>{documents.map((doc,index)=><div key={doc.documentType} className="field" style={{border:"1px solid #e5e7eb",borderRadius:12,padding:10}}><strong>{doc.documentType}</strong><input placeholder="Document number" value={doc.documentNumber} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,documentNumber:e.target.value}:d))}/><input type="date" value={doc.expiryDate} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,expiryDate:e.target.value}:d))}/><input placeholder="Notes" value={doc.notes} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,notes:e.target.value}:d))}/></div>)}</div></details>
@@ -593,7 +579,48 @@ function VehicleDialog({ close, done }: { close: () => void; done: (message: str
   </DialogShell>;
 }
 
-function NewRentalDialog({ vehicles, customers, addCustomer, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; addCustomer: () => Promise<string | null>; close: () => void; done: (message: string, plate: string) => void; showToast: (message: string) => void }) {
+function CustomerDialog({ close, done }: { close: () => void; done: (message: string) => void }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [drivingLicence, setDrivingLicence] = useState("");
+  const [city, setCity] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true); setError(null);
+    try {
+      const response = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, phone, whatsappNumber, drivingLicence, city }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string } }>(response);
+      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
+      done(`${payload.customer.name} added to customers`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not save customer.");
+    } finally { setSaving(false); }
+  }
+
+  return <DialogShell title="Add customer" subtitle="Customer contact and licence details" close={close}>
+    <form className="simple-form" onSubmit={submit}>
+      <div className="field-grid">
+        <label className="field"><span>Customer name</span><input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" /></label>
+        <label className="field"><span>Phone number</span><input required inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" /></label>
+        <label className="field"><span>WhatsApp number</span><input inputMode="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="Leave blank to use phone" /></label>
+        <label className="field"><span>Driving licence number</span><input required value={drivingLicence} onChange={(e) => setDrivingLicence(e.target.value.toUpperCase())} placeholder="Licence number" /></label>
+        <label className="field span-2"><span>City / place</span><input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional" /></label>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+      <div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving}><UserRoundPlus size={16} />{saving ? "Saving…" : "Add customer"}</button></div>
+    </form>
+  </DialogShell>;
+}
+
+function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; close: () => void; done: (message: string, plate: string) => void; showToast: (message: string) => void }) {
   const availableVehicles = vehicles.filter((item) => item.statusKey === "available");
   const firstVehicle = availableVehicles[0] ?? null;
   const firstCustomer = customers[0] ?? null;
@@ -602,21 +629,29 @@ function NewRentalDialog({ vehicles, customers, addCustomer, close, done, showTo
   const [startDate, setStartDate] = useState(() => dateInputValue(new Date()));
   const [returnDate, setReturnDate] = useState(() => dateInputValue(new Date(Date.now() + 5 * 86_400_000)));
   const [startTime, setStartTime] = useState("10:00");
-  const [returnTime, setReturnTime] = useState("18:00");
+  const [returnTime, setReturnTime] = useState("10:00");
   const [rate, setRate] = useState(firstVehicle?.rate ?? 0);
-  const [advance, setAdvance] = useState(Math.min(3000, (firstVehicle?.rate ?? 0) * 5));
-  const [deposit, setDeposit] = useState(5000);
+  const [advance, setAdvance] = useState(0);
+  const [deposit, setDeposit] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [startingKilometer, setStartingKilometer] = useState(firstVehicle?.odometerKm ?? 0);
   const [startingFuelRangeKm, setStartingFuelRangeKm] = useState(100);
   const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [createdCustomer, setCreatedCustomer] = useState<{ name: string; phone: string } | null>(null);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerWhatsapp, setNewCustomerWhatsapp] = useState("");
+  const [newCustomerLicence, setNewCustomerLicence] = useState("");
+  const [newCustomerCity, setNewCustomerCity] = useState("");
+  const [savingCustomer, setSavingCustomer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const days = Math.max(1, Math.ceil((new Date(returnDate).getTime() - new Date(startDate).getTime()) / 86_400_000));
   const rentalAmount = days * rate;
   const total = Math.max(0, rentalAmount - discount);
   const selectedVehicle = vehicles.find((item) => vehicle.includes(item.plate)) ?? firstVehicle;
-  const selectedCustomer = customers.find((item) => item.phone === customerPhone) ?? null;
+  const selectedCustomer = customers.find((item) => item.phone === customerPhone) ?? (createdCustomer?.phone === customerPhone ? { name: createdCustomer.name } : null);
   const expectedReturnKilometer = selectedVehicle
     ? calculateExpectedReturnKilometer(startingKilometer, days, selectedVehicle.allowedKmPerDay)
     : startingKilometer;
@@ -663,20 +698,39 @@ function NewRentalDialog({ vehicles, customers, addCustomer, close, done, showTo
   }
 
   async function addCustomerHere() {
-    const phone = await addCustomer();
-    if (phone) {
-      setCustomerPhone(phone);
-      showToast("New customer selected for this rental");
-    }
+    setSavingCustomer(true); setError(null);
+    try {
+      const response = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: newCustomerName,
+          phone: newCustomerPhone,
+          whatsappNumber: newCustomerWhatsapp,
+          drivingLicence: newCustomerLicence,
+          city: newCustomerCity,
+        }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string } }>(response);
+      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
+      setCreatedCustomer(payload.customer);
+      setCustomerPhone(payload.customer.phone);
+      setShowCustomerForm(false);
+      showToast(`${payload.customer.name} added and selected`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not save customer.");
+    } finally { setSavingCustomer(false); }
   }
+
 
   return <DialogShell title="Create a new rental" subtitle="Vehicle → Customer → Rental details" close={close} wide>
     <div className="stepper"><span className="done"><i><Check size={13} /></i>Vehicle</span><b /><span className="active"><i>2</i>Customer & dates</span><b /><span><i>3</i>Handover</span></div>
     <form className="rental-form" onSubmit={submit}>
-      <div className="form-content"><section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle and customer</h3><p>Only available vehicles can be selected.</p></div></div><div className="field-grid"><label className="field span-2"><span>Vehicle</span><select value={vehicle} onChange={(event) => { const next = vehicles.find((item) => event.target.value.includes(item.plate)); setVehicle(event.target.value); if (next) { setRate(next.rate); setStartingKilometer(next.odometerKm); } }} disabled={!availableVehicles.length}>{availableVehicles.length ? availableVehicles.map((item) => <option key={item.id}>{item.name} — {item.plate}</option>) : <option>No available vehicles</option>}</select></label><label className="field"><span>Customer</span><select value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} disabled={!customers.length}>{customers.length ? customers.map((item) => <option key={item.id} value={item.phone}>{item.name}</option>) : <option value="">No customers</option>}</select></label><button type="button" className="new-customer" onClick={() => void addCustomerHere()}><UserRoundPlus size={16} />Add new customer</button></div></section>
-        <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>Duration and price update automatically.</p></div></div><div className="field-grid four"><label className="field"><span>Start date</span><input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label className="field"><span>Start time</span><input required type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label><label className="field"><span>Expected return</span><input required type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} /></label><label className="field"><span>Return time</span><input required type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} rental days</strong><span>{startDate} → {returnDate}</span></div></section>
-        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Vehicle handover</h3><p>Expected return kilometer updates automatically.</p></div></div><div className="field-grid three"><label className="field"><span>Current / Starting Kilometer</span><input required min="0" type="number" value={startingKilometer} onChange={(event) => setStartingKilometer(Number(event.target.value))} /></label><label className="field"><span>Allowed KM Per Day</span><input readOnly value={`${selectedVehicle?.allowedKmPerDay ?? 0} km`} /></label><label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Starting Fuel Range (KM)</span><input required min="0" type="number" value={startingFuelRangeKm} onChange={(event) => setStartingFuelRangeKm(Number(event.target.value))} /></label></div></section>
-        <section className="form-section"><div className="form-section-title"><span><WalletCards size={17} /></span><div><h3>Payment details</h3><p>Record the advance and deposit received.</p></div></div><div className="field-grid three"><label className="field"><span>Daily rate (₹)</span><input required min="0" type="number" value={rate} onChange={(event) => setRate(Number(event.target.value))} /></label><label className="field"><span>Security deposit (₹)</span><input min="0" type="number" value={deposit} onChange={(event) => setDeposit(Number(event.target.value))} /></label><label className="field"><span>Advance paid (₹)</span><input min="0" max={total} type="number" value={advance} onChange={(event) => setAdvance(Number(event.target.value))} /></label><label className="field"><span>Discount (₹)</span><input min="0" max={rentalAmount} type="number" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} /></label><label className="field"><span>Payment method</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label></div></section>
+      <div className="form-content"><section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle and customer</h3><p>Only available vehicles can be selected.</p></div></div><div className="field-grid"><label className="field span-2"><span>Vehicle</span><select value={vehicle} onChange={(event) => { const next = vehicles.find((item) => event.target.value.includes(item.plate)); setVehicle(event.target.value); if (next) { setRate(next.rate); setStartingKilometer(next.odometerKm); } }} disabled={!availableVehicles.length}>{availableVehicles.length ? availableVehicles.map((item) => <option key={item.id}>{item.name} — {item.plate}</option>) : <option>No available vehicles</option>}</select></label><label className="field"><span>Customer</span><select value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} disabled={!customers.length && !createdCustomer}>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name}</option>}{customers.length ? customers.map((item) => <option key={item.id} value={item.phone}>{item.name}</option>) : !createdCustomer && <option value="">No customers</option>}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((open) => !open)}><UserRoundPlus size={16} />{showCustomerForm ? "Close customer form" : "Add new customer"}</button></div></section>
+        {showCustomerForm && <section className="form-section"><div className="form-section-title"><span><UserRoundPlus size={17} /></span><div><h3>Add new customer</h3><p>Save once and the customer is selected for this rental.</p></div></div><div className="simple-form"><div className="field-grid"><label className="field"><span>Customer name</span><input required value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input required inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} placeholder="Leave blank to use phone" /></label><label className="field"><span>Driving licence</span><input required value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={()=>setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim() || !newCustomerLicence.trim()} onClick={() => void addCustomerHere()}>{savingCustomer?"Saving…":"Save customer"}</button></div></div></section>}
+        <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>Duration and price update automatically.</p></div></div><div className="field-grid four"><label className="field"><span>Start date</span><input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label className="field"><span>Start time</span><input required type="time" value={startTime} onChange={(event) => { const next = event.target.value; setReturnTime((current) => current === startTime ? next : current); setStartTime(next); }} /></label><label className="field"><span>Expected return</span><input required type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} /></label><label className="field"><span>Return time</span><input required type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} rental days</strong><span>{startDate} → {returnDate}</span></div></section>
+        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Vehicle handover</h3><p>Expected return kilometer updates automatically.</p></div></div><div className="field-grid three"><label className="field"><span>Current / Starting Kilometer</span><input required min="0" type="number" value={blankZero(startingKilometer)} onFocus={selectZeroOnFocus} onChange={(event) => setStartingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Allowed KM Per Day</span><input readOnly value={`${selectedVehicle?.allowedKmPerDay ?? 0} km`} /></label><label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Starting Fuel Range (KM)</span><input required min="0" type="number" value={blankZero(startingFuelRangeKm)} onFocus={selectZeroOnFocus} onChange={(event) => setStartingFuelRangeKm(numberFromInput(event.target.value))} /></label></div></section>
+        <section className="form-section"><div className="form-section-title"><span><WalletCards size={17} /></span><div><h3>Payment details</h3><p>Record the advance and deposit received.</p></div></div><div className="field-grid three"><label className="field"><span>Daily rate (₹)</span><input required min="0" type="number" value={blankZero(rate)} onFocus={selectZeroOnFocus} onChange={(event) => setRate(numberFromInput(event.target.value))} /></label><label className="field"><span>Security deposit (₹)</span><input min="0" type="number" value={deposit} onFocus={selectZeroOnFocus} onChange={(event) => setDeposit(numberFromInput(event.target.value))} /></label><label className="field"><span>Advance paid (₹)</span><input min="0" max={total} type="number" value={advance} onFocus={selectZeroOnFocus} onChange={(event) => setAdvance(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount (₹)</span><input min="0" max={rentalAmount} type="number" value={blankZero(discount)} onFocus={selectZeroOnFocus} onChange={(event) => setDiscount(numberFromInput(event.target.value))} /></label><label className="field"><span>Payment method</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label></div></section>
       </div><aside className="bill-summary"><div className="summary-car"><span><CarFront size={21} /></span><div><strong>{selectedVehicle?.name ?? "No vehicle"}</strong><small>{selectedVehicle?.plate ?? "Add a vehicle first"}</small></div></div><h3>Rental summary</h3><div className="bill-line"><span>{days} days × {money(rate)}</span><strong>{money(rentalAmount)}</strong></div><div className="bill-line"><span>Other charges</span><strong>₹0</strong></div><div className="bill-line"><span>Discount</span><strong>− {money(discount)}</strong></div><div className="bill-total"><span>Total amount</span><strong>{money(total)}</strong></div><div className="bill-line paid"><span>Advance paid</span><strong>− {money(advance)}</strong></div><div className="bill-balance"><span>Balance due</span><strong>{money(Math.max(0, total - advance))}</strong></div><div className="deposit-note"><ShieldCheck size={15} /><span><strong>{money(deposit)} security deposit</strong><small>Held separately and refundable</small></span></div>{error && <p className="form-error">{error}</p>}<button className="confirm-rental" type="submit" disabled={saving || !selectedVehicle || !customerPhone}>{saving ? "Saving…" : "Confirm rental"} {!saving && <ArrowRight size={16} />}</button><button className="save-draft" type="button" disabled={saving || !selectedVehicle || !customerPhone} onClick={() => void saveRental("draft")}>{saving ? "Saving…" : "Save as draft"}</button></aside>
     </form>
   </DialogShell>;
@@ -748,11 +802,10 @@ function ExtendDialog({ rental, close, done }: { rental: Rental; close: () => vo
 function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: () => void; onConfirmed: (result: SettlementResult) => void }) {
   const expectedReturnKilometer = calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay);
   const [actualReturnDate, setActualReturnDate] = useState(() => dateInputValue(new Date()));
-  const [actualReturnTime, setActualReturnTime] = useState("18:00");
-  const [actualReturnKilometer, setActualReturnKilometer] = useState(expectedReturnKilometer + 154);
+  const [actualReturnTime, setActualReturnTime] = useState(() => new Date().toTimeString().slice(0, 5));
+  const [actualReturnKilometer, setActualReturnKilometer] = useState(expectedReturnKilometer);
   const [returnFuelRangeKm, setReturnFuelRangeKm] = useState(Math.max(0, rental.startingFuelRangeKm - 50));
   const [fuelPricePerLitre, setFuelPricePerLitre] = useState(105);
-  const [lateFee, setLateFee] = useState(rental.state === "overdue" ? 1500 : 0);
   const [cleaning, setCleaning] = useState(0);
   const [damage, setDamage] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -763,8 +816,10 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<SettlementResult | null>(null);
+  const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
+  const lateRental = calculateLateRentalCharge(rental.endAt, actualReturnIso, rental.rate, 3);
   const calculation = calculateSettlement({
-    baseRentalAmount: rental.total,
+    baseRentalAmount: Math.max(0, rental.total - rental.lateRentalCharge),
     rentalDays: rental.days,
     startingKilometer: rental.startingKilometer,
     actualReturnKilometer,
@@ -774,7 +829,7 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
     returnFuelRangeKm,
     mileageKmPerLitre: rental.mileageKmPerLitre,
     fuelPricePerLitre,
-    lateFee,
+    lateFee: lateRental.charge,
     cleaningCharge: cleaning,
     damageCharge: damage,
     discountAmount,
@@ -791,11 +846,10 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           bookingNumber: rental.id,
-          actualReturnAt: new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString(),
+          actualReturnAt: actualReturnIso,
           actualReturnKilometer,
           returnFuelRangeKm,
           fuelPricePerLitre,
-          lateFee,
           cleaningCharge: cleaning,
           damageCharge: damage,
           discountAmount,
@@ -828,24 +882,24 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
         <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Return inspection</h3><p>Kilometers and fuel charges calculate automatically.</p></div></div><div className="field-grid three">
           <label className="field"><span>Actual return date</span><input required type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label>
           <label className="field"><span>Return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label>
-          <label className="field"><span>Actual Return Kilometer</span><input required min={rental.startingKilometer} type="number" value={actualReturnKilometer} onChange={(event) => setActualReturnKilometer(Number(event.target.value))} /></label>
+          <label className="field"><span>Actual Return Kilometer</span><input required min={rental.startingKilometer} type="number" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label>
           <label className="field"><span>Starting Kilometer</span><input readOnly value={`${rental.startingKilometer.toLocaleString("en-IN")} km`} /></label>
           <label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label>
           <label className="field"><span>Total Allowed Kilometers</span><input readOnly value={`${calculation.allowedKilometers.toLocaleString("en-IN")} km`} /></label>
           <label className="field"><span>Starting Fuel Range (KM)</span><input readOnly value={rental.startingFuelRangeKm} /></label>
-          <label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" value={returnFuelRangeKm} onChange={(event) => setReturnFuelRangeKm(Number(event.target.value))} /></label>
-          <label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" value={fuelPricePerLitre} onChange={(event) => setFuelPricePerLitre(Number(event.target.value))} /></label>
+          <label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label>
+          <label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
           <label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
         </div></section>
-        <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM and fuel shortage are automatic; add other charges only when applicable.</p></div></div><div className="charge-grid">
+        <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM, fuel shortage and late-day rent are automatic. A 3-hour grace period applies after the expected return time.</p></div></div><div className="charge-grid">
           <label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label>
           <label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label>
-          <label><span>Late fee</span><input min="0" type="number" value={lateFee} onChange={(event) => setLateFee(Number(event.target.value))} /></label>
-          <label><span>Cleaning</span><input min="0" type="number" value={cleaning} onChange={(event) => setCleaning(Number(event.target.value))} /></label>
-          <label><span>Damage</span><input min="0" type="number" value={damage} onChange={(event) => setDamage(Number(event.target.value))} /></label>
-        </div><p className="calculation-note">Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
+          <label><span>Late return charge ({lateRental.extraRentalDays} extra day{lateRental.extraRentalDays === 1 ? "" : "s"})</span><input readOnly value={lateRental.charge} /></label>
+          <label><span>Cleaning</span><input min="0" type="number" value={blankZero(cleaning)} onFocus={selectZeroOnFocus} onChange={(event) => setCleaning(numberFromInput(event.target.value))} /></label>
+          <label><span>Damage</span><input min="0" type="number" value={blankZero(damage)} onFocus={selectZeroOnFocus} onChange={(event) => setDamage(numberFromInput(event.target.value))} /></label>
+        </div><p className="calculation-note">Late rule: 3-hour grace, then each started 24 hours = 1 extra rental day · Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
       </div>
-      <aside className="final-bill"><h3>Final bill</h3><div><span>Base rental amount</span><strong>{money(rental.total)}</strong></div><div><span>Extra kilometer charge</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div><div><span>Other applicable charges</span><strong>{money(lateFee + cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" value={discountAmount} onChange={(event) => setDiscountAmount(Number(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div><label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
+      <aside className="final-bill"><h3>Final bill</h3><div><span>Base rental amount</span><strong>{money(Math.max(0, rental.total - rental.lateRentalCharge))}</strong></div><div><span>Extra kilometer charge</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div><div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div><div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div><label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
     </form>
   </DialogShell>;
 }

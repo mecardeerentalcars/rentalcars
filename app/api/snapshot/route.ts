@@ -184,17 +184,27 @@ export async function GET() {
         const { booking, vehicle, customer } = row;
         const settlement = settlementByBooking.get(booking.id);
         const paid = roundMoney(paymentsByBooking.get(booking.id) ?? 0);
-        const total = roundMoney(settlement?.finalAmount ?? booking.baseRentalAmount + booking.otherCharges);
+        const chargeableLateMs = booking.status === "completed" ? 0 : Math.max(0, current.getTime() - booking.endAt.getTime() - 3 * 60 * 60 * 1000);
+        const liveLateRentalDays = chargeableLateMs > 0 ? Math.ceil(chargeableLateMs / 86_400_000) : 0;
+        const liveLateRentalCharge = roundMoney(liveLateRentalDays * booking.dailyRate);
+        const settledLateRentalCharge = settlement?.lateFee ?? 0;
+        const lateRentalCharge = settlement ? settledLateRentalCharge : liveLateRentalCharge;
+        const lateRentalDays = settlement ? (lateRentalCharge > 0 ? Math.max(1, Math.ceil(lateRentalCharge / Math.max(1, booking.dailyRate))) : 0) : liveLateRentalDays;
+        const total = roundMoney(settlement?.finalAmount ?? booking.baseRentalAmount + booking.otherCharges + liveLateRentalCharge);
         const balance = roundMoney(Math.max(0, total - paid));
         let state: "active" | "today" | "overdue" | "completed" = "active";
         let statusText = "Active";
         if (booking.status === "completed") {
           state = "completed";
           statusText = balance > 0 ? "Completed · balance due" : "Completed";
-        } else if (booking.endAt.getTime() < current.getTime() && dateKey(booking.endAt) !== today) {
+        } else if (current.getTime() > booking.endAt.getTime() + 3 * 60 * 60 * 1000) {
           state = "overdue";
-          const days = Math.max(1, Math.ceil((current.getTime() - booking.endAt.getTime()) / 86_400_000));
-          statusText = `Overdue by ${days} day${days === 1 ? "" : "s"}`;
+          const chargeableLateMs = current.getTime() - booking.endAt.getTime() - 3 * 60 * 60 * 1000;
+          const days = Math.max(1, Math.ceil(chargeableLateMs / 86_400_000));
+          statusText = `Overdue · ${days} extra rental day${days === 1 ? "" : "s"}`;
+        } else if (current.getTime() > booking.endAt.getTime()) {
+          state = "today";
+          statusText = "Return grace period · up to 3 hours";
         } else if (dateKey(booking.endAt) === today) {
           state = "today";
           statusText = "Returning today";
@@ -226,7 +236,9 @@ export async function GET() {
           rate: booking.dailyRate,
           rentalAmount: booking.baseRentalAmount + booking.bookingDiscount,
           bookingDiscount: booking.bookingDiscount,
-          otherCharges: settlement ? booking.otherCharges + settlement.extraKmCharge + settlement.fuelCharge + settlement.lateFee + settlement.cleaningCharge + settlement.damageCharge : booking.otherCharges,
+          otherCharges: settlement ? booking.otherCharges + settlement.extraKmCharge + settlement.fuelCharge + settlement.lateFee + settlement.cleaningCharge + settlement.damageCharge : booking.otherCharges + liveLateRentalCharge,
+          lateRentalDays,
+          lateRentalCharge,
           total,
           paid,
           balance,
