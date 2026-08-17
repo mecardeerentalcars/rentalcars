@@ -1,5 +1,5 @@
 import { asc, desc, eq } from "drizzle-orm";
-import { DatabaseConfigurationError, getDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import {
   bookings,
   customers,
@@ -88,7 +88,7 @@ function lastTwelveMonths(reference: Date) {
 
 export async function GET() {
   try {
-    const db = getDb();
+    return await withRequestDb(async (db) => {
     const [vehicleRows, customerRows, bookingRows, settlementRows, paymentRows, expenseRows, documentRows, maintenanceRows] =
       await Promise.all([
         db.select().from(vehicles).orderBy(asc(vehicles.name)),
@@ -434,6 +434,7 @@ export async function GET() {
         twelveMonthCollected,
         monthlyCollected,
       },
+    });
     });
   } catch (error) {
     if (error instanceof DatabaseConfigurationError) {

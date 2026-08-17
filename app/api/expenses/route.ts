@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { DatabaseConfigurationError, getDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { expenses, vehicles } from "@/db/schema";
 
 type ExpenseBody = { expenseDate?: unknown; category?: unknown; vehicleRegistration?: unknown; amount?: unknown; description?: unknown; method?: unknown };
@@ -20,16 +20,22 @@ export async function POST(request: Request) {
     const method = text(body.method, "Payment method");
     const vehicleRegistration = optionalText(body.vehicleRegistration);
 
-    let vehicleId: string | null = null;
-    if (vehicleRegistration) {
-      const [vehicle] = await getDb().select({ id: vehicles.id }).from(vehicles).where(eq(vehicles.registrationNumber, vehicleRegistration)).limit(1);
-      if (!vehicle) throw new RequestError("Selected vehicle was not found.", 404);
-      vehicleId = vehicle.id;
-    }
-    const [saved] = await getDb().insert(expenses).values({
-      expenseNumber: numberId(), expenseDate, category, vehicleId, amount, description, method, createdBy: "Ajmal",
-    }).returning();
-    return Response.json({ ok: true, expense: { expenseNumber: saved.expenseNumber } }, { status: 201 });
+    const saved = await withRequestDb(async (db) => {
+      let vehicleId: string | null = null;
+      if (vehicleRegistration) {
+        const [vehicle] = await db.select({ id: vehicles.id }).from(vehicles).where(eq(vehicles.registrationNumber, vehicleRegistration)).limit(1);
+        if (!vehicle) throw new RequestError("Selected vehicle was not found.", 404);
+        vehicleId = vehicle.id;
+      }
+
+      const [expense] = await db.insert(expenses).values({
+        expenseNumber: numberId(), expenseDate, category, vehicleId, amount, description, method, createdBy: "Ajmal",
+      }).returning({ expenseNumber: expenses.expenseNumber });
+      if (!expense) throw new Error("PostgreSQL did not return the created expense.");
+      return expense;
+    });
+
+    return Response.json({ ok: true, expense: saved }, { status: 201 });
   } catch (error) {
     if (error instanceof RequestError) return Response.json({ ok: false, error: error.message }, { status: error.status });
     if (error instanceof DatabaseConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });

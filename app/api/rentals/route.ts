@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, lt } from "drizzle-orm";
-import { DatabaseConfigurationError, getDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, vehicles } from "@/db/schema";
 import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
 
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     const baseRentalAmount = grossRentalAmount - bookingDiscount;
     if (advancePaid > baseRentalAmount) throw new RequestError("Advance paid cannot exceed the rental total.");
 
-    const created = await getDb().transaction(async (tx) => {
+    const created = await withRequestDb((db) => db.transaction(async (tx) => {
       const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.registrationNumber, vehicleRegistration)).limit(1).for("update");
       if (!vehicle) throw new RequestError("Vehicle was not found.", 404);
       if (mode !== "draft" && vehicle.status !== "available") throw new RequestError("Vehicle is not currently available.", 409);
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       }
 
       return { bookingNumber, expectedReturnKilometer, allowedKmPerDay: vehicle.allowedKmPerDay, mode };
-    });
+    }));
 
     return Response.json({ ok: true, rental: created }, { status: 201 });
   } catch (error) {

@@ -47,7 +47,7 @@ import {
 } from "lucide-react";
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts";
-type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense";
+type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
 type Rental = {
@@ -153,6 +153,19 @@ function dateInputValue(value: Date) {
   return local.toISOString().slice(0, 10);
 }
 
+async function readApiResponse<T>(response: Response): Promise<T> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    throw new Error(`Server returned ${response.status} ${response.statusText || "without a response body"}.`);
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const message = raw.replace(/\s+/g, " ").trim().slice(0, 320);
+    throw new Error(message || `Server returned ${response.status} ${response.statusText}.`);
+  }
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [dialog, setDialog] = useState<DialogType>(null);
@@ -177,7 +190,7 @@ export default function Home() {
   const refreshData = useCallback(async () => {
     try {
       const response = await fetch("/api/snapshot", { cache: "no-store" });
-      const payload = await response.json() as AppSnapshot;
+      const payload = await readApiResponse<AppSnapshot>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not load live database data.");
       setRentalList(payload.rentals);
       setVehicleList(payload.vehicles);
@@ -247,7 +260,7 @@ export default function Home() {
     const whatsappNumber = window.prompt("WhatsApp number (leave blank to use phone)") ?? "";
     try {
       const response = await fetch("/api/customers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, phone, drivingLicence, city, whatsappNumber }) });
-      const payload = await response.json() as { ok: boolean; error?: string; customer?: { phone: string } };
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { phone: string } }>(response);
       if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
       await refreshData();
       showToast(`${name.trim()} added to customers`);
@@ -258,31 +271,7 @@ export default function Home() {
     }
   }
 
-  async function addVehiclePrompt() {
-    const name = window.prompt("Vehicle name (example: Maruti Swift)");
-    if (!name?.trim()) return;
-    const make = window.prompt("Make / manufacturer", name.split(" ")[0] ?? "") ?? "";
-    const registrationNumber = window.prompt("Registration number");
-    if (!registrationNumber?.trim()) return;
-    const fuelType = window.prompt("Fuel type", "Petrol") ?? "Petrol";
-    const transmission = window.prompt("Transmission", "Manual") ?? "Manual";
-    const modelYear = Number(window.prompt("Model year", String(new Date().getFullYear())) ?? 0);
-    const dailyRate = Number(window.prompt("Daily rental rate (₹)", "1500") ?? 0);
-    const odometerKm = Number(window.prompt("Current odometer KM", "0") ?? 0);
-    const allowedKmPerDay = Number(window.prompt("Allowed KM per day", "100") ?? 100);
-    const extraKmRate = Number(window.prompt("Extra KM rate (₹)", "12") ?? 12);
-    const mileageKmPerLitre = Number(window.prompt("Mileage KM per litre", "15") ?? 15);
-    const imageUrl = window.prompt("Image path/URL (optional)", "/cars/swift.jpg") ?? "";
-    try {
-      const response = await fetch("/api/vehicles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, make, registrationNumber, fuelType, transmission, modelYear, dailyRate, odometerKm, allowedKmPerDay, extraKmRate, mileageKmPerLitre, imageUrl }) });
-      const payload = await response.json() as { ok: boolean; error?: string };
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not save vehicle.");
-      await refreshData();
-      showToast(`${name.trim()} added to fleet`);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Could not save vehicle.");
-    }
-  }
+
 
   function exportPayments() {
     if (!paymentList.length) return showToast("No payments to export.");
@@ -324,7 +313,7 @@ export default function Home() {
         <div className="content">
           {view === "dashboard" && <Dashboard rentals={rentalList} metrics={metrics} reminders={reminders} openRental={openRental} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
-          {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => void addVehiclePrompt()} showToast={showToast} />}
+          {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} showToast={showToast} />}
           {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => void addCustomerPrompt()} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
@@ -338,6 +327,7 @@ export default function Home() {
       {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} />}
+      {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "expense" && <ExpenseDialog vehicles={vehicleList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {toast && <div className="toast"><CheckCircle2 size={18} /><span>{toast}</span></div>}
     </div>
@@ -533,6 +523,82 @@ function DialogShell({ title, subtitle, close, wide = false, children }: { title
   return <div className="dialog-overlay"><section className={`dialog ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}><header><div><h2>{title}</h2><p>{subtitle}</p></div><button onClick={close} aria-label="Close"><X size={19} /></button></header>{children}</section></div>;
 }
 
+
+function VehicleDialog({ close, done }: { close: () => void; done: (message: string) => void }) {
+  const [name, setName] = useState("");
+  const [make, setMake] = useState("");
+  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [fuelType, setFuelType] = useState("Petrol");
+  const [transmission, setTransmission] = useState("Manual");
+  const [modelYear, setModelYear] = useState(new Date().getFullYear());
+  const [dailyRate, setDailyRate] = useState(1500);
+  const [odometerKm, setOdometerKm] = useState(0);
+  const [allowedKmPerDay, setAllowedKmPerDay] = useState(100);
+  const [extraKmRate, setExtraKmRate] = useState(12);
+  const [mileageKmPerLitre, setMileageKmPerLitre] = useState(15);
+  const [imageUrl, setImageUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim() || !make.trim() || !registrationNumber.trim()) {
+      setError("Vehicle name, make and registration number are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/vehicles", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          make: make.trim(),
+          registrationNumber: registrationNumber.trim(),
+          fuelType,
+          transmission,
+          modelYear,
+          dailyRate,
+          odometerKm,
+          allowedKmPerDay,
+          extraKmRate,
+          mileageKmPerLitre,
+          imageUrl: imageUrl.trim(),
+        }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not save vehicle.");
+      done(`${name.trim()} added to fleet`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save vehicle.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <DialogShell title="Add vehicle" subtitle="Add a vehicle to the live fleet database" close={close} wide>
+    <form className="simple-form" onSubmit={submit}>
+      <div className="field-grid">
+        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Maruti Swift" /></label>
+        <label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(event) => setMake(event.target.value)} placeholder="Maruti Suzuki" /></label>
+        <label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label>
+        <label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(event) => setModelYear(Number(event.target.value))} /></label>
+        <label className="field"><span>Fuel type</span><select value={fuelType} onChange={(event) => setFuelType(event.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label>
+        <label className="field"><span>Transmission</span><select value={transmission} onChange={(event) => setTransmission(event.target.value)}><option>Manual</option><option>Automatic</option></select></label>
+        <label className="field"><span>Daily rental rate (₹)</span><input required min="1" step="1" type="number" value={dailyRate} onChange={(event) => setDailyRate(Number(event.target.value))} /></label>
+        <label className="field"><span>Current odometer (KM)</span><input required min="0" step="1" type="number" value={odometerKm} onChange={(event) => setOdometerKm(Number(event.target.value))} /></label>
+        <label className="field"><span>Allowed KM / day</span><input required min="1" step="1" type="number" value={allowedKmPerDay} onChange={(event) => setAllowedKmPerDay(Number(event.target.value))} /></label>
+        <label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(event) => setExtraKmRate(Number(event.target.value))} /></label>
+        <label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(event) => setMileageKmPerLitre(Number(event.target.value))} /></label>
+        <label className="field"><span>Image path / URL (optional)</span><input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="/cars/swift.jpg" /></label>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+      <div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving}><Check size={16} />{saving ? "Saving…" : "Add vehicle"}</button></div>
+    </form>
+  </DialogShell>;
+}
+
 function NewRentalDialog({ vehicles, customers, addCustomer, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; addCustomer: () => Promise<string | null>; close: () => void; done: (message: string, plate: string) => void; showToast: (message: string) => void }) {
   const availableVehicles = vehicles.filter((item) => item.statusKey === "available");
   const firstVehicle = availableVehicles[0] ?? null;
@@ -586,7 +652,7 @@ function NewRentalDialog({ vehicles, customers, addCustomer, close, done, showTo
           mode,
         }),
       });
-      const payload = await response.json() as { ok: boolean; error?: string; rental?: { bookingNumber: string; mode?: string } };
+      const payload = await readApiResponse<{ ok: boolean; error?: string; rental?: { bookingNumber: string; mode?: string } }>(response);
       if (!response.ok || !payload.rental) throw new Error(payload.error ?? "Could not save the rental.");
       const action = mode === "draft" ? "draft saved" : "created";
       done(`${selectedVehicle.name} rental ${payload.rental.bookingNumber} ${action} for ${selectedCustomer?.name ?? customerPhone}`, selectedVehicle.plate);
@@ -644,7 +710,7 @@ function PaymentDialog({ rental, close, done }: { rental: Rental; close: () => v
     setError(null);
     try {
       const response = await fetch("/api/payments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingNumber: rental.id, amount, method, notes }) });
-      const payload = await response.json() as { ok: boolean; error?: string; payment?: { paymentNumber: string; balance: number } };
+      const payload = await readApiResponse<{ ok: boolean; error?: string; payment?: { paymentNumber: string; balance: number } }>(response);
       if (!response.ok || !payload.payment) throw new Error(payload.error ?? "Could not record payment.");
       done(`${money(amount)} payment ${payload.payment.paymentNumber} recorded for ${rental.customer}`);
     } catch (submitError) {
@@ -672,7 +738,7 @@ function ExtendDialog({ rental, close, done }: { rental: Rental; close: () => vo
     setError(null);
     try {
       const response = await fetch("/api/extensions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingNumber: rental.id, additionalDays: days, notes }) });
-      const payload = await response.json() as { ok: boolean; error?: string; extension?: { addedAmount: number; newEndAt: string } };
+      const payload = await readApiResponse<{ ok: boolean; error?: string; extension?: { addedAmount: number; newEndAt: string } }>(response);
       if (!response.ok || !payload.extension) throw new Error(payload.error ?? "Could not extend rental.");
       done(`Rental extended by ${days} days · ${money(payload.extension.addedAmount)} added`);
     } catch (submitError) {
@@ -745,7 +811,7 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
           sendToMaintenance,
         }),
       });
-      const payload = await response.json() as { ok: boolean; error?: string; settlement?: SettlementResult };
+      const payload = await readApiResponse<{ ok: boolean; error?: string; settlement?: SettlementResult }>(response);
       if (!response.ok || !payload.settlement) throw new Error(payload.error ?? "Could not confirm the return settlement.");
       setConfirmed(payload.settlement);
       onConfirmed(payload.settlement);
@@ -806,7 +872,7 @@ function ExpenseDialog({ vehicles, close, done }: { vehicles: Vehicle[]; close: 
     setError(null);
     try {
       const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expenseDate, category, vehicleRegistration: vehicleRegistration || null, amount, description, method }) });
-      const payload = await response.json() as { ok: boolean; error?: string; expense?: { expenseNumber: string } };
+      const payload = await readApiResponse<{ ok: boolean; error?: string; expense?: { expenseNumber: string } }>(response);
       if (!response.ok || !payload.expense) throw new Error(payload.error ?? "Could not save expense.");
       done(`${money(amount)} expense ${payload.expense.expenseNumber} recorded`);
     } catch (submitError) {

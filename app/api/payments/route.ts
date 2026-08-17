@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { DatabaseConfigurationError, getDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, returnSettlements } from "@/db/schema";
 
 type PaymentBody = {
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const method = text(body.method, "Payment method");
     const notes = optionalText(body.notes);
 
-    const result = await getDb().transaction(async (tx) => {
+    const result = await withRequestDb((db) => db.transaction(async (tx) => {
       const [record] = await tx
         .select({ booking: bookings, customer: customers })
         .from(bookings)
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         amount: saved.amount,
         balance: Math.max(0, Math.round((balance - receivedAmount) * 100) / 100),
       };
-    });
+    }));
 
     return Response.json({ ok: true, payment: result }, { status: 201 });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
-import { DatabaseConfigurationError, getDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, rentalExtensions, vehicles } from "@/db/schema";
 import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
 
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const additionalDays = wholeNumber(body.additionalDays, "Additional days");
     const notes = optionalText(body.notes);
 
-    const result = await getDb().transaction(async (tx) => {
+    const result = await withRequestDb((db) => db.transaction(async (tx) => {
       const [record] = await tx
         .select({ booking: bookings, vehicle: vehicles })
         .from(bookings)
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
       }).where(eq(bookings.id, record.booking.id));
 
       return { bookingNumber, additionalDays, addedAmount, newEndAt: newEndAt.toISOString() };
-    });
+    }));
 
     return Response.json({ ok: true, extension: result }, { status: 201 });
   } catch (error) {

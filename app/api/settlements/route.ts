@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { DatabaseConfigurationError, getDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, maintenanceRecords, payments, returnSettlements, vehicles } from "@/db/schema";
 import {
   buildSettlementWhatsAppMessage,
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const vehicleCondition = optionalText(body.vehicleCondition);
     const sendToMaintenance = body.sendToMaintenance === true;
 
-    const saved = await getDb().transaction(async (tx) => {
+    const saved = await withRequestDb((db) => db.transaction(async (tx) => {
       const [record] = await tx
         .select({ booking: bookings, vehicle: vehicles, customer: customers })
         .from(bookings)
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
         whatsappMessage: buildSettlementWhatsAppMessage(whatsappInput),
         whatsappUrl: buildSettlementWhatsAppUrl(whatsappInput),
       };
-    });
+    }));
 
     return Response.json({ ok: true, settlement: saved }, { status: 201 });
   } catch (error) {
