@@ -15,10 +15,7 @@
     "db:migrate": "node db/migrate.mjs",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx db/seed.ts",
-    "db:studio": "drizzle-kit studio",
-    "db:ensure-live": "node db/ensure-live-schema.mjs",
-    "db:setup-live": "npm run db:migrate && npm run db:ensure-live",
-    "db:verify-live": "node db/verify-live-schema.mjs"
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

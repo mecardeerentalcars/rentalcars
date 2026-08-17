@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, getDb } from "@/db";
-import { bookings, customers, maintenanceRecords, payments, returnSettlements, vehicles } from "@/db/schema";
+import { bookings, customers, returnSettlements, vehicles } from "@/db/schema";
 import {
   buildSettlementWhatsAppMessage,
   buildSettlementWhatsAppUrl,
@@ -19,30 +19,45 @@ type SettlementBody = {
   discountAmount?: unknown;
   discountRemark?: unknown;
   returnNotes?: unknown;
-  vehicleCondition?: unknown;
   sendToMaintenance?: unknown;
 };
 
 class RequestError extends Error {
-  constructor(message: string, readonly status = 400) { super(message); }
+  constructor(
+    message: string,
+    readonly status = 400,
+  ) {
+    super(message);
+  }
 }
+
 const text = (value: unknown, field: string) => {
   if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`);
   return value.trim();
 };
+
 const optionalText = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
+
 const amount = (value: unknown, field: string) => {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) throw new RequestError(`${field} must be zero or greater.`);
   return Math.round(number * 100) / 100;
 };
+
 const wholeNumber = (value: unknown, field: string) => {
   const number = Number(value);
-  if (!Number.isInteger(number) || number < 0) throw new RequestError(`${field} must be a whole number of zero or greater.`);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new RequestError(`${field} must be a whole number of zero or greater.`);
+  }
   return number;
 };
+
 const displayDate = (value: Date) =>
-  new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(value);
+  new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(value);
 
 export async function POST(request: Request) {
   try {
@@ -59,7 +74,6 @@ export async function POST(request: Request) {
     const discountAmount = amount(body.discountAmount ?? 0, "Discount amount");
     const discountRemark = optionalText(body.discountRemark);
     const returnNotes = optionalText(body.returnNotes);
-    const vehicleCondition = optionalText(body.vehicleCondition);
     const sendToMaintenance = body.sendToMaintenance === true;
 
     const saved = await getDb().transaction(async (tx) => {
@@ -73,21 +87,18 @@ export async function POST(request: Request) {
         .for("update");
 
       if (!record) throw new RequestError("Rental booking was not found.", 404);
-      if (record.booking.status === "completed") throw new RequestError("This rental has already been completed.", 409);
-      if (record.booking.status === "draft") throw new RequestError("A draft rental cannot be returned.", 409);
+      if (record.booking.status === "completed") {
+        throw new RequestError("This rental has already been completed.", 409);
+      }
       if (record.booking.startingKilometer === null || record.booking.startingFuelRangeKm === null) {
         throw new RequestError("Starting kilometer and fuel range must be saved at handover.", 409);
       }
       if (actualReturnKilometer < record.booking.startingKilometer) {
         throw new RequestError("Actual return kilometer cannot be below the starting kilometer.");
       }
-      if (record.vehicle.mileageKmPerLitre <= 0) throw new RequestError("Vehicle mileage must be configured before settlement.", 409);
-
-      const [paidRow] = await tx
-        .select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)::float8` })
-        .from(payments)
-        .where(eq(payments.bookingId, record.booking.id));
-      const amountAlreadyPaid = Number(paidRow?.total ?? 0);
+      if (record.vehicle.mileageKmPerLitre <= 0) {
+        throw new RequestError("Vehicle mileage must be configured before settlement.", 409);
+      }
 
       const calculation = calculateSettlement({
         baseRentalAmount: record.booking.baseRentalAmount,
@@ -105,9 +116,11 @@ export async function POST(request: Request) {
         cleaningCharge,
         damageCharge,
         discountAmount,
-        amountAlreadyPaid,
+        amountAlreadyPaid: record.booking.advancePaid,
       });
-      if (discountAmount > calculation.subtotal) throw new RequestError("Discount cannot exceed the subtotal.");
+      if (discountAmount > calculation.subtotal) {
+        throw new RequestError("Discount cannot exceed the subtotal.");
+      }
 
       const [settlement] = await tx
         .insert(returnSettlements)
@@ -130,7 +143,6 @@ export async function POST(request: Request) {
           lateFee,
           cleaningCharge,
           damageCharge,
-          vehicleCondition,
           subtotal: calculation.subtotal,
           discountAmount,
           discountRemark,
@@ -140,17 +152,18 @@ export async function POST(request: Request) {
         })
         .returning();
 
-      await tx.update(bookings).set({ status: "completed", completedAt: actualReturnAt, updatedAt: new Date() }).where(eq(bookings.id, record.booking.id));
-      await tx.update(vehicles).set({ status: sendToMaintenance ? "maintenance" : "available", odometerKm: actualReturnKilometer, updatedAt: new Date() }).where(eq(vehicles.id, record.vehicle.id));
-      if (sendToMaintenance) {
-        await tx.insert(maintenanceRecords).values({
-          vehicleId: record.vehicle.id,
-          title: "Return inspection — maintenance",
-          description: returnNotes ?? vehicleCondition ?? "Vehicle marked for maintenance during return settlement.",
-          status: "open",
-          amount: 0,
-        });
-      }
+      await tx
+        .update(bookings)
+        .set({ status: "completed", completedAt: actualReturnAt, updatedAt: new Date() })
+        .where(eq(bookings.id, record.booking.id));
+      await tx
+        .update(vehicles)
+        .set({
+          status: sendToMaintenance ? "maintenance" : "available",
+          odometerKm: actualReturnKilometer,
+          updatedAt: new Date(),
+        })
+        .where(eq(vehicles.id, record.vehicle.id));
 
       const whatsappInput = {
         customerName: record.customer.name,
@@ -175,7 +188,6 @@ export async function POST(request: Request) {
         settlementId: settlement.id,
         bookingNumber,
         vehicleStatus: sendToMaintenance ? "maintenance" : "available",
-        amountAlreadyPaid,
         calculation,
         whatsappMessage: buildSettlementWhatsAppMessage(whatsappInput),
         whatsappUrl: buildSettlementWhatsAppUrl(whatsappInput),
@@ -184,8 +196,12 @@ export async function POST(request: Request) {
 
     return Response.json({ ok: true, settlement: saved }, { status: 201 });
   } catch (error) {
-    if (error instanceof RequestError) return Response.json({ ok: false, error: error.message }, { status: error.status });
-    if (error instanceof DatabaseConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });
+    if (error instanceof RequestError) {
+      return Response.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    if (error instanceof DatabaseConfigurationError) {
+      return Response.json({ ok: false, error: error.message }, { status: 503 });
+    }
     console.error("Could not confirm return settlement", error);
     return Response.json({ ok: false, error: "Could not confirm the return settlement." }, { status: 500 });
   }

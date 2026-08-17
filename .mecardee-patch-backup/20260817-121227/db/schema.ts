@@ -1,6 +1,5 @@
 import {
   boolean,
-  date,
   index,
   integer,
   numeric,
@@ -98,115 +97,6 @@ export const bookings = pgTable(
   ],
 );
 
-export const payments = pgTable(
-  "payments",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    paymentNumber: varchar("payment_number", { length: 40 }).notNull(),
-    bookingId: uuid("booking_id")
-      .notNull()
-      .references(() => bookings.id, { onDelete: "restrict" }),
-    customerId: uuid("customer_id")
-      .notNull()
-      .references(() => customers.id, { onDelete: "restrict" }),
-    amount: money("amount").notNull(),
-    method: varchar("method", { length: 40 }).notNull(),
-    paymentType: varchar("payment_type", { length: 32 }).notNull().default("rental"),
-    notes: text("notes"),
-    receivedBy: varchar("received_by", { length: 120 }).notNull().default("Ajmal"),
-    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("payments_payment_number_unique").on(table.paymentNumber),
-    index("payments_booking_idx").on(table.bookingId),
-    index("payments_customer_idx").on(table.customerId),
-    index("payments_received_at_idx").on(table.receivedAt),
-  ],
-);
-
-export const rentalExtensions = pgTable(
-  "rental_extensions",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    bookingId: uuid("booking_id")
-      .notNull()
-      .references(() => bookings.id, { onDelete: "restrict" }),
-    previousEndAt: timestamp("previous_end_at", { withTimezone: true }).notNull(),
-    newEndAt: timestamp("new_end_at", { withTimezone: true }).notNull(),
-    additionalDays: integer("additional_days").notNull(),
-    dailyRate: money("daily_rate").notNull(),
-    addedAmount: money("added_amount").notNull(),
-    notes: text("notes"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [index("rental_extensions_booking_idx").on(table.bookingId)],
-);
-
-export const expenses = pgTable(
-  "expenses",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    expenseNumber: varchar("expense_number", { length: 40 }).notNull(),
-    expenseDate: date("expense_date", { mode: "string" }).notNull(),
-    category: varchar("category", { length: 80 }).notNull(),
-    vehicleId: uuid("vehicle_id").references(() => vehicles.id, { onDelete: "set null" }),
-    amount: money("amount").notNull(),
-    description: text("description"),
-    method: varchar("method", { length: 40 }).notNull(),
-    createdBy: varchar("created_by", { length: 120 }).notNull().default("Ajmal"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("expenses_expense_number_unique").on(table.expenseNumber),
-    index("expenses_expense_date_idx").on(table.expenseDate),
-    index("expenses_vehicle_idx").on(table.vehicleId),
-  ],
-);
-
-export const vehicleDocuments = pgTable(
-  "vehicle_documents",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    vehicleId: uuid("vehicle_id")
-      .notNull()
-      .references(() => vehicles.id, { onDelete: "cascade" }),
-    documentType: varchar("document_type", { length: 80 }).notNull(),
-    documentNumber: varchar("document_number", { length: 120 }),
-    expiryDate: date("expiry_date", { mode: "string" }),
-    notes: text("notes"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("vehicle_documents_vehicle_type_unique").on(table.vehicleId, table.documentType),
-    index("vehicle_documents_expiry_idx").on(table.expiryDate),
-  ],
-);
-
-export const maintenanceRecords = pgTable(
-  "maintenance_records",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    vehicleId: uuid("vehicle_id")
-      .notNull()
-      .references(() => vehicles.id, { onDelete: "cascade" }),
-    title: varchar("title", { length: 160 }).notNull(),
-    description: text("description"),
-    status: varchar("status", { length: 24 }).notNull().default("open"),
-    dueDate: date("due_date", { mode: "string" }),
-    dueOdometerKm: integer("due_odometer_km"),
-    amount: money("amount").notNull().default(0),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("maintenance_records_vehicle_idx").on(table.vehicleId),
-    index("maintenance_records_status_idx").on(table.status),
-  ],
-);
-
 export const returnSettlements = pgTable(
   "return_settlements",
   {
@@ -241,7 +131,6 @@ export const returnSettlements = pgTable(
     lateFee: money("late_fee").notNull().default(0),
     cleaningCharge: money("cleaning_charge").notNull().default(0),
     damageCharge: money("damage_charge").notNull().default(0),
-    vehicleCondition: varchar("vehicle_condition", { length: 80 }),
     subtotal: money("subtotal").notNull(),
     discountAmount: money("discount_amount").notNull().default(0),
     discountRemark: text("discount_remark"),
@@ -258,7 +147,4 @@ export const returnSettlements = pgTable(
 export type Vehicle = typeof vehicles.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
-export type Payment = typeof payments.$inferSelect;
-export type Expense = typeof expenses.$inferSelect;
-export type RentalExtension = typeof rentalExtensions.$inferSelect;
 export type ReturnSettlement = typeof returnSettlements.$inferSelect;
