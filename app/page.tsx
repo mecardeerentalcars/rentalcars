@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateSettlement } from "@/lib/rental-calculations";
 import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
@@ -32,6 +32,7 @@ import {
   Phone,
   Plus,
   ReceiptIndianRupee,
+  RefreshCw,
   Search,
   Send,
   Settings2,
@@ -48,7 +49,7 @@ import {
   X,
 } from "lucide-react";
 
-type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts";
+type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts" | "reports" | "settings";
 type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
@@ -139,6 +140,13 @@ type Metrics = {
 
 type AppSnapshot = { ok: boolean; error?: string; rentals: Rental[]; vehicles: Vehicle[]; vehicleProfiles: Record<string, VehicleProfilePayload>; customers: CustomerRow[]; payments: PaymentRow[]; expenses: ExpenseRow[]; reminders: ReminderRow[]; metrics: Metrics };
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+type ReportType = "rentals" | "payments" | "expenses" | "outstanding";
+
 const emptyMetrics: Metrics = { totalCars: 0, availableCars: 0, onRentCars: 0, maintenanceCars: 0, roadReadyPercent: 0, activeRentals: 0, returningToday: 0, overdue: 0, outstanding: 0, outstandingRentals: 0, outstandingCustomers: 0, totalCustomers: 0, newCustomersThisMonth: 0, currentlyRentingCustomers: 0, collectedToday: 0, paymentsToday: 0, expensesToday: 0, netToday: 0, collectedMonth: 0, collectedLastMonth: 0, collectionChangePercent: 0, rentalRevenueMonth: 0, expensesMonth: 0, netIncomeMonth: 0, depositsHeld: 0, twelveMonthCollected: 0, monthlyCollected: [] };
 
 const navItems: { label: string; view: View; icon: LucideIcon; badge?: string }[] = [
@@ -148,6 +156,8 @@ const navItems: { label: string; view: View; icon: LucideIcon; badge?: string }[
   { label: "Customers", view: "customers", icon: UsersRound },
   { label: "Payments", view: "payments", icon: WalletCards },
   { label: "Accounts", view: "accounts", icon: BarChart3 },
+  { label: "Reports", view: "reports", icon: FileText },
+  { label: "Settings", view: "settings", icon: Settings2 },
 ];
 
 const money = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
@@ -193,6 +203,12 @@ export default function Home() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installBannerVisible, setInstallBannerVisible] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const notificationRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -212,6 +228,7 @@ export default function Home() {
       setExpenseList(payload.expenses);
       setReminders(payload.reminders);
       setMetrics(payload.metrics);
+      setLastSyncedAt(new Date());
       setSelectedRental((current) => current ? payload.rentals.find((rental) => rental.id === current.id) ?? payload.rentals[0] ?? null : payload.rentals[0] ?? null);
     } catch (error) {
       console.error(error);
@@ -220,6 +237,31 @@ export default function Home() {
   }, [showToast]);
 
   useEffect(() => { void refreshData(); }, [refreshData]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const handleOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && notificationRef.current && !notificationRef.current.contains(target)) setNotificationsOpen(false);
+    };
+    document.addEventListener("pointerdown", handleOutside);
+    return () => document.removeEventListener("pointerdown", handleOutside);
+  }, [notificationsOpen]);
+
+  useEffect(() => {
+    setBiometricSupported(typeof window !== "undefined" && "PublicKeyCredential" in window);
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+      void navigator.serviceWorker.register("/sw.js").catch((error) => console.warn("Service worker registration failed", error));
+    }
+    const onBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      const promptEvent = event as BeforeInstallPromptEvent;
+      setInstallPrompt(promptEvent);
+      if (localStorage.getItem("mecardee-install-dismissed") !== "1") setInstallBannerVisible(true);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+  }, []);
 
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -278,6 +320,31 @@ export default function Home() {
     const link = document.createElement("a"); link.href = url; link.download = `mecardee-payments-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
   }
 
+  async function manualSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await refreshData();
+      showToast("Mecardee synced");
+    } finally { setSyncing(false); }
+  }
+
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") {
+      setInstallBannerVisible(false);
+      setInstallPrompt(null);
+      showToast("Mecardee installed");
+    }
+  }
+
+  function dismissInstallPrompt() {
+    localStorage.setItem("mecardee-install-dismissed", "1");
+    setInstallBannerVisible(false);
+  }
+
   function handleSettlementConfirmed(result: SettlementResult) {
     showToast(`Return settlement ${result.bookingNumber} confirmed`);
     void refreshData();
@@ -290,7 +357,7 @@ export default function Home() {
         <header className="topbar">
           <button className="mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"><Menu size={21} /></button>
           <div className="mobile-brand"><span className="brand-mark">M</span><strong>Mecardee</strong></div>
-          <div className="search-wrap">
+          <div className="search-wrap desktop-search-wrap">
             <label className="global-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Global search" placeholder="Search car, customer or rental ID" /><kbd>⌘ K</kbd></label>
             {search && <div className="search-results">
               <div className="search-caption">Search results</div>
@@ -298,7 +365,8 @@ export default function Home() {
             </div>}
           </div>
           <div className="top-actions">
-            <div className="notification-wrap">
+            <button className="icon-button mobile-sync-button" onClick={() => void manualSync()} aria-label="Sync latest data"><RefreshCw size={18} className={syncing ? "spin" : ""} /></button>
+            <div className="notification-wrap" ref={notificationRef}>
               <button className="icon-button" onClick={() => setNotificationsOpen((open) => !open)} aria-label="Notifications"><Bell size={18} />{reminders.length > 0 && <span className="notification-dot" />}</button>
               {notificationsOpen && <Notifications reminders={reminders} onClose={() => setNotificationsOpen(false)} openRental={openRentalById} />}
             </div>
@@ -307,16 +375,28 @@ export default function Home() {
         </header>
 
         <div className="content">
+          <div className="mobile-search-slot">
+            <div className="search-wrap">
+              <label className="global-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Global search" placeholder="Search car, customer or rental ID" /></label>
+              {search && <div className="search-results">
+                <div className="search-caption">Search results</div>
+                {searchResults.length ? searchResults.map((result, index) => <button key={`${result.type}-${index}`} onClick={result.action}><span className="result-icon">{result.type[0]}</span><span><strong>{result.title}</strong><small>{result.meta}</small></span><ChevronRight size={15} /></button>) : <div className="empty-search"><Search size={20} /><span>No matches for “{search}”</span></div>}
+              </div>}
+            </div>
+          </div>
           {view === "dashboard" && <Dashboard rentals={rentalList} metrics={metrics} reminders={reminders} openRental={openRental} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
+          {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} />}
+          {view === "settings" && <SettingsView lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} installAvailable={Boolean(installPrompt)} onInstall={() => void installApp()} biometricSupported={biometricSupported} />}
         </div>
       </main>
 
       <MobileNav view={view} goTo={goTo} openNew={() => setDialog("new-rental")} />
+      {installBannerVisible && installPrompt && <InstallAppPrompt onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
@@ -337,10 +417,9 @@ function Sidebar({ view, goTo, metrics }: { view: View; goTo: (view: View) => vo
     <div className="brand"><span className="brand-mark">M</span><div><strong>Mecardee</strong><small>Rental Manager</small></div></div>
     <nav aria-label="Primary navigation">
       <span className="nav-label">WORKSPACE</span>
-      {navItems.map((item) => { const Icon = item.icon; const badge = item.view === "rentals" && metrics.activeRentals > 0 ? String(metrics.activeRentals) : null; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span>{badge && <b>{badge}</b>}</button>; })}
+      {navItems.slice(0, 6).map((item) => { const Icon = item.icon; const badge = item.view === "rentals" && metrics.activeRentals > 0 ? String(metrics.activeRentals) : null; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span>{badge && <b>{badge}</b>}</button>; })}
       <span className="nav-label lower">INSIGHTS</span>
-      <button className="nav-item"><FileText size={17} /><span>Reports</span></button>
-      <button className="nav-item"><Settings2 size={17} /><span>Settings</span></button>
+      {navItems.slice(6).map((item) => { const Icon = item.icon; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span></button>; })}
     </nav>
     <div className="sidebar-health"><div className="health-head"><span className="pulse" /><strong>Fleet health</strong><b>{metrics.roadReadyPercent}%</b></div><div className="health-bar"><span style={{ width: `${metrics.roadReadyPercent}%` }} /></div><small>{Math.max(0, metrics.totalCars - metrics.maintenanceCars)} of {metrics.totalCars} vehicles are road-ready</small></div>
     <div className="profile-mini"><span>AK</span><div><strong>Ajmal K.</strong><small>Owner</small></div><MoreHorizontal size={17} /></div>
@@ -484,6 +563,121 @@ function PaymentsView({ rentals, payments, metrics, openPayment, exportPayments,
   </>;
 }
 
+
+function safeReportText(value: string | number) {
+  return String(value).replace(/₹/g, "INR ").replace(/[–—→·]/g, "-").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function downloadExcelTable(filename: string, title: string, headers: string[], rows: (string | number)[][]) {
+  const escapeHtml = (value: string | number) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body><table border="1"><caption><strong>${escapeHtml(title)}</strong></caption><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+  const url = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = filename.endsWith(".xls") ? filename : `${filename}.xls`; link.click(); URL.revokeObjectURL(url);
+}
+
+function downloadPdfTable(filename: string, title: string, subtitle: string, headers: string[], rows: (string | number)[][]) {
+  const truncate = (value: string, length = 110) => value.length > length ? `${value.slice(0, length - 3)}...` : value;
+  const lines = [safeReportText(title), safeReportText(subtitle), "", truncate(headers.map(safeReportText).join(" | "))];
+  for (const row of rows) lines.push(truncate(row.map(safeReportText).join(" | ")));
+  const pageSize = 48;
+  const pages: string[][] = [];
+  for (let index = 0; index < lines.length; index += pageSize) pages.push(lines.slice(index, index + pageSize));
+  if (!pages.length) pages.push([safeReportText(title), "No rows"]);
+  const pdfEscape = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const objects: string[] = [""];
+  const pageIds = pages.map((_, index) => 4 + index * 2);
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`;
+  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+  pages.forEach((page, index) => {
+    const pageId = 4 + index * 2;
+    const contentId = pageId + 1;
+    const content = [`BT`, `/F1 9 Tf`, `40 800 Td`, `14 TL`, ...page.flatMap((line) => [`(${pdfEscape(line)}) Tj`, `T*`]), `ET`].join("\n");
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
+    objects[contentId] = `<< /Length ${new TextEncoder().encode(content).length} >>\nstream\n${content}\nendstream`;
+  });
+  const encoder = new TextEncoder();
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = new Array(objects.length).fill(0);
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = encoder.encode(pdf).length;
+    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+  const xrefOffset = encoder.encode(pdf).length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let id = 1; id < objects.length; id += 1) pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  const url = URL.createObjectURL(new Blob([encoder.encode(pdf)], { type: "application/pdf" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`; link.click(); URL.revokeObjectURL(url);
+}
+
+function ReportsView({ rentals, payments, expenses }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[] }) {
+  const today = dateInputValue(new Date());
+  const monthStart = `${today.slice(0, 8)}01`;
+  const [reportType, setReportType] = useState<ReportType>("rentals");
+  const [dateFrom, setDateFrom] = useState(monthStart);
+  const [dateTo, setDateTo] = useState(today);
+  const [status, setStatus] = useState("all");
+
+  const report = useMemo(() => {
+    const within = (value: string) => {
+      const day = value ? value.slice(0, 10) : "";
+      return (!dateFrom || !day || day >= dateFrom) && (!dateTo || !day || day <= dateTo);
+    };
+    if (reportType === "payments") {
+      const filtered = payments.filter((payment) => within(payment.receivedAt));
+      return { title: "Payments report", headers: ["Payment", "Customer", "Rental", "Date", "Method", "Amount", "Received by"], rows: filtered.map((payment) => [payment.id, payment.customer, payment.rental, payment.date, payment.method, payment.amount, payment.receivedBy] as (string | number)[]), total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
+    }
+    if (reportType === "expenses") {
+      const filtered = expenses.filter((expense) => within(expense.rawDate));
+      return { title: "Expenses report", headers: ["Date", "Category", "Vehicle", "Method", "Amount", "Description"], rows: filtered.map((expense) => [expense.date, expense.category, expense.vehicle, expense.method, expense.amount, expense.description] as (string | number)[]), total: filtered.reduce((sum, expense) => sum + expense.amount, 0), label: "Expenses" };
+    }
+    const base = rentals.filter((rental) => within(rental.startAt) && (status === "all" || rental.state === status));
+    if (reportType === "outstanding") {
+      const filtered = base.filter((rental) => rental.balance > 0);
+      return { title: "Outstanding balances", headers: ["Rental", "Customer", "Phone", "Vehicle", "Expected return", "Status", "Balance"], rows: filtered.map((rental) => [rental.id, rental.customer, rental.phone, `${rental.vehicle} ${rental.plate}`, rental.returnDate, rental.statusText, rental.balance] as (string | number)[]), total: filtered.reduce((sum, rental) => sum + rental.balance, 0), label: "Outstanding" };
+    }
+    return { title: "Rentals report", headers: ["Rental", "Vehicle", "Customer", "Start", "Return", "Status", "Total", "Paid", "Balance"], rows: base.map((rental) => [rental.id, `${rental.vehicle} ${rental.plate}`, rental.customer, rental.start, rental.returnDate, rental.statusText, rental.total, rental.paid, rental.balance] as (string | number)[]), total: base.reduce((sum, rental) => sum + rental.total, 0), label: "Rental value" };
+  }, [reportType, dateFrom, dateTo, status, rentals, payments, expenses]);
+
+  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` · Status: ${status}` : ""}`;
+  const exportName = `mecardee-${reportType}-${dateFrom || "all"}-${dateTo || "all"}`;
+
+  return <>
+    <PageHeading eyebrow="INSIGHTS" title="Reports" description="Live business reports from your rental, payment and expense records." />
+    <section className="report-filter-card">
+      <div className="report-filter-grid">
+        <label className="field"><span>Report</span><select value={reportType} onChange={(event) => setReportType(event.target.value as ReportType)}><option value="rentals">Rentals</option><option value="payments">Payments</option><option value="expenses">Expenses</option><option value="outstanding">Outstanding balances</option></select></label>
+        <label className="field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+        <label className="field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+        {(reportType === "rentals" || reportType === "outstanding") && <label className="field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
+      </div>
+      <div className="report-actions"><button className="secondary-button" onClick={() => downloadPdfTable(exportName, report.title, subtitle, report.headers, report.rows)} disabled={!report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" onClick={() => downloadExcelTable(exportName, report.title, report.headers, report.rows)} disabled={!report.rows.length}><Download size={16} />Excel</button></div>
+    </section>
+    <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Based on current filters</small></article></section>
+    <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" ? money(cell) : cell}</td>)}</tr>)}</tbody></table></div></section>
+  </>;
+}
+
+function SettingsView({ lastSyncedAt, syncing, onSync, installAvailable, onInstall, biometricSupported }: { lastSyncedAt: Date | null; syncing: boolean; onSync: () => void; installAvailable: boolean; onInstall: () => void; biometricSupported: boolean }) {
+  const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
+  return <>
+    <PageHeading eyebrow="APP" title="Settings" description="App installation, synchronization and future security readiness." />
+    <section className="settings-grid">
+      <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
+      <article className="settings-card"><span className="settings-icon"><Download size={19} /></span><div><h3>Install Mecardee</h3><p>Android can install this website as a standalone app when the browser offers installation.</p></div><button className="primary-button" onClick={onInstall} disabled={!installAvailable}><Download size={15} />{installAvailable ? "Install app" : "Install not currently offered"}</button></article>
+      <article className="settings-card"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Face ID / device biometrics</h3><p>{biometricSupported ? "This device supports the browser security technology needed for passkeys/biometrics." : "Biometric/passkey support was not detected in this browser."} Login is not enabled yet, so Face ID is intentionally not active.</p></div><span className="settings-status">Ready for future authentication</span></article>
+      <article className="settings-card"><span className="settings-icon"><FileText size={19} /></span><div><h3>Reports & exports</h3><p>PDF and Excel exports are generated on your device from the filtered live data already loaded in Mecardee.</p></div><span className="settings-status">No extra API required</span></article>
+    </section>
+  </>;
+}
+
+function InstallAppPrompt({ onInstall, onClose }: { onInstall: () => void; onClose: () => void }) {
+  return <aside className="install-app-prompt" role="dialog" aria-label="Install Mecardee app"><span className="brand-mark">M</span><div><strong>Install Mecardee</strong><small>Add it to your Android home screen for an app-like experience.</small></div><button className="install-now" onClick={onInstall}>Install</button><button className="install-close" onClick={onClose} aria-label="Dismiss install prompt"><X size={16} /></button></aside>;
+}
+
 function expenseIcon(category: string): LucideIcon {
   const value = category.toLowerCase();
   if (value.includes("service") || value.includes("repair")) return Wrench;
@@ -494,18 +688,20 @@ function expenseIcon(category: string): LucideIcon {
 }
 
 function AccountsView({ expenses, metrics, openExpense }: { expenses: ExpenseRow[]; metrics: Metrics; openExpense: () => void }) {
+  const [showAllExpenses, setShowAllExpenses] = useState(false);
   const chart = metrics.monthlyCollected.length ? metrics.monthlyCollected : Array.from({ length: 12 }, (_, index) => ({ key: String(index), label: "—", amount: 0 }));
   const max = Math.max(1, ...chart.map((item) => item.amount));
   const year = metrics.monthlyCollected.at(-1)?.key.slice(0, 4) ?? new Date().getFullYear();
+  const shownExpenses = showAllExpenses ? expenses : expenses.slice(0, 12);
   return <>
     <PageHeading eyebrow="MONEY & ACCOUNTS" title="Business overview" description="Simple income and expenses—only what you need to run the day." action={<button className="primary-button" onClick={openExpense}><Plus size={17} />Add expense</button>} />
     <section className="accounts-summary"><article><span>Rental revenue</span><strong>{money(metrics.rentalRevenueMonth)}</strong><small className="green-text"><TrendingUp size={13} /> Current month</small></article><article><span>Amount collected</span><strong>{money(metrics.collectedMonth)}</strong><small>{metrics.rentalRevenueMonth ? Math.round((metrics.collectedMonth / metrics.rentalRevenueMonth) * 1000) / 10 : 0}% collection rate</small></article><article><span>Pending amount</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">{metrics.outstandingRentals} open balances</small></article><article><span>Total expenses</span><strong>{money(metrics.expensesMonth)}</strong><small>Recorded this month</small></article><article className="net"><span>Approx. net income</span><strong>{money(metrics.netIncomeMonth)}</strong><small>Collected income less recorded expenses</small></article></section>
-    <div className="accounts-layout"><section className="data-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p>Income collected over the last 12 months</p></div><button>{year} <ChevronDown size={14} /></button></div><div className="chart-total"><span>Total collected</span><strong>{money(metrics.twelveMonthCollected)}</strong></div><div className="bar-chart">{chart.map((item, index) => <div key={item.key}><span style={{ height: `${Math.max(4, Math.round((item.amount / max) * 100))}%` }} className={index === chart.length - 1 ? "current" : ""} /><small>{item.label}</small></div>)}</div></section><section className="data-panel expense-panel"><div className="panel-heading"><div><h2>Recent expenses</h2><p>{money(metrics.expensesMonth)} recorded this month</p></div><button onClick={openExpense}><Plus size={15} />Add</button></div><div className="expense-list">{expenses.slice(0, 12).map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="expense-icon"><Icon size={16} /></span><div><strong>{expense.category}</strong><small>{expense.description} · {expense.vehicle}</small></div><span><strong>− {money(expense.amount)}</strong><small>{expense.date} · {expense.method}</small></span></article>; })}</div><button className="full-link" onClick={() => window.alert(expenses.length ? expenses.map((expense) => `${expense.date} · ${expense.category} · ${money(expense.amount)}`).join("\n") : "No expenses recorded.")}>View all expenses <ChevronRight size={15} /></button></section></div>
+    <div className="accounts-layout"><section className="data-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p>Income collected over the last 12 months</p></div><button>{year} <ChevronDown size={14} /></button></div><div className="chart-total"><span>Total collected</span><strong>{money(metrics.twelveMonthCollected)}</strong></div><div className="bar-chart">{chart.map((item, index) => <div key={item.key}><span style={{ height: `${Math.max(4, Math.round((item.amount / max) * 100))}%` }} className={index === chart.length - 1 ? "current" : ""} /><small>{item.label}</small></div>)}</div></section><section className="data-panel expense-panel"><div className="panel-heading"><div><h2>{showAllExpenses ? "All expenses" : "Recent expenses"}</h2><p>{showAllExpenses ? `${expenses.length} recorded expenses` : `${money(metrics.expensesMonth)} recorded this month`}</p></div><button onClick={openExpense}><Plus size={15} />Add</button></div><div className="expense-list">{shownExpenses.map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="expense-icon"><Icon size={16} /></span><div><strong>{expense.category}</strong><small>{expense.description || "No description"}{expense.vehicle ? ` · ${expense.vehicle}` : ""}</small></div><span><strong>− {money(expense.amount)}</strong><small>{expense.date} · {expense.method}</small></span></article>; })}</div>{expenses.length > 12 && <button className="full-link" onClick={() => setShowAllExpenses((value) => !value)}>{showAllExpenses ? "Show recent expenses" : `View all ${expenses.length} expenses`} <ChevronRight size={15} /></button>}</section></div>
   </>;
 }
 
 function Notifications({ reminders, onClose, openRental }: { reminders: ReminderRow[]; onClose: () => void; openRental: (rentalId: string) => void }) {
-  return <div className="notifications-panel"><div className="notification-head"><div><strong>Notifications</strong><span>{reminders.length} new</span></div><button onClick={onClose}><X size={16} /></button></div>{reminders.slice(0,3).map((reminder) => { const Icon = reminderIcon(reminder.type); return <button key={reminder.key} onClick={() => reminder.rentalId && openRental(reminder.rentalId)}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time>Live</time></div></button>; })}<div className="notification-footer" onClick={onClose}>Close notifications</div></div>;
+  return <div className="notifications-panel"><div className="notification-head"><div><strong>Notifications</strong><span>{reminders.length} new</span></div><button onClick={onClose}><X size={16} /></button></div>{reminders.slice(0,3).map((reminder) => { const Icon = reminderIcon(reminder.type); return <button key={reminder.key} onClick={() => { if (reminder.rentalId) openRental(reminder.rentalId); onClose(); }}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time>Live</time></div></button>; })}<div className="notification-footer" onClick={onClose}>Close notifications</div></div>;
 }
 
 function MobileNav({ view, goTo, openNew }: { view: View; goTo: (view: View) => void; openNew: () => void }) {
@@ -518,7 +714,12 @@ function MobileMenu({ view, goTo, close }: { view: View; goTo: (view: View) => v
 }
 
 function DialogShell({ title, subtitle, close, wide = false, children }: { title: string; subtitle: string; close: () => void; wide?: boolean; children: React.ReactNode }) {
-  return <div className="dialog-overlay"><section className={`dialog ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}><header><div><h2>{title}</h2><p>{subtitle}</p></div><button onClick={close} aria-label="Close"><X size={19} /></button></header>{children}</section></div>;
+  const keepFocusedFieldVisible = (event: React.FocusEvent<HTMLElement>) => {
+    if (window.innerWidth > 720) return;
+    const target = event.target as HTMLElement;
+    window.setTimeout(() => target.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
+  };
+  return <div className="dialog-overlay"><section className={`dialog ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onFocusCapture={keepFocusedFieldVisible}><header><div><h2>{title}</h2><p>{subtitle}</p></div><button onClick={close} aria-label="Close"><X size={19} /></button></header>{children}</section></div>;
 }
 
 
