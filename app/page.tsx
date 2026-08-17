@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateSettlement } from "@/lib/rental-calculations";
+import { calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateRentalChargeForActualReturn, calculateSettlement } from "@/lib/rental-calculations";
 import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
 import {
@@ -1304,11 +1304,25 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
   const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
   const actualReturnMs = new Date(actualReturnIso).getTime();
   const scheduledReturnMs = new Date(rental.endAt).getTime();
-  const earlyReturn = actualReturnMs < scheduledReturnMs;
+  const rentalStartMs = new Date(rental.startAt).getTime();
+  const returnBeforeStart = actualReturnMs < rentalStartMs;
+  const earlyReturn = !returnBeforeStart && actualReturnMs < scheduledReturnMs;
   const earlyReturnDays = earlyReturn ? Math.max(1, Math.ceil((scheduledReturnMs - actualReturnMs) / 86_400_000)) : 0;
+  const bookedBaseRentalAmount = Math.max(0, rental.rentalAmount - rental.bookingDiscount);
+  const bookingOtherCharges = Math.max(0, rental.otherCharges - rental.lateRentalCharge);
+  const rentalCharge = calculateRentalChargeForActualReturn(
+    rental.startAt,
+    rental.endAt,
+    actualReturnIso,
+    rental.rate,
+    rental.days,
+    bookedBaseRentalAmount,
+  );
   const lateRental = calculateLateRentalCharge(rental.endAt, actualReturnIso, rental.rate, 3);
   const calculation = calculateSettlement({
-    baseRentalAmount: Math.max(0, rental.total - rental.lateRentalCharge),
+    baseRentalAmount: rentalCharge.baseRentalAmount,
+    existingOtherCharges: bookingOtherCharges,
+    // Early return changes only the rent amount. Keep the original KM allowance.
     rentalDays: rental.days,
     startingKilometer: rental.startingKilometer,
     actualReturnKilometer,
@@ -1379,7 +1393,7 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
           <label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label>
           <label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" placeholder="0" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
           <label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
-        </div>{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. No late rental charge will be added.</span></div>}</section>
+        </div>{returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the rental start.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {rentalCharge.chargeableRentalDays} chargeable day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(rentalCharge.baseRentalAmount)}. The original booking stays unchanged.</span></div>}</section>
         <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM, fuel shortage and late-day rent are automatic. A 3-hour grace period applies after the expected return time.</p></div></div><div className="charge-grid">
           <label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label>
           <label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label>
@@ -1388,7 +1402,7 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
           <label><span>Damage</span><input min="0" type="number" placeholder="0" value={blankZero(damage)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDamage(numberFromInput(event.target.value))} /></label>
         </div><p className="calculation-note">Late rule: 3-hour grace, then each started 24 hours = 1 extra rental day · Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
       </div>
-      <aside className="final-bill"><h3>Final bill</h3><div><span>Base rental amount</span><strong>{money(Math.max(0, rental.total - rental.lateRentalCharge))}</strong></div><div><span>Extra kilometer charge</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div><div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div><div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div><label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
+      <aside className="final-bill"><h3>Final bill</h3><div><span>Rental amount ({rentalCharge.chargeableRentalDays} day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"})</span><strong>{money(rentalCharge.baseRentalAmount)}</strong></div>{bookingOtherCharges > 0 && <div><span>Existing charges</span><strong>{money(bookingOtherCharges)}</strong></div>}<div><span>Extra kilometer charge</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div><div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div><div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div><label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
     </form>
   </DialogShell>;
 }

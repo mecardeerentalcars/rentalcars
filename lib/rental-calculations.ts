@@ -43,6 +43,52 @@ export type LateRentalCharge = {
   charge: number;
 };
 
+export type ActualReturnRentalCharge = {
+  isEarlyReturn: boolean;
+  chargeableRentalDays: number;
+  baseRentalAmount: number;
+  amountSaved: number;
+};
+
+/**
+ * Recalculate only the rental portion for an early return. Each started
+ * 24-hour period counts as one rental day, with a minimum of one day.
+ * For on-time or late returns the existing booked base rental amount is kept.
+ * The booking itself is not mutated; this is intended for final settlement.
+ */
+export function calculateRentalChargeForActualReturn(
+  startAt: string | Date,
+  expectedReturnAt: string | Date,
+  actualReturnAt: string | Date,
+  dailyRate: number,
+  bookedRentalDays: number,
+  bookedBaseRentalAmount: number,
+): ActualReturnRentalCharge {
+  const start = startAt instanceof Date ? startAt : new Date(startAt);
+  const expected = expectedReturnAt instanceof Date ? expectedReturnAt : new Date(expectedReturnAt);
+  const actual = actualReturnAt instanceof Date ? actualReturnAt : new Date(actualReturnAt);
+  const bookedDays = Math.max(1, Math.round(nonNegative(bookedRentalDays)));
+  const currentBase = roundMoney(nonNegative(bookedBaseRentalAmount));
+
+  if ([start, expected, actual].some((value) => Number.isNaN(value.getTime())) || actual.getTime() >= expected.getTime()) {
+    return { isEarlyReturn: false, chargeableRentalDays: bookedDays, baseRentalAmount: currentBase, amountSaved: 0 };
+  }
+
+  const elapsedMs = Math.max(0, actual.getTime() - start.getTime());
+  const chargeableRentalDays = Math.min(bookedDays, Math.max(1, Math.ceil(elapsedMs / 86_400_000)));
+  const bookedGross = roundMoney(bookedDays * nonNegative(dailyRate));
+  const bookingDiscount = roundMoney(Math.max(0, bookedGross - currentBase));
+  const adjustedGross = roundMoney(chargeableRentalDays * nonNegative(dailyRate));
+  const adjustedBase = roundMoney(Math.max(0, adjustedGross - Math.min(bookingDiscount, adjustedGross)));
+
+  return {
+    isEarlyReturn: true,
+    chargeableRentalDays,
+    baseRentalAmount: adjustedBase,
+    amountSaved: roundMoney(Math.max(0, currentBase - adjustedBase)),
+  };
+}
+
 export function calculateLateRentalCharge(
   expectedReturnAt: string | Date,
   actualReturnAt: string | Date,

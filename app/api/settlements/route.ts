@@ -5,6 +5,7 @@ import {
   buildSettlementWhatsAppMessage,
   buildSettlementWhatsAppUrl,
   calculateLateRentalCharge,
+  calculateRentalChargeForActualReturn,
   calculateSettlement,
 } from "@/lib/rental-calculations";
 
@@ -88,6 +89,18 @@ export async function POST(request: Request) {
         .from(payments)
         .where(eq(payments.bookingId, record.booking.id));
       const amountAlreadyPaid = Number(paidRow?.total ?? 0);
+      if (actualReturnAt.getTime() < record.booking.startAt.getTime()) {
+        throw new RequestError("Actual return date/time cannot be before the rental start date/time.");
+      }
+
+      const rentalCharge = calculateRentalChargeForActualReturn(
+        record.booking.startAt,
+        record.booking.endAt,
+        actualReturnAt,
+        record.booking.dailyRate,
+        record.booking.rentalDays,
+        record.booking.baseRentalAmount,
+      );
       const lateRental = calculateLateRentalCharge(
         record.booking.endAt,
         actualReturnAt,
@@ -97,8 +110,10 @@ export async function POST(request: Request) {
       const lateFee = lateRental.charge;
 
       const calculation = calculateSettlement({
-        baseRentalAmount: record.booking.baseRentalAmount,
+        baseRentalAmount: rentalCharge.baseRentalAmount,
         existingOtherCharges: record.booking.otherCharges,
+        // Keep the original booked-day allowance for KM/fuel rules. Only the rent
+        // portion is recalculated for an early return.
         rentalDays: record.booking.rentalDays,
         startingKilometer: record.booking.startingKilometer,
         actualReturnKilometer,
@@ -166,13 +181,13 @@ export async function POST(request: Request) {
         registrationNumber: record.vehicle.registrationNumber,
         bookingNumber: record.booking.bookingNumber,
         bookingStart: displayDate(record.booking.startAt),
-        bookingEnd: displayDate(record.booking.endAt),
-        rentalDays: record.booking.rentalDays,
+        bookingEnd: displayDate(rentalCharge.isEarlyReturn ? actualReturnAt : record.booking.endAt),
+        rentalDays: rentalCharge.isEarlyReturn ? rentalCharge.chargeableRentalDays : record.booking.rentalDays,
         startingKilometer: record.booking.startingKilometer,
         actualReturnKilometer,
         startingFuelRangeKm: record.booking.startingFuelRangeKm,
         returnFuelRangeKm,
-        rentalAmount: record.booking.baseRentalAmount,
+        rentalAmount: rentalCharge.baseRentalAmount,
         discountAmount,
         discountRemark,
         calculation,
@@ -185,6 +200,10 @@ export async function POST(request: Request) {
         amountAlreadyPaid,
         lateRentalDays: lateRental.extraRentalDays,
         lateRentalCharge: lateRental.charge,
+        earlyReturn: rentalCharge.isEarlyReturn,
+        chargeableRentalDays: rentalCharge.chargeableRentalDays,
+        adjustedRentalAmount: rentalCharge.baseRentalAmount,
+        earlyReturnSaving: rentalCharge.amountSaved,
         calculation,
         whatsappMessage: buildSettlementWhatsAppMessage(whatsappInput),
         whatsappUrl: buildSettlementWhatsAppUrl(whatsappInput),
