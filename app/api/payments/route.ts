@@ -7,6 +7,7 @@ type PaymentBody = {
   amount?: unknown;
   method?: unknown;
   notes?: unknown;
+  receivedBy?: unknown;
 };
 
 class RequestError extends Error {
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
     const receivedAmount = money(body.amount, "Payment amount");
     const method = text(body.method, "Payment method");
     const notes = optionalText(body.notes);
+    const receivedBy = optionalText(body.receivedBy) ?? "Admin";
 
     const result = await withRequestDb((db) => db.transaction(async (tx) => {
       const [record] = await tx
@@ -74,7 +76,7 @@ export async function POST(request: Request) {
           method,
           paymentType: "rental",
           notes,
-          receivedBy: "Ajmal",
+          receivedBy,
           receivedAt: new Date(),
         })
         .returning();

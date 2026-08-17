@@ -16,6 +16,7 @@ type CreateRentalBody = {
   startingKilometer?: unknown;
   startingFuelRangeKm?: unknown;
   paymentMethod?: unknown;
+  receivedBy?: unknown;
   mode?: unknown;
 };
 
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
     const startingKilometer = wholeNumber(body.startingKilometer, "Starting kilometer");
     const startingFuelRangeKm = wholeNumber(body.startingFuelRangeKm, "Starting fuel range");
     const paymentMethod = advancePaid > 0 ? text(body.paymentMethod, "Payment method") : "Not recorded";
+    const receivedBy = typeof body.receivedBy === "string" && body.receivedBy.trim() ? body.receivedBy.trim().slice(0, 120) : "Admin";
     const mode = body.mode === "draft" ? "draft" : "rented";
 
     if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");
@@ -125,7 +127,7 @@ export async function POST(request: Request) {
             method: paymentMethod,
             paymentType: "advance",
             notes: `Advance for ${bookingNumber}`,
-            receivedBy: "Ajmal",
+            receivedBy,
             receivedAt: new Date(),
           });
         }

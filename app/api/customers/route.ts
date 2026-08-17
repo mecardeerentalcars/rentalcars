@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as CustomerBody;
     const name = text(body.name, "Customer name");
     const phone = text(body.phone, "Phone");
-    const drivingLicence = text(body.drivingLicence, "Driving licence");
+    const drivingLicence = optionalText(body.drivingLicence) ?? "";
     const whatsappNumber = optionalText(body.whatsappNumber) ?? phone;
     const city = optionalText(body.city);
 
