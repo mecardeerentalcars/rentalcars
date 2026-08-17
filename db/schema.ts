@@ -207,6 +207,33 @@ export const maintenanceRecords = pgTable(
   ],
 );
 
+
+export const vehicleTyres = pgTable(
+  "vehicle_tyres",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "cascade" }),
+    position: varchar("position", { length: 32 }).notNull(),
+    brand: varchar("brand", { length: 120 }),
+    model: varchar("model", { length: 120 }),
+    size: varchar("size", { length: 64 }),
+    installedDate: date("installed_date", { mode: "string" }),
+    installedOdometerKm: integer("installed_odometer_km"),
+    treadDepthMm: numeric("tread_depth_mm", { precision: 5, scale: 2, mode: "number" }),
+    replacementDueDate: date("replacement_due_date", { mode: "string" }),
+    replacementDueOdometerKm: integer("replacement_due_odometer_km"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("vehicle_tyres_vehicle_position_unique").on(table.vehicleId, table.position),
+    index("vehicle_tyres_vehicle_idx").on(table.vehicleId),
+  ],
+);
+
 export const returnSettlements = pgTable(
   "return_settlements",
   {

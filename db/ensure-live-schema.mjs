@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import pg from "pg";
 
 if (!process.env.DATABASE_URL) {
-  for (const file of [".env", ".dev.vars"]) {
+  for (const file of [".dev.vars", ".env.local", ".env"]) {
     try {
       process.loadEnvFile(file);
     } catch {

@@ -1,7 +1,7 @@
 import pg from "pg";
 
 if (!process.env.DATABASE_URL) {
-  for (const file of [".env", ".dev.vars"]) {
+  for (const file of [".dev.vars", ".env.local", ".env"]) {
     try { process.loadEnvFile(file); } catch {}
     if (process.env.DATABASE_URL) break;
   }
@@ -18,6 +18,7 @@ const tables = [
   "expenses",
   "vehicle_documents",
   "maintenance_records",
+  "vehicle_tyres",
 ];
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 15_000, allowExitOnIdle: true });
 try {
@@ -32,7 +33,7 @@ try {
     const result = await pool.query(`select count(*)::int as count from ${table}`);
     console.log(`${table}: ${result.rows[0].count} rows`);
   }
-  console.log("Mecardee live database verification passed: all 9 tables are available.");
+  console.log("Mecardee live database verification passed: all 10 tables are available.");
 } finally {
   await pool.end();
 }

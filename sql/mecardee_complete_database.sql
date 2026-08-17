@@ -160,6 +160,24 @@ CREATE TABLE IF NOT EXISTS maintenance_records (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+
+CREATE TABLE IF NOT EXISTS vehicle_tyres (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_id uuid NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+  position varchar(32) NOT NULL,
+  brand varchar(120),
+  model varchar(120),
+  size varchar(64),
+  installed_date date,
+  installed_odometer_km integer,
+  tread_depth_mm numeric(5,2),
+  replacement_due_date date,
+  replacement_due_odometer_km integer,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Core uniqueness/indexes. IF NOT EXISTS keeps repeated deploys safe.
 CREATE UNIQUE INDEX IF NOT EXISTS vehicles_registration_number_unique ON vehicles(registration_number);
 CREATE INDEX IF NOT EXISTS vehicles_status_idx ON vehicles(status);
@@ -181,6 +199,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS vehicle_documents_vehicle_type_unique ON vehic
 CREATE INDEX IF NOT EXISTS vehicle_documents_expiry_idx ON vehicle_documents(expiry_date);
 CREATE INDEX IF NOT EXISTS maintenance_records_vehicle_idx ON maintenance_records(vehicle_id);
 CREATE INDEX IF NOT EXISTS maintenance_records_status_idx ON maintenance_records(status);
+CREATE UNIQUE INDEX IF NOT EXISTS vehicle_tyres_vehicle_position_unique ON vehicle_tyres(vehicle_id, position);
+CREATE INDEX IF NOT EXISTS vehicle_tyres_vehicle_idx ON vehicle_tyres(vehicle_id);
 
 -- Backfill the legacy bookings.advance_paid values into the new payment ledger.
 -- This prevents existing rentals from losing their already-paid balance after upgrade.
