@@ -211,7 +211,6 @@ export default function Home() {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installBannerVisible, setInstallBannerVisible] = useState(false);
-  const [biometricSupported, setBiometricSupported] = useState(false);
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
   const showToast = useCallback((message: string) => {
@@ -253,7 +252,6 @@ export default function Home() {
   }, [notificationsOpen]);
 
   useEffect(() => {
-    setBiometricSupported(typeof window !== "undefined" && "PublicKeyCredential" in window);
     if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
       void navigator.serviceWorker.register("/sw.js").catch((error) => console.warn("Service worker registration failed", error));
     }
@@ -395,7 +393,7 @@ export default function Home() {
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} installAvailable={Boolean(installPrompt)} onInstall={() => void installApp()} biometricSupported={biometricSupported} />}
+          {view === "settings" && <SettingsView lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
         </div>
       </main>
 
@@ -536,7 +534,7 @@ function VehiclesView({ vehicles, metrics, openNew, addVehicle, openVehicle, sho
     return matchesStatus && (!q || `${vehicle.name} ${vehicle.make} ${vehicle.plate} ${vehicle.fuel} ${vehicle.transmission}`.toLowerCase().includes(q));
   });
   return <>
-    <PageHeading eyebrow="FLEET" title="Vehicles" description="Your full fleet, availability and document health in one place." action={<div className="heading-actions"><button className="secondary-button" onClick={addVehicle}><Plus size={16} />Add vehicle</button><button className="primary-button" onClick={openNew}><CalendarDays size={16} />Rent a car</button></div>} />
+    <PageHeading eyebrow="FLEET" title="Vehicles" description="Your full fleet, availability and document health in one place." action={<div className="heading-actions"><button className="secondary-button mobile-vehicle-add" onClick={addVehicle} aria-label="Add vehicle"><Plus size={16} /><span>Add vehicle</span></button><button className="primary-button" onClick={openNew}><CalendarDays size={16} />Rent a car</button></div>} />
     <section className="fleet-strip"><div><span className="strip-icon"><CarFront size={19} /></span><p><strong>{metrics.totalCars} vehicles</strong><small>Total fleet</small></p></div><div><i className="dot available" /><p><strong>{metrics.availableCars} available</strong><small>{metrics.totalCars ? Math.round((metrics.availableCars / metrics.totalCars) * 100) : 0}% of fleet</small></p></div><div><i className="dot rented" /><p><strong>{metrics.onRentCars} on rent</strong><small>{metrics.overdue ? `${metrics.overdue} overdue` : "No overdue rentals"}</small></p></div><div><i className="dot maintenance" /><p><strong>{metrics.maintenanceCars} in service</strong><small>Maintenance status</small></p></div><span className="fleet-progress"><i style={{ width: `${metrics.roadReadyPercent}%` }} /></span></section>
     <div className="panel-toolbar vehicle-toolbar"><div className="filter-tabs">{["All vehicles", "Available", "Rented", "Maintenance"].map((item) => <button className={filter === item ? "active" : ""} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><button className="filter-button" onClick={() => setTextFilter(window.prompt("Filter by vehicle, make, plate, fuel or transmission", textFilter) ?? textFilter)}><SlidersHorizontal size={15} />More filters</button></div>
     <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => openVehicle(vehicle)}>View vehicle</button><button onClick={openNew} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
@@ -616,67 +614,144 @@ function downloadPdfTable(
   totalLabel: string,
   total: number,
 ) {
+  // A4 landscape. Use stable report-specific widths so money columns never collapse.
   const pageWidth = 842;
   const pageHeight = 595;
-  const margin = 28;
+  const margin = 26;
   const tableWidth = pageWidth - margin * 2;
-  const rowHeight = 22;
-  const headerHeight = 25;
-  const rowsPerPage = 18;
-  const sourceRows = rows.length ? rows : [["No matching records"]];
-  const pages: (string | number)[][][] = [];
-  for (let index = 0; index < sourceRows.length; index += rowsPerPage) pages.push(sourceRows.slice(index, index + rowsPerPage));
+  const tableTop = 126;
+  const tableBottom = 548;
+  const headerHeight = 30;
 
-  const columnWeights = headers.map((header, columnIndex) => {
-    const sampleMax = Math.max(header.length, ...rows.slice(0, 60).map((row) => safeReportText(row[columnIndex] ?? "").length));
-    return Math.min(24, Math.max(7, sampleMax));
-  });
-  const weightTotal = columnWeights.reduce((sum, weight) => sum + weight, 0) || 1;
-  const columnWidths = columnWeights.map((weight) => tableWidth * weight / weightTotal);
+  const preferredWidths = (() => {
+    const key = headers.join("|").toLowerCase();
+    if (key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")) return [92, 132, 88, 76, 76, 102, 72, 72, 72];
+    if (key.includes("payment|customer|rental|date|method|amount|received by")) return [112, 118, 105, 90, 78, 84, 118];
+    if (key.includes("date|category|vehicle|method|amount|description")) return [86, 105, 122, 80, 86, 270];
+    if (key.includes("rental|customer|phone|vehicle|expected return|status|balance")) return [100, 104, 94, 126, 92, 132, 86];
+    if (key.includes("vehicle|registration|rentals|rental value|collected|outstanding|expenses|net collected")) return [126, 106, 60, 92, 92, 92, 92, 92];
+    return headers.map((header, columnIndex) => {
+      const sampleMax = Math.max(header.length, ...rows.slice(0, 80).map((row) => safeReportText(row[columnIndex] ?? "").length));
+      return Math.min(150, Math.max(currencyColumns.includes(columnIndex) ? 82 : 70, sampleMax * 5.2));
+    });
+  })();
+  const widthTotal = preferredWidths.reduce((sum, width) => sum + width, 0) || 1;
+  const columnWidths = preferredWidths.map((width) => tableWidth * width / widthTotal);
+
   const pdfEscape = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const toPdfY = (top: number) => pageHeight - top;
   const text = (value: string, x: number, top: number, size = 8, bold = false, color = "0.13 0.15 0.18") => `${color} rg BT /${bold ? "F2" : "F1"} ${size} Tf ${x.toFixed(2)} ${toPdfY(top).toFixed(2)} Td (${pdfEscape(value)}) Tj ET`;
   const fillRect = (x: number, top: number, width: number, height: number, color: string) => `${color} rg ${x.toFixed(2)} ${(pageHeight - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`;
-  const strokeRect = (x: number, top: number, width: number, height: number, color = "0.88 0.89 0.93") => `${color} RG 0.6 w ${x.toFixed(2)} ${(pageHeight - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S`;
-  const fit = (value: string, width: number, size = 7.3) => {
-    const maxChars = Math.max(4, Math.floor((width - 8) / (size * 0.52)));
-    return value.length > maxChars ? `${value.slice(0, Math.max(1, maxChars - 3))}...` : value;
+  const strokeRect = (x: number, top: number, width: number, height: number, color = "0.88 0.89 0.93") => `${color} RG 0.55 w ${x.toFixed(2)} ${(pageHeight - top - height).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S`;
+  const approxWidth = (value: string, size: number) => value.length * size * 0.50;
+
+  const wrap = (raw: string, width: number, size: number, maxLines = 2) => {
+    const value = safeReportText(raw);
+    const maxChars = Math.max(4, Math.floor((width - 10) / (size * 0.50)));
+    if (value.length <= maxChars) return [value];
+    const words = value.split(" ").filter(Boolean);
+    const lines: string[] = [];
+    let current = "";
+    for (const word of words) {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= maxChars) current = next;
+      else {
+        if (current) lines.push(current);
+        current = word.length > maxChars ? word.slice(0, maxChars) : word;
+        if (lines.length >= maxLines - 1) break;
+      }
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+    const consumed = lines.join(" ").length;
+    if (consumed < value.length && lines.length) {
+      const last = lines.length - 1;
+      lines[last] = `${lines[last].slice(0, Math.max(1, maxChars - 3))}...`;
+    }
+    return lines.slice(0, maxLines);
   };
+
   const formattedCell = (cell: string | number, columnIndex: number) => typeof cell === "number" && currencyColumns.includes(columnIndex) ? reportCurrency(cell) : safeReportText(cell);
+  const preparedRows = (rows.length ? rows : [["No matching records"]]).map((row) => {
+    const cells = headers.map((_, columnIndex) => {
+      const display = formattedCell(row[columnIndex] ?? "", columnIndex);
+      const maxLines = currencyColumns.includes(columnIndex) ? 1 : 2;
+      return wrap(display, columnWidths[columnIndex] ?? 80, 7.1, maxLines);
+    });
+    const lineCount = Math.max(1, ...cells.map((cell) => cell.length));
+    return { row, cells, height: lineCount === 1 ? 23 : 34 };
+  });
+
+  const pages: typeof preparedRows[] = [];
+  let currentPage: typeof preparedRows = [];
+  let usedHeight = 0;
+  const availableHeight = tableBottom - tableTop - headerHeight;
+  for (const prepared of preparedRows) {
+    if (currentPage.length && usedHeight + prepared.height > availableHeight) {
+      pages.push(currentPage);
+      currentPage = [];
+      usedHeight = 0;
+    }
+    currentPage.push(prepared);
+    usedHeight += prepared.height;
+  }
+  if (currentPage.length) pages.push(currentPage);
+  if (!pages.length) pages.push([]);
 
   const contentPages = pages.map((pageRows, pageIndex) => {
     const commands: string[] = [];
     commands.push(fillRect(0, 0, pageWidth, 8, "0.36 0.29 0.86"));
-    commands.push(text("MECARDEE RENTAL MANAGER", margin, 34, 8, true, "0.36 0.29 0.86"));
-    commands.push(text(safeReportText(title), margin, 57, 18, true));
-    commands.push(text(fit(safeReportText(subtitle), 510, 8), margin, 75, 8, false, "0.38 0.40 0.47"));
-    const summary = `${safeReportText(totalLabel)}: ${reportCurrency(total)}   |   Rows: ${rows.length}`;
-    commands.push(text(summary, 540, 58, 8, true, "0.20 0.24 0.30"));
+    commands.push(text("MECARDEE RENTAL MANAGER", margin, 31, 8, true, "0.36 0.29 0.86"));
+    commands.push(text(safeReportText(title), margin, 54, 18, true));
+    commands.push(text(wrap(safeReportText(subtitle), 500, 8, 2)[0] ?? "", margin, 72, 8, false, "0.38 0.40 0.47"));
+    const subtitleSecond = wrap(safeReportText(subtitle), 500, 8, 2)[1];
+    if (subtitleSecond) commands.push(text(subtitleSecond, margin, 83, 8, false, "0.38 0.40 0.47"));
 
-    const tableTop = 100;
+    // Clear summary cards instead of a cramped single line.
+    commands.push(fillRect(574, 28, 116, 56, "0.965 0.960 0.995"));
+    commands.push(fillRect(700, 28, 116, 56, "0.965 0.960 0.995"));
+    commands.push(text(safeReportText(totalLabel).toUpperCase(), 584, 45, 7, true, "0.39 0.35 0.62"));
+    commands.push(text(reportCurrency(total), 584, 66, 11, true, "0.16 0.16 0.23"));
+    commands.push(text("RECORDS", 710, 45, 7, true, "0.39 0.35 0.62"));
+    commands.push(text(String(rows.length), 710, 66, 11, true, "0.16 0.16 0.23"));
+
     commands.push(fillRect(margin, tableTop, tableWidth, headerHeight, "0.36 0.29 0.86"));
     let x = margin;
     headers.forEach((header, columnIndex) => {
       const width = columnWidths[columnIndex] ?? 80;
-      commands.push(text(fit(safeReportText(header), width, 7.4), x + 5, tableTop + 16, 7.4, true, "1 1 1"));
+      const lines = wrap(safeReportText(header), width, 7.2, 2);
+      lines.forEach((line, lineIndex) => commands.push(text(line, x + 5, tableTop + 13 + lineIndex * 9, 7.2, true, "1 1 1")));
       x += width;
     });
 
-    pageRows.forEach((row, rowIndex) => {
-      const top = tableTop + headerHeight + rowIndex * rowHeight;
-      if (rowIndex % 2 === 1) commands.push(fillRect(margin, top, tableWidth, rowHeight, "0.975 0.974 0.995"));
+    let top = tableTop + headerHeight;
+    pageRows.forEach((prepared, rowIndex) => {
+      if (rowIndex % 2 === 1) commands.push(fillRect(margin, top, tableWidth, prepared.height, "0.975 0.974 0.995"));
       x = margin;
       headers.forEach((_, columnIndex) => {
         const width = columnWidths[columnIndex] ?? 80;
-        commands.push(strokeRect(x, top, width, rowHeight));
-        const cell = row[columnIndex] ?? "";
-        commands.push(text(fit(formattedCell(cell, columnIndex), width, 7.2), x + 5, top + 14.5, 7.2));
+        commands.push(strokeRect(x, top, width, prepared.height));
+        const lines = prepared.cells[columnIndex] ?? [""];
+        lines.forEach((line, lineIndex) => {
+          const size = 7.1;
+          const baseline = top + 14 + lineIndex * 10;
+          if (currencyColumns.includes(columnIndex)) {
+            const rightX = Math.max(x + 5, x + width - 5 - approxWidth(line, size));
+            commands.push(text(line, rightX, baseline, size, true, "0.18 0.19 0.25"));
+          } else {
+            commands.push(text(line, x + 5, baseline, size));
+          }
+        });
         x += width;
       });
+      top += prepared.height;
     });
 
-    commands.push(text(`Generated by ${CURRENT_USER_NAME} | Page ${pageIndex + 1} of ${pages.length}`, margin, 574, 7, false, "0.48 0.50 0.56"));
-    commands.push(text(new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()), 670, 574, 7, false, "0.48 0.50 0.56"));
+    // Totals strip on every page so printed pages remain understandable independently.
+    commands.push(fillRect(margin, 552, tableWidth, 18, "0.965 0.960 0.995"));
+    commands.push(text(`${safeReportText(totalLabel)}: ${reportCurrency(total)} | ${rows.length} records`, margin + 7, 565, 7.4, true, "0.25 0.22 0.43"));
+    commands.push(text(`Generated by ${CURRENT_USER_NAME} | Page ${pageIndex + 1} of ${pages.length}`, margin, 584, 6.8, false, "0.48 0.50 0.56"));
+    const generated = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
+    commands.push(text(generated, 685, 584, 6.8, false, "0.48 0.50 0.56"));
     return commands.join("\n");
   });
 
@@ -787,15 +862,12 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   </>;
 }
 
-function SettingsView({ lastSyncedAt, syncing, onSync, installAvailable, onInstall, biometricSupported }: { lastSyncedAt: Date | null; syncing: boolean; onSync: () => void; installAvailable: boolean; onInstall: () => void; biometricSupported: boolean }) {
+function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
   return <>
-    <PageHeading eyebrow="APP" title="Settings" description="App installation, synchronization and future security readiness." />
+    <PageHeading eyebrow="APP" title="Settings" description="Refresh the latest Mecardee data when needed." />
     <section className="settings-grid">
-      <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className="settings-card"><span className="settings-icon"><Download size={19} /></span><div><h3>Install Mecardee</h3><p>Android can install this website as a standalone app when the browser offers installation.</p></div><button className="primary-button" onClick={onInstall} disabled={!installAvailable}><Download size={15} />{installAvailable ? "Install app" : "Install not currently offered"}</button></article>
-      <article className="settings-card"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Face ID / device biometrics</h3><p>{biometricSupported ? "This device supports the browser security technology needed for passkeys/biometrics." : "Biometric/passkey support was not detected in this browser."} Login is not enabled yet, so Face ID is intentionally not active.</p></div><span className="settings-status">Ready for future authentication</span></article>
-      <article className="settings-card"><span className="settings-icon"><FileText size={19} /></span><div><h3>Reports & exports</h3><p>PDF and Excel exports are generated on your device from the filtered live data already loaded in Mecardee.</p></div><span className="settings-status">No extra API required</span></article>
+      <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
     </section>
   </>;
 }

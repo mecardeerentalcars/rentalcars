@@ -1,7 +1,12 @@
 import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { vehicles } from "@/db/schema";
-import { BucketConfigurationError, getVehicleImage, putVehicleImage } from "@/lib/railway-bucket";
+import {
+  BucketConfigurationError,
+  BucketRequestError,
+  getVehicleImage,
+  putVehicleImage,
+} from "@/lib/railway-bucket";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -36,6 +41,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (error instanceof BucketConfigurationError || error instanceof DatabaseConfigurationError) {
       return Response.json({ ok: false, error: error.message }, { status: 503 });
     }
+    if (error instanceof BucketRequestError) {
+      console.error("Railway bucket rejected vehicle image upload", error);
+      return Response.json({ ok: false, error: error.message }, { status: 502 });
+    }
     console.error("Could not upload vehicle image", error);
     const message = process.env.NODE_ENV === "development" && error instanceof Error
       ? `Could not upload vehicle image. ${error.message}`
@@ -48,11 +57,6 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     const { id } = await context.params;
     const image = await getVehicleImage(id);
-
-    // AWS SDK returns Uint8Array<ArrayBufferLike>. The DOM Response type used by
-    // this Vinext project requires an ArrayBuffer-backed body, so make a fresh
-    // copy before returning the image. This also avoids passing an SDK-owned
-    // buffer across runtime boundaries.
     const responseBytes = Uint8Array.from(image.bytes);
 
     return new Response(responseBytes.buffer, {
@@ -64,10 +68,11 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     });
   } catch (error) {
     if (error instanceof BucketConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });
-    const code = typeof error === "object" && error !== null && "$metadata" in error
-      ? Number((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode)
-      : 0;
-    if (code === 404) return Response.json({ ok: false, error: "Vehicle image not found." }, { status: 404 });
+    if (error instanceof BucketRequestError) {
+      if (error.status === 404) return Response.json({ ok: false, error: "Vehicle image not found." }, { status: 404 });
+      console.error("Railway bucket rejected vehicle image download", error);
+      return Response.json({ ok: false, error: error.message }, { status: 502 });
+    }
     console.error("Could not serve vehicle image", error);
     return Response.json({ ok: false, error: "Could not serve vehicle image." }, { status: 500 });
   }

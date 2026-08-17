@@ -904,3 +904,21 @@ body { font-size: 15px; line-height: 1.45; }
   .car-report-filter > .secondary-button { justify-self: start; }
   .car-report-options { grid-template-columns: 1fr; }
 }
+
+
+/* v8.4 - restore Add Vehicle action on mobile without changing Active/Inactive controls */
+@media (max-width: 720px) {
+  .heading-actions .secondary-button.mobile-vehicle-add {
+    display: inline-flex !important;
+    width: 46px;
+    min-width: 46px;
+    height: 46px;
+    padding: 0 !important;
+    justify-content: center;
+    border-color: #dedaf8;
+    color: #5a4dca;
+    background: #f3f1ff;
+  }
+  .heading-actions .secondary-button.mobile-vehicle-add span { display: none; }
+  .heading-actions .secondary-button.mobile-vehicle-add svg { width: 20px; height: 20px; }
+}
