@@ -224,7 +224,7 @@ export default function Home() {
     window.setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (options?: { silent?: boolean }) => {
     try {
       const response = await fetch("/api/snapshot", { cache: "no-store" });
       const payload = await readApiResponse<AppSnapshot>(response);
@@ -241,7 +241,7 @@ export default function Home() {
       setSelectedRental((current) => current ? payload.rentals.find((rental) => rental.id === current.id) ?? payload.rentals[0] ?? null : payload.rentals[0] ?? null);
     } catch (error) {
       console.error(error);
-      showToast(error instanceof Error ? error.message : "Could not load live database data.");
+      if (!options?.silent) showToast(error instanceof Error ? error.message : "Could not load live database data.");
     }
   }, [showToast]);
 
@@ -311,7 +311,8 @@ export default function Home() {
     setView(next);
     setMobileMenuOpen(false);
     setSearch("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "auto" });
+    void refreshData({ silent: true });
   }
 
   function openRental(rental: Rental) {
@@ -389,7 +390,13 @@ export default function Home() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" onKeyDownCapture={(event) => {
+      if (event.key !== "Enter") return;
+      const target = event.target as HTMLElement;
+      if (!target.closest("form")) return;
+      if (target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
+      if (target.tagName === "INPUT" || target.tagName === "SELECT") event.preventDefault();
+    }}>
       <Sidebar view={view} goTo={goTo} metrics={metrics} />
       <main className="main-area">
         <header className="topbar">
@@ -961,10 +968,24 @@ function MobileMenu({ view, goTo, close }: { view: View; goTo: (view: View) => v
 }
 
 function DialogShell({ title, subtitle, close, wide = false, children }: { title: string; subtitle: string; close: () => void; wide?: boolean; children: React.ReactNode }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+
   const keepFocusedFieldVisible = (event: React.FocusEvent<HTMLElement>) => {
     if (window.innerWidth > 720) return;
     const target = event.target as HTMLElement;
-    window.setTimeout(() => target.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
+    window.setTimeout(() => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const rect = target.getBoundingClientRect();
+      const topGuard = 88;
+      const bottomGuard = viewportHeight - 20;
+      if (rect.top < topGuard || rect.bottom > bottomGuard) {
+        target.scrollIntoView({ block: "nearest", behavior: "auto" });
+      }
+    }, 80);
   };
   return <div className="dialog-overlay"><section className={`dialog ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onFocusCapture={keepFocusedFieldVisible}><header><div><h2>{title}</h2><p>{subtitle}</p></div><button onClick={close} aria-label="Close"><X size={19} /></button></header>{children}</section></div>;
 }
@@ -1076,6 +1097,7 @@ function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehi
   const [customerPhone, setCustomerPhone] = useState(firstCustomer?.phone ?? "");
   const [startDate, setStartDate] = useState(() => dateInputValue(new Date()));
   const [returnDate, setReturnDate] = useState(() => dateInputValue(new Date(Date.now() + 5 * 86_400_000)));
+  const [rentalDaysInput, setRentalDaysInput] = useState("5");
   const [startTime, setStartTime] = useState("10:00");
   const [returnTime, setReturnTime] = useState("10:00");
   const [rate, setRate] = useState(firstVehicle?.rate ?? 0);
@@ -1095,6 +1117,13 @@ function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehi
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // MECARDEE_RENTAL_DAYS_AUTO_DATE_V8_9_1
+  const rentalReturnDateFromDays = (baseDate: string, count: number) => {
+    const [year, month, day] = baseDate.split("-").map(Number);
+    const next = new Date(year, month - 1, day);
+    next.setDate(next.getDate() + Math.max(1, Math.trunc(count || 1)));
+    return dateInputValue(next);
+  };
   const days = Math.max(1, Math.ceil((new Date(returnDate).getTime() - new Date(startDate).getTime()) / 86_400_000));
   const rentalAmount = days * rate;
   const total = Math.max(0, rentalAmount - discount);
@@ -1174,10 +1203,10 @@ function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehi
 
   return <DialogShell title="Create a new rental" subtitle="Vehicle → Customer → Rental details" close={close} wide>
     <div className="stepper"><span className="done"><i><Check size={13} /></i>Vehicle</span><b /><span className="active"><i>2</i>Customer & dates</span><b /><span><i>3</i>Handover</span></div>
-    <form className="rental-form" onSubmit={submit}>
+    <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName === "INPUT") event.preventDefault(); }}>
       <div className="form-content"><section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle and customer</h3><p>Only available vehicles can be selected.</p></div></div><div className="field-grid"><label className="field span-2"><span>Vehicle</span><select value={vehicle} onChange={(event) => { const next = vehicles.find((item) => event.target.value.includes(item.plate)); setVehicle(event.target.value); if (next) { setRate(next.rate); setStartingKilometer(next.odometerKm); } }} disabled={!availableVehicles.length}>{availableVehicles.length ? availableVehicles.map((item) => <option key={item.id}>{item.name} — {item.plate}</option>) : <option>No available vehicles</option>}</select></label><label className="field"><span>Customer</span><select value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} disabled={!customers.length && !createdCustomer}>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name}</option>}{customers.length ? customers.map((item) => <option key={item.id} value={item.phone}>{item.name}</option>) : !createdCustomer && <option value="">No customers</option>}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((open) => !open)}><UserRoundPlus size={16} />{showCustomerForm ? "Close customer form" : "Add new customer"}</button></div></section>
         {showCustomerForm && <section className="form-section"><div className="form-section-title"><span><UserRoundPlus size={17} /></span><div><h3>Add new customer</h3><p>Save once and the customer is selected for this rental.</p></div></div><div className="simple-form"><div className="field-grid"><label className="field"><span>Customer name</span><input required value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input required inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} placeholder="Leave blank to use phone" /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} placeholder="Optional" /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={()=>setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer?"Saving…":"Save customer"}</button></div></div></section>}
-        <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>Duration and price update automatically.</p></div></div><div className="field-grid four"><label className="field"><span>Start date</span><input required type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label className="field"><span>Start time</span><input required type="time" value={startTime} onChange={(event) => { const next = event.target.value; setReturnTime((current) => current === startTime ? next : current); setStartTime(next); }} /></label><label className="field"><span>Expected return</span><input required type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} /></label><label className="field"><span>Return time</span><input required type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} rental days</strong><span>{startDate} → {returnDate}</span></div></section>
+        <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>Enter rental days or choose the return date manually.</p></div></div><div className="field-grid rental-schedule-grid"><label className="field"><span>Start date</span><input required type="date" value={startDate} onChange={(event) => { const next = event.target.value; const count = Math.max(1, Number(rentalDaysInput) || days || 1); setStartDate(next); setReturnDate(rentalReturnDateFromDays(next, count)); }} /></label><label className="field"><span>Start time</span><input required type="time" value={startTime} onChange={(event) => { const next = event.target.value; setReturnTime((current) => current === startTime ? next : current); setStartTime(next); }} /></label><label className="field rental-days-field"><span>Rental days</span><input min="1" step="1" type="number" inputMode="numeric" placeholder="1" value={rentalDaysInput} onKeyDown={numericKeyOnly} onChange={(event) => { const raw = event.target.value.replace(/\D/g, ""); setRentalDaysInput(raw); if (raw) setReturnDate(rentalReturnDateFromDays(startDate, Number(raw))); }} onBlur={() => { if (!rentalDaysInput) setRentalDaysInput(String(days)); }} /></label><label className="field"><span>Expected return</span><input required type="date" value={returnDate} onChange={(event) => { const next = event.target.value; const [sy, sm, sd] = startDate.split("-").map(Number); const [ey, em, ed] = next.split("-").map(Number); const difference = Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86_400_000); const count = Math.max(1, difference); setRentalDaysInput(String(count)); setReturnDate(difference < 1 ? rentalReturnDateFromDays(startDate, 1) : next); }} /></label><label className="field"><span>Return time</span><input required type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} rental days</strong><span>{startDate} → {returnDate}</span></div></section>
         <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Vehicle handover</h3><p>Expected return kilometer updates automatically.</p></div></div><div className="field-grid three"><label className="field"><span>Current / Starting Kilometer</span><input required min="0" type="number" placeholder="0" value={blankZero(startingKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setStartingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Allowed KM Per Day</span><input readOnly value={`${selectedVehicle?.allowedKmPerDay ?? 0} km`} /></label><label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Starting Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(startingFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setStartingFuelRangeKm(numberFromInput(event.target.value))} /></label></div></section>
         <section className="form-section"><div className="form-section-title"><span><WalletCards size={17} /></span><div><h3>Payment details</h3><p>Record the advance and deposit received.</p></div></div><div className="field-grid three"><label className="field"><span>Daily rate (₹)</span><input required min="0" type="number" placeholder="0" value={blankZero(rate)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setRate(numberFromInput(event.target.value))} /></label><label className="field"><span>Security deposit (₹)</span><input min="0" type="number" inputMode="decimal" placeholder="0" value={blankZero(deposit)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDeposit(numberFromInput(event.target.value))} /></label><label className="field"><span>Advance paid (₹)</span><input min="0" max={total} type="number" inputMode="decimal" placeholder="0" value={blankZero(advance)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setAdvance(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount (₹)</span><input min="0" max={rentalAmount} type="number" placeholder="0" value={blankZero(discount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscount(numberFromInput(event.target.value))} /></label><label className="field"><span>Payment method</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label></div></section>
       </div>
@@ -1273,6 +1302,10 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<SettlementResult | null>(null);
   const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
+  const actualReturnMs = new Date(actualReturnIso).getTime();
+  const scheduledReturnMs = new Date(rental.endAt).getTime();
+  const earlyReturn = actualReturnMs < scheduledReturnMs;
+  const earlyReturnDays = earlyReturn ? Math.max(1, Math.ceil((scheduledReturnMs - actualReturnMs) / 86_400_000)) : 0;
   const lateRental = calculateLateRentalCharge(rental.endAt, actualReturnIso, rental.rate, 3);
   const calculation = calculateSettlement({
     baseRentalAmount: Math.max(0, rental.total - rental.lateRentalCharge),
@@ -1335,9 +1368,9 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
   return <DialogShell title="Return vehicle" subtitle={`${rental.vehicle} · ${rental.plate}`} close={close} wide>
     <form className="return-form" onSubmit={confirmSettlement}>
       <div className="return-fields">
-        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Return inspection</h3><p>Kilometers and fuel charges calculate automatically.</p></div></div><div className="field-grid three">
-          <label className="field"><span>Actual return date</span><input required type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label>
-          <label className="field"><span>Return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label>
+        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Return inspection</h3><p>Actual return date and time default to now. Change them if the handover happened at a different time.</p></div></div><div className="field-grid three">
+          <label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label>
+          <label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label>
           <label className="field"><span>Actual Return Kilometer</span><input required min={rental.startingKilometer} type="number" placeholder="0" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label>
           <label className="field"><span>Starting Kilometer</span><input readOnly value={`${rental.startingKilometer.toLocaleString("en-IN")} km`} /></label>
           <label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label>
@@ -1346,7 +1379,7 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
           <label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label>
           <label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" placeholder="0" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
           <label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
-        </div></section>
+        </div>{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. No late rental charge will be added.</span></div>}</section>
         <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM, fuel shortage and late-day rent are automatic. A 3-hour grace period applies after the expected return time.</p></div></div><div className="charge-grid">
           <label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label>
           <label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label>

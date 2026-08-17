@@ -840,10 +840,10 @@ body { font-size: 15px; line-height: 1.45; }
   .payment-summary article.featured { grid-column: auto !important; }
   .payment-summary strong { font-size: 20px !important; }
 
-  .dialog-overlay { height: 100dvh; min-height: 100dvh; padding: max(8px, env(safe-area-inset-top)) 0 0 !important; place-items: start center !important; align-items: start !important; overflow: hidden; }
-  .dialog, .dialog.wide { max-height: calc(100dvh - max(8px, env(safe-area-inset-top))) !important; border-radius: 24px 24px 0 0 !important; overscroll-behavior: contain; scroll-padding-top: 82px; scroll-padding-bottom: 42dvh; }
+  .dialog-overlay { height: 100svh; min-height: 100svh; padding: max(8px, env(safe-area-inset-top)) 0 0 !important; place-items: start center !important; align-items: start !important; overflow: hidden; overscroll-behavior: none; }
+  .dialog, .dialog.wide { max-height: calc(100svh - max(8px, env(safe-area-inset-top))) !important; border-radius: 24px 24px 0 0 !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scroll-padding-top: 82px; scroll-padding-bottom: 180px; }
   .dialog > header { top: 0; padding-top: 16px !important; min-height: 72px !important; }
-  .dialog input:focus, .dialog select:focus, .dialog textarea:focus { scroll-margin-top: 90px; scroll-margin-bottom: 40dvh; }
+  .dialog input:focus, .dialog select:focus, .dialog textarea:focus { scroll-margin-top: 90px; scroll-margin-bottom: 180px; }
   .simple-form { padding-bottom: max(26px, env(safe-area-inset-bottom)); }
 
   .mobile-menu-overlay > aside { height: 100dvh; }
@@ -921,4 +921,53 @@ body { font-size: 15px; line-height: 1.45; }
   }
   .heading-actions .secondary-button.mobile-vehicle-add span { display: none; }
   .heading-actions .secondary-button.mobile-vehicle-add svg { width: 20px; height: 20px; }
+}
+
+
+/* MECARDEE_IOS_KEYBOARD_STABILITY_V1
+   Prevent Safari focus zoom / dynamic-viewport relayout while using the iOS space-bar trackpad. */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 720px) {
+    html, body { overscroll-behavior-y: none; }
+    .field input, .field select, .field textarea, .charge-grid input,
+    .panel-search input, .global-search input, .stepper-input input {
+      font-size: 16px !important;
+    }
+    .dialog-overlay {
+      height: 100svh !important;
+      min-height: 100svh !important;
+    }
+    .dialog, .dialog.wide {
+      max-height: calc(100svh - max(8px, env(safe-area-inset-top))) !important;
+      scroll-behavior: auto !important;
+      -webkit-overflow-scrolling: touch;
+      contain: layout paint;
+    }
+    .dialog input, .dialog textarea, .dialog select {
+      -webkit-text-size-adjust: 100%;
+    }
+  }
+}
+
+
+/* MECARDEE_RENTAL_DAYS_AUTO_DATE_V8_9_1 */
+.rental-schedule-grid {
+  grid-template-columns: 1.05fr 1fr .7fr 1.05fr 1fr;
+}
+.rental-days-field input { font-weight: 700; }
+@media (max-width: 980px) { .rental-schedule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .rental-schedule-grid { grid-template-columns: 1fr; } }
+
+
+/* MECARDEE_MOBILE_RENTAL_POLISH_V8_9_2 */
+.early-return-note {
+  margin-top: 10px; padding: 10px 12px; border: 1px solid #cfe8de; background: #f3fbf7;
+  color: #21715a; border-radius: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650;
+}
+@media (max-width: 760px) {
+  .history-row > span:not(.vehicle-cell):not(:nth-child(2)):not(:nth-child(5)):not(:nth-child(6)) { display: none; }
+  .history-row > span:nth-child(2) { display: block !important; grid-column: 1; grid-row: 2; min-width: 0; }
+  .history-row > span:nth-child(2) strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-row > span:nth-child(5) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .history-row > span:nth-child(6) { grid-column: 1 / -1; grid-row: 3; }
 }
