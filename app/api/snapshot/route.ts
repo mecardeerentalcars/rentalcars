@@ -209,7 +209,10 @@ export async function GET() {
           state = "today";
           statusText = "Returning today";
         } else {
-          const days = Math.max(1, Math.ceil((booking.endAt.getTime() - current.getTime()) / 86_400_000));
+          // Do not count the hours before a future rental actually starts.
+          // Example: a 7-day rental starting later today must show 7 days remaining, not 8.
+          const remainingFrom = Math.max(current.getTime(), booking.startAt.getTime());
+          const days = Math.max(1, Math.ceil((booking.endAt.getTime() - remainingFrom) / 86_400_000));
           statusText = `${days} day${days === 1 ? "" : "s"} remaining`;
         }
         const duration = Math.max(1, booking.endAt.getTime() - booking.startAt.getTime());
