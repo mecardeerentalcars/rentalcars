@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { calculateExpectedReturnKilometer, calculateSettlement } from "@/lib/rental-calculations";
+import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
+import { compressVehicleImage } from "@/lib/client-image";
 import {
   AlertTriangle,
   ArrowRight,
@@ -47,7 +49,7 @@ import {
 } from "lucide-react";
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts";
-type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle";
+type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
 type Rental = {
@@ -133,7 +135,7 @@ type Metrics = {
   totalCars: number; availableCars: number; onRentCars: number; maintenanceCars: number; roadReadyPercent: number; activeRentals: number; returningToday: number; overdue: number; outstanding: number; outstandingRentals: number; outstandingCustomers: number; totalCustomers: number; newCustomersThisMonth: number; currentlyRentingCustomers: number; collectedToday: number; paymentsToday: number; expensesToday: number; netToday: number; collectedMonth: number; collectedLastMonth: number; collectionChangePercent: number; rentalRevenueMonth: number; expensesMonth: number; netIncomeMonth: number; depositsHeld: number; twelveMonthCollected: number; monthlyCollected: { key: string; label: string; amount: number }[];
 };
 
-type AppSnapshot = { ok: boolean; error?: string; rentals: Rental[]; vehicles: Vehicle[]; customers: CustomerRow[]; payments: PaymentRow[]; expenses: ExpenseRow[]; reminders: ReminderRow[]; metrics: Metrics };
+type AppSnapshot = { ok: boolean; error?: string; rentals: Rental[]; vehicles: Vehicle[]; vehicleProfiles: Record<string, VehicleProfilePayload>; customers: CustomerRow[]; payments: PaymentRow[]; expenses: ExpenseRow[]; reminders: ReminderRow[]; metrics: Metrics };
 
 const emptyMetrics: Metrics = { totalCars: 0, availableCars: 0, onRentCars: 0, maintenanceCars: 0, roadReadyPercent: 0, activeRentals: 0, returningToday: 0, overdue: 0, outstanding: 0, outstandingRentals: 0, outstandingCustomers: 0, totalCustomers: 0, newCustomersThisMonth: 0, currentlyRentingCustomers: 0, collectedToday: 0, paymentsToday: 0, expensesToday: 0, netToday: 0, collectedMonth: 0, collectedLastMonth: 0, collectionChangePercent: 0, rentalRevenueMonth: 0, expensesMonth: 0, netIncomeMonth: 0, depositsHeld: 0, twelveMonthCollected: 0, monthlyCollected: [] };
 
@@ -171,12 +173,14 @@ export default function Home() {
   const [dialog, setDialog] = useState<DialogType>(null);
   const [rentalList, setRentalList] = useState<Rental[]>([]);
   const [vehicleList, setVehicleList] = useState<Vehicle[]>([]);
+  const [vehicleProfiles, setVehicleProfiles] = useState<Record<string, VehicleProfilePayload>>({});
   const [customerList, setCustomerList] = useState<CustomerRow[]>([]);
   const [paymentList, setPaymentList] = useState<PaymentRow[]>([]);
   const [expenseList, setExpenseList] = useState<ExpenseRow[]>([]);
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [metrics, setMetrics] = useState<Metrics>(emptyMetrics);
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -194,6 +198,7 @@ export default function Home() {
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not load live database data.");
       setRentalList(payload.rentals);
       setVehicleList(payload.vehicles);
+      setVehicleProfiles(payload.vehicleProfiles ?? {});
       setCustomerList(payload.customers);
       setPaymentList(payload.payments);
       setExpenseList(payload.expenses);
@@ -211,7 +216,7 @@ export default function Home() {
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return [];
-    const vehicleResults = vehicleList.filter((v) => `${v.name} ${v.plate}`.toLowerCase().includes(query)).map((v) => ({ type: "Vehicle", title: v.name, meta: `${v.plate} · ${v.status}`, action: () => goTo("vehicles") }));
+    const vehicleResults = vehicleList.filter((v) => `${v.name} ${v.plate}`.toLowerCase().includes(query)).map((v) => ({ type: "Vehicle", title: v.name, meta: `${v.plate} · ${v.status}`, action: () => openVehicle(v) }));
     const customerResults = customerList.filter((c) => `${c.name} ${c.phone}`.toLowerCase().includes(query)).map((c) => ({ type: "Customer", title: c.name, meta: `${c.phone} · ${c.rentals} rentals`, action: () => goTo("customers") }));
     const rentalResults = rentalList.filter((r) => `${r.id} ${r.vehicle} ${r.plate} ${r.customer}`.toLowerCase().includes(query)).map((r) => ({ type: "Rental", title: r.id, meta: `${r.vehicle} · ${r.customer}`, action: () => openRental(r) }));
     return [...vehicleResults, ...customerResults, ...rentalResults].slice(0, 6);
@@ -227,6 +232,12 @@ export default function Home() {
   function openRental(rental: Rental) {
     setSelectedRental(rental);
     setDialog("rental-detail");
+    setSearch("");
+  }
+
+  function openVehicle(vehicle: Vehicle) {
+    setSelectedVehicle(vehicle);
+    setDialog("vehicle-detail");
     setSearch("");
   }
 
@@ -313,7 +324,7 @@ export default function Home() {
         <div className="content">
           {view === "dashboard" && <Dashboard rentals={rentalList} metrics={metrics} reminders={reminders} openRental={openRental} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
-          {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} showToast={showToast} />}
+          {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => void addCustomerPrompt()} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
@@ -328,6 +339,7 @@ export default function Home() {
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} />}
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
+      {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></DialogShell>}
       {dialog === "expense" && <ExpenseDialog vehicles={vehicleList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {toast && <div className="toast"><CheckCircle2 size={18} /><span>{toast}</span></div>}
     </div>
@@ -447,7 +459,7 @@ function RentalsView({ rentals, metrics, openRental, openNew }: { rentals: Renta
   </>;
 }
 
-function VehiclesView({ vehicles, metrics, openNew, addVehicle, showToast }: { vehicles: Vehicle[]; metrics: Metrics; openNew: () => void; addVehicle: () => void; showToast: (message: string) => void }) {
+function VehiclesView({ vehicles, metrics, openNew, addVehicle, openVehicle, showToast }: { vehicles: Vehicle[]; metrics: Metrics; openNew: () => void; addVehicle: () => void; openVehicle: (vehicle: Vehicle) => void; showToast: (message: string) => void }) {
   const [filter, setFilter] = useState("All vehicles");
   const [textFilter, setTextFilter] = useState("");
   const shown = vehicles.filter((vehicle) => {
@@ -459,7 +471,7 @@ function VehiclesView({ vehicles, metrics, openNew, addVehicle, showToast }: { v
     <PageHeading eyebrow="FLEET" title="Vehicles" description="Your full fleet, availability and document health in one place." action={<div className="heading-actions"><button className="secondary-button" onClick={addVehicle}><Plus size={16} />Add vehicle</button><button className="primary-button" onClick={openNew}><CalendarDays size={16} />Rent a car</button></div>} />
     <section className="fleet-strip"><div><span className="strip-icon"><CarFront size={19} /></span><p><strong>{metrics.totalCars} vehicles</strong><small>Total fleet</small></p></div><div><i className="dot available" /><p><strong>{metrics.availableCars} available</strong><small>{metrics.totalCars ? Math.round((metrics.availableCars / metrics.totalCars) * 100) : 0}% of fleet</small></p></div><div><i className="dot rented" /><p><strong>{metrics.onRentCars} on rent</strong><small>{metrics.overdue ? `${metrics.overdue} overdue` : "No overdue rentals"}</small></p></div><div><i className="dot maintenance" /><p><strong>{metrics.maintenanceCars} in service</strong><small>Maintenance status</small></p></div><span className="fleet-progress"><i style={{ width: `${metrics.roadReadyPercent}%` }} /></span></section>
     <div className="panel-toolbar vehicle-toolbar"><div className="filter-tabs">{["All vehicles", "Available", "Rented", "Maintenance"].map((item) => <button className={filter === item ? "active" : ""} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><button className="filter-button" onClick={() => setTextFilter(window.prompt("Filter by vehicle, make, plate, fuel or transmission", textFilter) ?? textFilter)}><SlidersHorizontal size={15} />More filters</button></div>
-    <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => showToast(`${vehicle.name}: ${vehicle.status} · ${vehicle.docs}`)}>View vehicle</button><button onClick={openNew} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
+    <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => openVehicle(vehicle)}>View vehicle</button><button onClick={openNew} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
   </>;
 }
 
@@ -525,76 +537,58 @@ function DialogShell({ title, subtitle, close, wide = false, children }: { title
 
 
 function VehicleDialog({ close, done }: { close: () => void; done: (message: string) => void }) {
-  const [name, setName] = useState("");
-  const [make, setMake] = useState("");
-  const [registrationNumber, setRegistrationNumber] = useState("");
-  const [fuelType, setFuelType] = useState("Petrol");
-  const [transmission, setTransmission] = useState("Manual");
-  const [modelYear, setModelYear] = useState(new Date().getFullYear());
-  const [dailyRate, setDailyRate] = useState(1500);
-  const [odometerKm, setOdometerKm] = useState(0);
-  const [allowedKmPerDay, setAllowedKmPerDay] = useState(100);
-  const [extraKmRate, setExtraKmRate] = useState(12);
-  const [mileageKmPerLitre, setMileageKmPerLitre] = useState(15);
-  const [imageUrl, setImageUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const documentTypes = ["Insurance", "Pollution / PUC", "Registration / RC", "Fitness Certificate", "Permit", "Road Tax"];
+  const tyrePositions = [["front-left", "Front left"], ["front-right", "Front right"], ["rear-left", "Rear left"], ["rear-right", "Rear right"], ["spare", "Spare"]] as const;
+  const [name, setName] = useState(""); const [make, setMake] = useState(""); const [registrationNumber, setRegistrationNumber] = useState("");
+  const [fuelType, setFuelType] = useState("Petrol"); const [transmission, setTransmission] = useState("Manual"); const [modelYear, setModelYear] = useState(new Date().getFullYear());
+  const [dailyRate, setDailyRate] = useState(1500); const [odometerKm, setOdometerKm] = useState(0); const [allowedKmPerDay, setAllowedKmPerDay] = useState(100); const [extraKmRate, setExtraKmRate] = useState(12); const [mileageKmPerLitre, setMileageKmPerLitre] = useState(15);
+  const [documents, setDocuments] = useState(() => documentTypes.map((documentType) => ({ documentType, documentNumber: "", expiryDate: "", notes: "" })));
+  const [service, setService] = useState({ title: "Periodic service", description: "", dueDate: "", dueOdometerKm: "", amount: "" });
+  const [tyres, setTyres] = useState(() => tyrePositions.map(([position]) => ({ position, brand: "", model: "", size: "", installedDate: "", installedOdometerKm: "", treadDepthMm: "", replacementDueDate: "", replacementDueOdometerKm: "", notes: "" })));
+  const [imageFile, setImageFile] = useState<File | null>(null); const [imagePreview, setImagePreview] = useState<string | null>(null); const [processingImage, setProcessingImage] = useState(false);
+  const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
+
+  async function chooseImage(file: File | null) {
+    if (!file) return;
+    setProcessingImage(true); setError(null);
+    try {
+      const compressed = await compressVehicleImage(file);
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      setImageFile(compressed); setImagePreview(URL.createObjectURL(compressed));
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not prepare the selected image."); }
+    finally { setProcessingImage(false); }
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim() || !make.trim() || !registrationNumber.trim()) {
-      setError("Vehicle name, make and registration number are required.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
+    if (!name.trim() || !make.trim() || !registrationNumber.trim()) return setError("Vehicle name, make and registration number are required.");
+    setSaving(true); setError(null);
     try {
-      const response = await fetch("/api/vehicles", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          make: make.trim(),
-          registrationNumber: registrationNumber.trim(),
-          fuelType,
-          transmission,
-          modelYear,
-          dailyRate,
-          odometerKm,
-          allowedKmPerDay,
-          extraKmRate,
-          mileageKmPerLitre,
-          imageUrl: imageUrl.trim(),
-        }),
-      });
-      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not save vehicle.");
+      const response = await fetch("/api/vehicles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.trim(), make: make.trim(), registrationNumber: registrationNumber.trim(), fuelType, transmission, modelYear, dailyRate, odometerKm, allowedKmPerDay, extraKmRate, mileageKmPerLitre }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; vehicle?: { id: string } }>(response);
+      if (!response.ok || !payload.ok || !payload.vehicle?.id) throw new Error(payload.error ?? "Could not save vehicle.");
+      const vehicleId = payload.vehicle.id;
+      const tasks: Promise<unknown>[] = [];
+      if (imageFile) { const formData = new FormData(); formData.append("file", imageFile); tasks.push(fetch(`/api/vehicles/${vehicleId}/image`, { method: "POST", body: formData }).then(async (r) => { const p = await readApiResponse<{ ok: boolean; error?: string }>(r); if (!r.ok || !p.ok) throw new Error(p.error ?? "Could not upload vehicle image."); })); }
+      for (const doc of documents) if (doc.documentNumber || doc.expiryDate || doc.notes) tasks.push(fetch(`/api/vehicles/${vehicleId}/documents`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(doc) }).then(async (r) => { const p = await readApiResponse<{ ok: boolean; error?: string }>(r); if (!r.ok || !p.ok) throw new Error(p.error ?? `Could not save ${doc.documentType}.`); }));
+      if (service.description || service.dueDate || service.dueOdometerKm || service.amount) tasks.push(fetch(`/api/vehicles/${vehicleId}/maintenance`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(service) }).then(async (r) => { const p = await readApiResponse<{ ok: boolean; error?: string }>(r); if (!r.ok || !p.ok) throw new Error(p.error ?? "Could not save maintenance details."); }));
+      for (const tyre of tyres) if (tyre.brand || tyre.model || tyre.size || tyre.installedDate || tyre.installedOdometerKm || tyre.treadDepthMm || tyre.replacementDueDate || tyre.replacementDueOdometerKm || tyre.notes) tasks.push(fetch(`/api/vehicles/${vehicleId}/tyres`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(tyre) }).then(async (r) => { const p = await readApiResponse<{ ok: boolean; error?: string }>(r); if (!r.ok || !p.ok) throw new Error(p.error ?? "Could not save tyre details."); }));
+      await Promise.all(tasks);
       done(`${name.trim()} added to fleet`);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save vehicle.");
-    } finally {
-      setSaving(false);
-    }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save vehicle."); }
+    finally { setSaving(false); }
   }
 
-  return <DialogShell title="Add vehicle" subtitle="Add a vehicle to the live fleet database" close={close} wide>
+  return <DialogShell title="Add vehicle" subtitle="Vehicle, documents, service, tyres and photo" close={close} wide>
     <form className="simple-form" onSubmit={submit}>
-      <div className="field-grid">
-        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Maruti Swift" /></label>
-        <label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(event) => setMake(event.target.value)} placeholder="Maruti Suzuki" /></label>
-        <label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label>
-        <label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(event) => setModelYear(Number(event.target.value))} /></label>
-        <label className="field"><span>Fuel type</span><select value={fuelType} onChange={(event) => setFuelType(event.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label>
-        <label className="field"><span>Transmission</span><select value={transmission} onChange={(event) => setTransmission(event.target.value)}><option>Manual</option><option>Automatic</option></select></label>
-        <label className="field"><span>Daily rental rate (₹)</span><input required min="1" step="1" type="number" value={dailyRate} onChange={(event) => setDailyRate(Number(event.target.value))} /></label>
-        <label className="field"><span>Current odometer (KM)</span><input required min="0" step="1" type="number" value={odometerKm} onChange={(event) => setOdometerKm(Number(event.target.value))} /></label>
-        <label className="field"><span>Allowed KM / day</span><input required min="1" step="1" type="number" value={allowedKmPerDay} onChange={(event) => setAllowedKmPerDay(Number(event.target.value))} /></label>
-        <label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(event) => setExtraKmRate(Number(event.target.value))} /></label>
-        <label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(event) => setMileageKmPerLitre(Number(event.target.value))} /></label>
-        <label className="field"><span>Image path / URL (optional)</span><input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} placeholder="/cars/swift.jpg" /></label>
-      </div>
-      {error && <p className="form-error">{error}</p>}
-      <div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving}><Check size={16} />{saving ? "Saving…" : "Add vehicle"}</button></div>
+      <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle details</h3><p>Main fleet information.</p></div></div><div className="field-grid">
+        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Maruti Swift" /></label><label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(e) => setMake(e.target.value)} placeholder="Maruti Suzuki" /></label><label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label><label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(e) => setModelYear(Number(e.target.value))} /></label><label className="field"><span>Fuel type</span><select value={fuelType} onChange={(e) => setFuelType(e.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label><label className="field"><span>Transmission</span><select value={transmission} onChange={(e) => setTransmission(e.target.value)}><option>Manual</option><option>Automatic</option></select></label><label className="field"><span>Daily rental rate (₹)</span><input required min="1" type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} /></label><label className="field"><span>Current odometer (KM)</span><input required min="0" type="number" value={odometerKm} onChange={(e) => setOdometerKm(Number(e.target.value))} /></label><label className="field"><span>Allowed KM / day</span><input required min="1" type="number" value={allowedKmPerDay} onChange={(e) => setAllowedKmPerDay(Number(e.target.value))} /></label><label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(e) => setExtraKmRate(Number(e.target.value))} /></label><label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(e) => setMileageKmPerLitre(Number(e.target.value))} /></label><label className="field"><span>Vehicle image</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={processingImage} onChange={(e) => void chooseImage(e.target.files?.[0] ?? null)} /><small>{processingImage ? "Compressing image…" : "Automatically resized/compressed for fast mobile upload"}</small></label>{imagePreview && <div className="field"><span>Preview</span><img src={imagePreview} alt="Vehicle preview" style={{ width:"100%",height:120,objectFit:"cover",borderRadius:14,border:"1px solid #e5e7eb" }} /></div>}
+      </div></section>
+
+      <details><summary><strong>Documents</strong> — Insurance, pollution, RC, fitness, permit and tax</summary><div className="field-grid" style={{marginTop:12}}>{documents.map((doc,index)=><div key={doc.documentType} className="field" style={{border:"1px solid #e5e7eb",borderRadius:12,padding:10}}><strong>{doc.documentType}</strong><input placeholder="Document number" value={doc.documentNumber} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,documentNumber:e.target.value}:d))}/><input type="date" value={doc.expiryDate} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,expiryDate:e.target.value}:d))}/><input placeholder="Notes" value={doc.notes} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,notes:e.target.value}:d))}/></div>)}</div></details>
+      <details><summary><strong>Maintenance / service</strong></summary><div className="field-grid" style={{marginTop:12}}><label className="field"><span>Service title</span><input value={service.title} onChange={(e)=>setService({...service,title:e.target.value})}/></label><label className="field"><span>Due date</span><input type="date" value={service.dueDate} onChange={(e)=>setService({...service,dueDate:e.target.value})}/></label><label className="field"><span>Due odometer</span><input type="number" value={service.dueOdometerKm} onChange={(e)=>setService({...service,dueOdometerKm:e.target.value})}/></label><label className="field"><span>Estimated amount</span><input type="number" value={service.amount} onChange={(e)=>setService({...service,amount:e.target.value})}/></label><label className="field"><span>Notes</span><input value={service.description} onChange={(e)=>setService({...service,description:e.target.value})}/></label></div></details>
+      <details><summary><strong>Tyres</strong> — current tyre information</summary><div className="field-grid" style={{marginTop:12}}>{tyres.map((tyre,index)=>{const label=tyrePositions.find(([p])=>p===tyre.position)?.[1]??tyre.position;return <div key={tyre.position} className="field" style={{border:"1px solid #e5e7eb",borderRadius:12,padding:10}}><strong>{label}</strong><input placeholder="Brand" value={tyre.brand} onChange={(e)=>setTyres(x=>x.map((t,i)=>i===index?{...t,brand:e.target.value}:t))}/><input placeholder="Model" value={tyre.model} onChange={(e)=>setTyres(x=>x.map((t,i)=>i===index?{...t,model:e.target.value}:t))}/><input placeholder="Size e.g. 195/55 R16" value={tyre.size} onChange={(e)=>setTyres(x=>x.map((t,i)=>i===index?{...t,size:e.target.value}:t))}/><input type="number" placeholder="Replace by KM" value={tyre.replacementDueOdometerKm} onChange={(e)=>setTyres(x=>x.map((t,i)=>i===index?{...t,replacementDueOdometerKm:e.target.value}:t))}/></div>})}</div></details>
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || processingImage}><Check size={16}/>{saving ? "Saving…" : "Add vehicle"}</button></div>
     </form>
   </DialogShell>;
 }

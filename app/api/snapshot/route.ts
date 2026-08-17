@@ -8,6 +8,7 @@ import {
   payments,
   returnSettlements,
   vehicleDocuments,
+  vehicleTyres,
   vehicles,
 } from "@/db/schema";
 
@@ -115,6 +116,17 @@ export async function GET() {
         db.select().from(maintenanceRecords).orderBy(desc(maintenanceRecords.createdAt)),
       ]);
 
+    // Vehicle details are prefetched as part of the single app snapshot so opening
+    // View vehicle never waits for another database round-trip. Tyres are optional
+    // during a rolling migration: if the table is not there yet, the rest of the
+    // app still loads immediately.
+    let tyreRows: typeof vehicleTyres.$inferSelect[] = [];
+    try {
+      tyreRows = await db.select().from(vehicleTyres).orderBy(vehicleTyres.position);
+    } catch (error) {
+      console.warn("Vehicle tyre preload skipped", error);
+    }
+
     const current = now();
     const today = dateKey(current);
     const thisMonth = monthKey(current);
@@ -145,6 +157,25 @@ export async function GET() {
       const rows = maintenanceByVehicle.get(record.vehicleId) ?? [];
       rows.push(record);
       maintenanceByVehicle.set(record.vehicleId, rows);
+    }
+    const tyresByVehicle = new Map<string, typeof tyreRows>();
+    for (const tyre of tyreRows) {
+      const rows = tyresByVehicle.get(tyre.vehicleId) ?? [];
+      rows.push(tyre);
+      tyresByVehicle.set(tyre.vehicleId, rows);
+    }
+    const bookingsByVehicle = new Map<string, typeof bookingRows>();
+    for (const bookingRow of bookingRows) {
+      const rows = bookingsByVehicle.get(bookingRow.booking.vehicleId) ?? [];
+      rows.push(bookingRow);
+      bookingsByVehicle.set(bookingRow.booking.vehicleId, rows);
+    }
+    const expensesByVehicle = new Map<string, typeof expenseRows>();
+    for (const expenseRow of expenseRows) {
+      if (!expenseRow.expense.vehicleId) continue;
+      const rows = expensesByVehicle.get(expenseRow.expense.vehicleId) ?? [];
+      rows.push(expenseRow);
+      expensesByVehicle.set(expenseRow.expense.vehicleId, rows);
     }
 
     const rentals = bookingRows
@@ -277,6 +308,51 @@ export async function GET() {
       };
     });
 
+    const vehicleProfiles = Object.fromEntries(vehicleRows.map((vehicle) => {
+      const documents = documentsByVehicle.get(vehicle.id) ?? [];
+      const maintenance = maintenanceByVehicle.get(vehicle.id) ?? [];
+      const tyres = tyresByVehicle.get(vehicle.id) ?? [];
+      const vehicleBookings = bookingsByVehicle.get(vehicle.id) ?? [];
+      const vehicleExpenses = expensesByVehicle.get(vehicle.id) ?? [];
+      return [vehicle.id, {
+        ok: true,
+        vehicle: {
+          id: vehicle.id,
+          name: vehicle.name,
+          make: vehicle.make,
+          registrationNumber: vehicle.registrationNumber,
+          imageUrl: vehicle.imageUrl,
+          fuelType: vehicle.fuelType,
+          transmission: vehicle.transmission,
+          modelYear: vehicle.modelYear,
+          dailyRate: vehicle.dailyRate,
+          odometerKm: vehicle.odometerKm,
+          allowedKmPerDay: vehicle.allowedKmPerDay,
+          extraKmRate: vehicle.extraKmRate,
+          mileageKmPerLitre: vehicle.mileageKmPerLitre,
+          status: vehicle.status,
+          createdAt: vehicle.createdAt.toISOString(),
+          updatedAt: vehicle.updatedAt.toISOString(),
+        },
+        documents: documents.map((item) => ({
+          id: item.id, documentType: item.documentType, documentNumber: item.documentNumber, expiryDate: item.expiryDate, notes: item.notes, updatedAt: item.updatedAt.toISOString(),
+        })),
+        maintenance: maintenance.map((item) => ({
+          id: item.id, title: item.title, description: item.description, status: item.status, dueDate: item.dueDate, dueOdometerKm: item.dueOdometerKm, amount: item.amount, completedAt: item.completedAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString(),
+        })),
+        tyres: tyres.map((item) => ({
+          id: item.id, position: item.position, brand: item.brand, model: item.model, size: item.size, installedDate: item.installedDate, installedOdometerKm: item.installedOdometerKm, treadDepthMm: item.treadDepthMm, replacementDueDate: item.replacementDueDate, replacementDueOdometerKm: item.replacementDueOdometerKm, notes: item.notes, updatedAt: item.updatedAt.toISOString(),
+        })),
+        tyreWarning: tyreRows.length === 0 ? null : null,
+        rentals: vehicleBookings.map(({ booking, customer }) => ({
+          id: booking.id, bookingNumber: booking.bookingNumber, customer: customer.name, phone: customer.phone, startAt: booking.startAt.toISOString(), endAt: booking.endAt.toISOString(), rentalDays: booking.rentalDays, dailyRate: booking.dailyRate, baseRentalAmount: booking.baseRentalAmount, otherCharges: booking.otherCharges, status: booking.status,
+        })),
+        expenses: vehicleExpenses.map(({ expense }) => ({
+          id: expense.id, expenseNumber: expense.expenseNumber, expenseDate: expense.expenseDate, category: expense.category, amount: expense.amount, description: expense.description, method: expense.method,
+        })),
+      }];
+    }));
+
     const customerDtos = customerRows.map((customer) => {
       const related = rentals.filter((rental) => rental.customerId === customer.id);
       const paid = paymentRows
@@ -401,6 +477,7 @@ export async function GET() {
       generatedAt: current.toISOString(),
       rentals,
       vehicles: vehicleDtos,
+      vehicleProfiles,
       customers: customerDtos,
       payments: paymentDtos,
       expenses: expenseDtos,
