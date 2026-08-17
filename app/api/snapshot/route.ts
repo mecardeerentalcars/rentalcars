@@ -266,6 +266,10 @@ export async function GET() {
         status = "Maintenance";
         const openMaintenance = (maintenanceByVehicle.get(vehicle.id) ?? []).find((record) => record.status === "open");
         note = openMaintenance?.title ?? "Maintenance in progress";
+      } else if (vehicle.status === "inactive") {
+        statusKey = "inactive";
+        status = "Inactive";
+        note = "Manually disabled";
       } else if (activeRental?.state === "overdue") {
         statusKey = "overdue";
         status = "Overdue";
@@ -499,7 +503,7 @@ export async function GET() {
         availableCars,
         onRentCars,
         maintenanceCars,
-        roadReadyPercent: vehicleDtos.length ? Math.round(((vehicleDtos.length - maintenanceCars) / vehicleDtos.length) * 100) : 0,
+        roadReadyPercent: vehicleDtos.length ? Math.round(((availableCars + onRentCars) / vehicleDtos.length) * 100) : 0,
         activeRentals: activeRentals.length,
         returningToday: returningToday.length,
         overdue: overdueRentals.length,

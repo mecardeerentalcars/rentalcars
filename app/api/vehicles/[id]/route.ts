@@ -195,11 +195,19 @@ const updateNumber = (value: unknown, field: string, min = 0) => {
   if (!Number.isFinite(n) || n < min) throw new VehicleUpdateError(`${field} must be ${min === 0 ? "0 or greater" : `at least ${min}`}.`);
   return Math.round(n * 100) / 100;
 };
+const manualVehicleStatus = (value: unknown) => {
+  if (typeof value !== "string") throw new VehicleUpdateError("Vehicle status is invalid.");
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "active") return "available";
+  if (["available", "inactive", "maintenance"].includes(normalized)) return normalized;
+  throw new VehicleUpdateError("Vehicle status can only be Active, Inactive or Maintenance.");
+};
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     const body = await request.json() as Record<string, unknown>;
+    const requestedStatus = body.status === undefined ? undefined : manualVehicleStatus(body.status);
     const values = {
       name: updateText(body.name, "Vehicle name"),
       make: updateText(body.make, "Make"),
@@ -216,7 +224,23 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     };
 
     const saved = await withRequestDb(async (db) => {
-      const [row] = await db.update(vehicles).set(values).where(eq(vehicles.id, id)).returning();
+      const [current] = await db.select({ id: vehicles.id, status: vehicles.status }).from(vehicles).where(eq(vehicles.id, id)).limit(1);
+      if (!current) return null;
+
+      if (requestedStatus !== undefined) {
+        const currentStatus = current.status.toLowerCase();
+        if (["rented", "booked"].includes(currentStatus)) {
+          throw new VehicleUpdateError("This vehicle is currently controlled by an active rental/booking. Its operational status cannot be changed manually.", 409);
+        }
+        if (!["available", "inactive", "maintenance"].includes(currentStatus)) {
+          throw new VehicleUpdateError("This vehicle status is controlled automatically and cannot be changed manually.", 409);
+        }
+      }
+
+      const [row] = await db.update(vehicles).set({
+        ...values,
+        ...(requestedStatus !== undefined ? { status: requestedStatus } : {}),
+      }).where(eq(vehicles.id, id)).returning();
       return row;
     });
     if (!saved) return Response.json({ ok: false, error: "Vehicle not found." }, { status: 404 });

@@ -2,12 +2,21 @@ import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { vehicles } from "@/db/schema";
 
-type VehicleBody = { name?: unknown; make?: unknown; registrationNumber?: unknown; imageUrl?: unknown; fuelType?: unknown; transmission?: unknown; modelYear?: unknown; dailyRate?: unknown; odometerKm?: unknown; allowedKmPerDay?: unknown; extraKmRate?: unknown; mileageKmPerLitre?: unknown };
+type VehicleBody = { name?: unknown; make?: unknown; registrationNumber?: unknown; imageUrl?: unknown; fuelType?: unknown; transmission?: unknown; modelYear?: unknown; dailyRate?: unknown; odometerKm?: unknown; allowedKmPerDay?: unknown; extraKmRate?: unknown; mileageKmPerLitre?: unknown; status?: unknown };
 class RequestError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
 const text = (value: unknown, field: string) => { if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`); return value.trim(); };
 const optionalText = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 const number = (value: unknown, field: string, minimum = 0) => { const n = Number(value); if (!Number.isFinite(n) || n < minimum) throw new RequestError(`${field} must be ${minimum} or greater.`); return Math.round(n * 100) / 100; };
 const whole = (value: unknown, field: string, minimum = 0) => { const n = Number(value); if (!Number.isInteger(n) || n < minimum) throw new RequestError(`${field} must be a whole number of ${minimum} or greater.`); return n; };
+
+const manualVehicleStatus = (value: unknown) => {
+  if (value === undefined || value === null || value === "") return "available";
+  if (typeof value !== "string") throw new RequestError("Vehicle status is invalid.");
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "active") return "available";
+  if (["available", "inactive", "maintenance"].includes(normalized)) return normalized;
+  throw new RequestError("Vehicle status can only be Active, Inactive or Maintenance.");
+};
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +33,7 @@ export async function POST(request: Request) {
     const extraKmRate = number(body.extraKmRate ?? 0, "Extra KM rate");
     const mileageKmPerLitre = number(body.mileageKmPerLitre ?? 1, "Mileage", 0.1);
     const imageUrl = optionalText(body.imageUrl);
+    const status = manualVehicleStatus(body.status);
 
     const saved = await withRequestDb(async (db) => {
       const [duplicate] = await db
@@ -48,7 +58,7 @@ export async function POST(request: Request) {
           allowedKmPerDay,
           extraKmRate,
           mileageKmPerLitre,
-          status: "available",
+          status,
         })
         .returning({ id: vehicles.id, name: vehicles.name, registrationNumber: vehicles.registrationNumber });
 
