@@ -2229,3 +2229,56 @@ body { font-size: 15px; line-height: 1.45; }
   }
 }
 
+
+
+/* MECARDEE_RESTORE_RENTAL_EDIT_CUSTOMER_DELETE_CSS_V8_9_26 */
+.transaction-kind.rental {
+  color: #176b87;
+  background: #e9f7fb;
+}
+.rental-schedule-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #315fa6;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.rental-schedule-status.overdue {
+  background: #fff0ee;
+  color: #b64b43;
+}
+.rental-schedule-status.today {
+  background: #fff7df;
+  color: #9a6712;
+}
+.rental-edit-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid #dce8ee;
+  border-radius: 12px;
+  background: #f6fbfd;
+  color: #52616b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.rental-edit-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #176b87;
+}
+@media (max-width: 720px) {
+  .rental-schedule-row .transaction-side {
+    align-items: flex-end;
+  }
+  .rental-schedule-row .transaction-actions button {
+    min-height: 34px;
+  }
+}
+

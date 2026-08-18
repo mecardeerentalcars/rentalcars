@@ -1,5 +1,7 @@
 "use client";
 
+// MECARDEE_RESTORE_RENTAL_EDIT_CUSTOMER_DELETE_V8_9_26
+
 // MECARDEE_CUSTOMER_DELETE_DUPLICATE_PHONE_V8_9_22
 
 // MECARDEE_AUTO_PORTRAIT_VEHICLE_PHOTOS_V8_9_21
@@ -540,7 +542,7 @@ export default function Home() {
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const label = booking.status === "cancelled" ? "Booking update" : "Booking confirmation";
     const text = `Mecardee Rental — ${label}\n\nHello ${booking.customer},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nBooking amount: ${money(booking.amount)}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replaceAll("_", " ")}\n\nPlease reply if any detail needs correction.`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    openWhatsAppSafely(phone, text);
   }
 
   function openCustomerEdit(customer: CustomerRow) {
@@ -550,7 +552,7 @@ export default function Home() {
   }
 
   async function deleteCustomer(customer: CustomerRow) {
-    const confirmed = window.confirm(`Delete ${customer.name}?\n\nThis will permanently remove the customer only if there is no booking or rental history. This cannot be undone.`);
+    const confirmed = window.confirm(`Delete ${customer.name}?\n\nThis will permanently remove the customer and any booking-only reservations linked to them. Customers with rental history cannot be deleted. This cannot be undone.`);
     if (!confirmed) return;
     try {
       const response = await fetch("/api/customers/delete", {
@@ -580,11 +582,33 @@ export default function Home() {
     setDialog("payment");
   }
 
+  // MECARDEE_IPHONE_WHATSAPP_FIX_V8_9_27
+  function openWhatsAppSafely(phone: string, text: string) {
+    const encodedText = encodeURIComponent(text);
+    const webUrl = `https://wa.me/${phone}?text=${encodedText}`;
+    const appUrl = `whatsapp://send?phone=${phone}&text=${encodedText}`;
+
+    const isIOS =
+      /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    if (isIOS) {
+      // iOS Safari/Chrome can leave a new blank tab behind when wa.me is opened
+      // with window.open(). Launch WhatsApp from the CURRENT tab instead.
+      // When the user returns from WhatsApp, the Mecardee page remains the tab.
+      window.location.href = appUrl;
+      return;
+    }
+
+    // Keep the existing Android/desktop behaviour unchanged.
+    window.open(webUrl, "_blank", "noopener,noreferrer");
+  }
+
   function sendWhatsApp(rental: Rental, purpose = "rental reminder") {
     const digits = (rental.whatsappNumber || rental.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${rental.customer}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}\nBalance due: ${money(rental.balance)}`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    openWhatsAppSafely(phone, text);
   }
 
   function sendBookingWhatsApp(reservation: Reservation, purpose: "confirmation" | "reminder" = "confirmation") {
@@ -594,7 +618,7 @@ export default function Home() {
     const intro = purpose === "reminder" ? "This is a reminder for your upcoming vehicle booking." : "Your vehicle booking is reserved.";
     const closing = purpose === "reminder" ? "Please reply to confirm that the pickup details are still correct." : "Please reply to confirm the booking details.";
     const text = `Mecardee Rental - ${label}\n\nHello ${reservation.customer},\n${intro}\n\nVehicle: ${reservation.vehicle} (${reservation.plate})\nBooking: ${reservation.bookingNumber}\nPickup: ${reservation.start}\nExpected return: ${reservation.returnDate}\nRental days: ${reservation.days}\nEstimated rent: ${money(reservation.amount)}\n\n${closing}`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    openWhatsAppSafely(phone, text);
   }
 
 
@@ -685,7 +709,7 @@ export default function Home() {
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
+          {view === "settings" && <SettingsView rentals={rentalList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
         </div>
       </main>
 
@@ -1414,9 +1438,9 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   </>;
 }
 
-function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
+function SettingsView({ rentals, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
-  const [tab, setTab] = useState<"payments" | "expenses" | "history">("payments");
+  const [tab, setTab] = useState<"rentals" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1425,6 +1449,8 @@ function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | 
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ type: "payment" | "expense"; id: string; number: string; label: string } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [rentalEditTarget, setRentalEditTarget] = useState<Rental | null>(null);
+  const [rentalScheduleForm, setRentalScheduleForm] = useState({ startAt: "", endAt: "" });
 
   const formatWhen = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
   const toLocalDateTimeInput = (value: string) => {
@@ -1522,31 +1548,77 @@ function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | 
     }
   };
 
+  const editableRentals = rentals.filter((rental) => rental.state !== "completed");
+
+  const openRentalScheduleEdit = (rental: Rental) => {
+    setError("");
+    setRentalEditTarget(rental);
+    setRentalScheduleForm({
+      startAt: toLocalDateTimeInput(rental.startAt),
+      endAt: toLocalDateTimeInput(rental.endAt),
+    });
+  };
+
+  const saveRentalSchedule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rentalEditTarget) return;
+    setBusy(true);
+    setError("");
+    try {
+      const startAt = new Date(rentalScheduleForm.startAt);
+      const endAt = new Date(rentalScheduleForm.endAt);
+      if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) throw new Error("Please enter valid rental dates and times.");
+      if (endAt <= startAt) throw new Error("Expected return must be after the start date/time.");
+      const response = await fetch("/api/settings/rentals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: rentalEditTarget.databaseId, startAt: startAt.toISOString(), endAt: endAt.toISOString() }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; rentalDays?: number; baseRentalAmount?: number }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not update rental schedule.");
+      setRentalEditTarget(null);
+      onSync();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not update rental schedule.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const paymentRows = data.payments;
   const expenseRows = data.expenses;
   const historyRows = data.history;
 
   return <>
-    <PageHeading eyebrow="APP" title="Settings" description="Sync live data and safely correct financial transactions without touching the database directly." />
+    <PageHeading eyebrow="APP" title="Settings" description="Sync live data, safely correct transactions, and adjust active rental schedules without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe transaction manager</h3><p>Only payments and expenses can be edited or deleted here. Rentals, return settlements, extensions, customers and vehicles are protected so the rental workflow cannot be broken.</p></div></article>
+      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active rental start/return dates can be corrected here. Completed settlements stay locked. Payments and expenses keep their existing edit/delete history protection.</p></div></article>
     </section>
 
     <section className="data-panel transaction-manager">
-      <div className="panel-heading transaction-manager-head"><div><h2>Transaction manager</h2><p>Latest 100 payments and expenses · every delete is archived first</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
+      <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Active rental schedules + latest payments and expenses · completed rentals stay protected</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
       <div className="transaction-tabs">
+        <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Rental dates <span>{editableRentals.length}</span></button>
         <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}><WalletCards size={15} />Payments <span>{paymentRows.length}</span></button>
         <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}><ReceiptIndianRupee size={15} />Expenses <span>{expenseRows.length}</span></button>
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}><History size={15} />Delete history <span>{historyRows.length}</span></button>
       </div>
       {error && <p className="form-error transaction-manager-error">{error}</p>}
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
+        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small></div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit date & time</button></div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
       </div>}
     </section>
+
+    {rentalEditTarget && <DialogShell title="Edit rental date & time" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.customer}`} close={() => !busy && setRentalEditTarget(null)}><form className="simple-form" onSubmit={saveRentalSchedule}>
+      <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Schedule-only correction</strong><small>Vehicle, customer, payments, kilometres and settlement data cannot be changed here. Completed rentals are locked.</small></span></div>
+      <div className="field-grid"><label className="field"><span>Rental start date / time</span><input required type="datetime-local" value={rentalScheduleForm.startAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startAt: event.target.value }))} /></label><label className="field"><span>Expected return date / time</span><input required type="datetime-local" value={rentalScheduleForm.endAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, endAt: event.target.value }))} /></label></div>
+      <div className="rental-edit-note"><CalendarDays size={16} /><span>Rental days and rental amount will recalculate automatically from the new schedule using the same daily rate and existing discount. The change is blocked if it overlaps another booking/rental or would make existing payments exceed the recalculated bill.</span></div>
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy}><Check size={15} />{busy ? "Saving…" : "Save rental schedule"}</button></div>
+    </form></DialogShell>}
 
     {editTarget && <DialogShell title={`Edit ${editTarget.type}`} subtitle="Linked rental/customer/vehicle stays locked for workflow safety" close={() => !busy && setEditTarget(null)}><form className="simple-form" onSubmit={saveEdit}>
       {editTarget.type === "payment" ? <>
