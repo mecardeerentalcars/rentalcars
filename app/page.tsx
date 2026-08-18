@@ -29,11 +29,14 @@ import {
   Menu,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Phone,
   Plus,
   ReceiptIndianRupee,
   RefreshCw,
+  RotateCcw,
   Search,
+  History,
   Send,
   Settings2,
   ShieldCheck,
@@ -41,6 +44,7 @@ import {
   Sparkles,
   TrendingDown,
   TrendingUp,
+  Trash2,
   UserRound,
   UserRoundPlus,
   UsersRound,
@@ -136,6 +140,22 @@ type PaymentRow = {
 
 type ExpenseRow = {
   id: string; rawDate: string; date: string; category: string; vehicle: string; vehicleId: string | null; description: string; method: string; amount: number; createdBy: string;
+};
+
+type ManagedPaymentTransaction = {
+  id: string; number: string; bookingNumber: string; bookingId: string; customer: string; customerId: string; amount: number; method: string; type: string; notes: string | null; receivedBy: string; receivedAt: string;
+};
+
+type ManagedExpenseTransaction = {
+  id: string; number: string; expenseDate: string; category: string; vehicle: string; plate: string; vehicleId: string | null; amount: number; description: string | null; method: string; createdBy: string; createdAt: string;
+};
+
+type DeletedTransactionHistory = {
+  id: string; transactionType: "payment" | "expense"; transactionId: string; transactionNumber: string; displayLabel: string; reason: string; deletedBy: string; deletedAt: string; restoredAt: string | null; restoredBy: string | null;
+};
+
+type TransactionManagerData = {
+  ok: boolean; error?: string; payments: ManagedPaymentTransaction[]; expenses: ManagedExpenseTransaction[]; history: DeletedTransactionHistory[];
 };
 
 type ReminderRow = { key: string; tone: string; type: string; title: string; text: string; rentalId?: string };
@@ -920,11 +940,150 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
 function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
+  const [tab, setTab] = useState<"payments" | "expenses" | "history">("payments");
+  const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ type: "payment" | "expense"; record: ManagedPaymentTransaction | ManagedExpenseTransaction } | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "payment" | "expense"; id: string; number: string; label: string } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+
+  const formatWhen = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+  const toLocalDateTimeInput = (value: string) => {
+    const date = new Date(value);
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+    return local.toISOString().slice(0, 16);
+  };
+
+  const loadTransactions = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/settings/transactions", { cache: "no-store" });
+      const payload = await readApiResponse<TransactionManagerData>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load transactions.");
+      setData(payload);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load transactions.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadTransactions(); }, [loadTransactions]);
+
+  const openEdit = (type: "payment" | "expense", record: ManagedPaymentTransaction | ManagedExpenseTransaction) => {
+    setError("");
+    setEditTarget({ type, record });
+    if (type === "payment") {
+      const payment = record as ManagedPaymentTransaction;
+      setEditForm({ amount: String(payment.amount), method: payment.method, notes: payment.notes ?? "", receivedAt: toLocalDateTimeInput(payment.receivedAt) });
+    } else {
+      const expense = record as ManagedExpenseTransaction;
+      setEditForm({ amount: String(expense.amount), method: expense.method, description: expense.description ?? "", category: expense.category, expenseDate: expense.expenseDate });
+    }
+  };
+
+  const saveEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editTarget) return;
+    setBusy(true);
+    setError("");
+    try {
+      const body = editTarget.type === "payment"
+        ? { type: "payment", id: editTarget.record.id, amount: Number(editForm.amount), method: editForm.method, notes: editForm.notes, receivedAt: new Date(editForm.receivedAt).toISOString() }
+        : { type: "expense", id: editTarget.record.id, amount: Number(editForm.amount), method: editForm.method, description: editForm.description, category: editForm.category, expenseDate: editForm.expenseDate };
+      const response = await fetch("/api/settings/transactions", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not edit the transaction.");
+      setEditTarget(null);
+      await loadTransactions();
+      onSync();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not edit the transaction.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const safeDelete = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!deleteTarget) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/settings/transactions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: deleteTarget.type, id: deleteTarget.id, reason: deleteReason }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not delete the transaction.");
+      setDeleteTarget(null);
+      setDeleteReason("");
+      setTab("history");
+      await loadTransactions();
+      onSync();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete the transaction.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreDeleted = async (history: DeletedTransactionHistory) => {
+    if (!window.confirm(`Restore ${history.transactionNumber || history.transactionType}?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/settings/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", historyId: history.id }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not restore the transaction.");
+      await loadTransactions();
+      onSync();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "Could not restore the transaction.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const paymentRows = data.payments;
+  const expenseRows = data.expenses;
+  const historyRows = data.history;
+
   return <>
-    <PageHeading eyebrow="APP" title="Settings" description="Refresh the latest Mecardee data when needed." />
+    <PageHeading eyebrow="APP" title="Settings" description="Sync live data and safely correct financial transactions without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
+      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe transaction manager</h3><p>Only payments and expenses can be edited or deleted here. Rentals, return settlements, extensions, customers and vehicles are protected so the rental workflow cannot be broken.</p></div></article>
     </section>
+
+    <section className="data-panel transaction-manager">
+      <div className="panel-heading transaction-manager-head"><div><h2>Transaction manager</h2><p>Latest 100 payments and expenses · every delete is archived first</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
+      <div className="transaction-tabs">
+        <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}><WalletCards size={15} />Payments <span>{paymentRows.length}</span></button>
+        <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}><ReceiptIndianRupee size={15} />Expenses <span>{expenseRows.length}</span></button>
+        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}><History size={15} />Delete history <span>{historyRows.length}</span></button>
+      </div>
+      {error && <p className="form-error transaction-manager-error">{error}</p>}
+      {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
+        {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
+        {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
+        {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
+      </div>}
+    </section>
+
+    {editTarget && <DialogShell title={`Edit ${editTarget.type}`} subtitle="Linked rental/customer/vehicle stays locked for workflow safety" close={() => !busy && setEditTarget(null)}><form className="simple-form" onSubmit={saveEdit}>
+      {editTarget.type === "payment" ? <>
+        <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Protected link</strong><small>{(editTarget.record as ManagedPaymentTransaction).customer} · Rental {(editTarget.record as ManagedPaymentTransaction).bookingNumber}</small></span></div>
+        <div className="field-grid"><label className="field"><span>Amount (₹)</span><input required min="0.01" step="0.01" type="number" inputMode="decimal" value={editForm.amount ?? ""} onKeyDown={numericKeyOnly} onChange={(event) => setEditForm((current) => ({ ...current, amount: event.target.value }))} /></label><label className="field"><span>Payment method</span><select value={editForm.method ?? "Cash"} onChange={(event) => setEditForm((current) => ({ ...current, method: event.target.value }))}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label><label className="field span-2"><span>Received date / time</span><input required type="datetime-local" value={editForm.receivedAt ?? ""} onChange={(event) => setEditForm((current) => ({ ...current, receivedAt: event.target.value }))} /></label></div><label className="field"><span>Notes</span><textarea value={editForm.notes ?? ""} onChange={(event) => setEditForm((current) => ({ ...current, notes: event.target.value }))} /></label>
+      </> : <>
+        <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Protected link</strong><small>{(editTarget.record as ManagedExpenseTransaction).plate ? `Vehicle ${(editTarget.record as ManagedExpenseTransaction).plate}` : "General expense"} · vehicle link cannot be changed here</small></span></div>
+        <div className="field-grid"><label className="field"><span>Expense date</span><input required type="date" value={editForm.expenseDate ?? ""} onChange={(event) => setEditForm((current) => ({ ...current, expenseDate: event.target.value }))} /></label><label className="field"><span>Category</span><select value={editForm.category ?? "Other"} onChange={(event) => setEditForm((current) => ({ ...current, category: event.target.value }))}><option>Vehicle service</option><option>Repair</option><option>Insurance</option><option>Fuel</option><option>Cleaning</option><option>Office expense</option><option>Other</option></select></label><label className="field"><span>Amount (₹)</span><input required min="0.01" step="0.01" type="number" inputMode="decimal" value={editForm.amount ?? ""} onKeyDown={numericKeyOnly} onChange={(event) => setEditForm((current) => ({ ...current, amount: event.target.value }))} /></label><label className="field"><span>Payment method</span><select value={editForm.method ?? "Cash"} onChange={(event) => setEditForm((current) => ({ ...current, method: event.target.value }))}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label></div><label className="field"><span>Description</span><textarea value={editForm.description ?? ""} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
+      </>}
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy}><Check size={15} />{busy ? "Saving…" : "Save correction"}</button></div>
+    </form></DialogShell>}
+
+    {deleteTarget && <DialogShell title="Delete transaction safely" subtitle={deleteTarget.number} close={() => !busy && setDeleteTarget(null)}><form className="simple-form" onSubmit={safeDelete}><div className="delete-warning"><AlertTriangle size={18} /><div><strong>{deleteTarget.label}</strong><p>This deletes only this {deleteTarget.type}. The rental, customer, vehicle, return settlement and other workflow records are not deleted. A complete copy is stored in Delete history first and can be restored.</p></div></div><label className="field"><span>Reason for deletion</span><textarea required minLength={3} value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)} placeholder="Example: Duplicate payment entered by mistake" /></label>{error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setDeleteTarget(null)} disabled={busy}>Cancel</button><button className="danger-button" type="submit" disabled={busy || deleteReason.trim().length < 3}><Trash2 size={15} />{busy ? "Deleting safely…" : "Delete transaction"}</button></div></form></DialogShell>}
   </>;
 }
 
@@ -1304,9 +1463,22 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
   const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
   const actualReturnMs = new Date(actualReturnIso).getTime();
   const scheduledReturnMs = new Date(rental.endAt).getTime();
+  const graceReturnMs = scheduledReturnMs + 3 * 60 * 60 * 1000;
   const rentalStartMs = new Date(rental.startAt).getTime();
   const returnBeforeStart = actualReturnMs < rentalStartMs;
   const earlyReturn = !returnBeforeStart && actualReturnMs < scheduledReturnMs;
+  const withinGracePeriod = !returnBeforeStart && actualReturnMs >= scheduledReturnMs && actualReturnMs <= graceReturnMs;
+  const returnDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const expectedReturnLabel = returnDateTimeFormatter.format(new Date(scheduledReturnMs));
+  const graceReturnLabel = returnDateTimeFormatter.format(new Date(graceReturnMs));
   const earlyReturnDays = earlyReturn ? Math.max(1, Math.ceil((scheduledReturnMs - actualReturnMs) / 86_400_000)) : 0;
   const bookedBaseRentalAmount = Math.max(0, rental.rentalAmount - rental.bookingDiscount);
   const bookingOtherCharges = Math.max(0, rental.otherCharges - rental.lateRentalCharge);
@@ -1382,7 +1554,13 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
   return <DialogShell title="Return vehicle" subtitle={`${rental.vehicle} · ${rental.plate}`} close={close} wide>
     <form className="return-form" onSubmit={confirmSettlement}>
       <div className="return-fields">
-        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Return inspection</h3><p>Actual return date and time default to now. Change them if the handover happened at a different time.</p></div></div><div className="field-grid three">
+        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Return inspection</h3><p>Actual return date and time default to now. Change them if the handover happened at a different time.</p></div></div>
+          <div className="return-deadline-card">
+            <div><span>Expected return</span><strong>{expectedReturnLabel}</strong></div>
+            <ArrowRight size={18} />
+            <div className="grace-deadline"><span>3-hour grace deadline</span><strong>{graceReturnLabel}</strong><small>Extra-day rent starts only after this time.</small></div>
+          </div>
+          <div className="field-grid three">
           <label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label>
           <label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label>
           <label className="field"><span>Actual Return Kilometer</span><input required min={rental.startingKilometer} type="number" placeholder="0" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label>
@@ -1393,7 +1571,7 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
           <label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label>
           <label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" placeholder="0" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
           <label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
-        </div>{returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the rental start.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {rentalCharge.chargeableRentalDays} chargeable day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(rentalCharge.baseRentalAmount)}. The original booking stays unchanged.</span></div>}</section>
+        </div>{returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the rental start.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {rentalCharge.chargeableRentalDays} chargeable day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(rentalCharge.baseRentalAmount)}. The original booking stays unchanged.</span></div>}{withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}</section>
         <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM, fuel shortage and late-day rent are automatic. A 3-hour grace period applies after the expected return time.</p></div></div><div className="charge-grid">
           <label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label>
           <label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label>

@@ -101,7 +101,12 @@ export function calculateLateRentalCharge(
   if (Number.isNaN(expected.getTime()) || Number.isNaN(actual.getTime())) {
     return { graceHours, lateMilliseconds: 0, extraRentalDays: 0, charge: 0 };
   }
-  const lateMilliseconds = Math.max(0, actual.getTime() - expected.getTime() - graceMs);
+  // The booked expected return time is not the charging cutoff. The customer
+  // gets the full grace period first. Example: expected 10:00 -> cutoff 13:00.
+  // At 13:00 there is still no late charge; the first extra day starts only
+  // after the cutoff.
+  const graceDeadlineMs = expected.getTime() + graceMs;
+  const lateMilliseconds = Math.max(0, actual.getTime() - graceDeadlineMs);
   const extraRentalDays = lateMilliseconds > 0 ? Math.ceil(lateMilliseconds / 86_400_000) : 0;
   return {
     graceHours,

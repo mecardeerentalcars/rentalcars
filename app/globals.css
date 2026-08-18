@@ -971,3 +971,79 @@ body { font-size: 15px; line-height: 1.45; }
   .history-row > span:nth-child(5) { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .history-row > span:nth-child(6) { grid-column: 1 / -1; grid-row: 3; }
 }
+
+/* v8.9.4 Safe Transaction Manager */
+.transaction-safety { align-items: flex-start; }
+.transaction-manager { margin-top: 18px; overflow: hidden; }
+.transaction-manager-head { gap: 12px; }
+.transaction-tabs { display: flex; gap: 8px; padding: 0 18px 14px; border-bottom: 1px solid var(--border, #e8e8ef); overflow-x: auto; }
+.transaction-tabs button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; border: 0; background: #f4f3fb; color: #4d4a62; border-radius: 12px; padding: 10px 12px; font-weight: 700; cursor: pointer; }
+.transaction-tabs button.active { background: #ece9ff; color: #5b4bdb; }
+.transaction-tabs button span { min-width: 20px; padding: 2px 6px; border-radius: 999px; background: rgba(255,255,255,.8); font-size: 11px; text-align: center; }
+.transaction-manager-error { margin: 14px 18px 0; }
+.transaction-list { display: grid; }
+.transaction-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid var(--border, #ececf2); }
+.transaction-row:last-child { border-bottom: 0; }
+.transaction-main { min-width: 0; display: flex; align-items: flex-start; gap: 11px; }
+.transaction-main > div { min-width: 0; display: grid; gap: 3px; }
+.transaction-main strong { color: #171522; }
+.transaction-main small { color: #777487; line-height: 1.35; overflow-wrap: anywhere; }
+.transaction-kind { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 11px; }
+.transaction-kind.payment { color: #5b4bdb; background: #efedff; }
+.transaction-kind.expense { color: #b65436; background: #fff0ea; }
+.transaction-kind.history { color: #6b6878; background: #f1f1f5; }
+.transaction-side { flex: 0 0 auto; display: grid; justify-items: end; gap: 8px; }
+.transaction-side > strong { font-size: 16px; }
+.transaction-actions { display: flex; gap: 7px; }
+.transaction-actions button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dddce7; background: white; color: #484557; border-radius: 9px; padding: 7px 9px; font-weight: 700; cursor: pointer; }
+.transaction-actions button.danger { color: #b23b36; border-color: #f0cbc8; background: #fffafa; }
+.transaction-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.transaction-empty { min-height: 110px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #7a7788; padding: 24px; text-align: center; }
+.history-status { display: inline-flex; border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.history-status.deleted { color: #a43631; background: #fff0ee; }
+.history-status.restored { color: #28734b; background: #eaf8f0; }
+.transaction-history-row.restored { opacity: .72; }
+.restored-note { color: #28734b !important; font-weight: 700; }
+.protected-link-note { display: flex; gap: 9px; align-items: flex-start; border: 1px solid #dedbf8; background: #f8f7ff; border-radius: 12px; padding: 11px 12px; color: #5145bd; }
+.protected-link-note span { display: grid; gap: 2px; }
+.protected-link-note small { color: #77728f; }
+.delete-warning { display: flex; gap: 10px; border: 1px solid #f1c7c3; background: #fff7f6; color: #9d3630; border-radius: 12px; padding: 12px; }
+.delete-warning > svg { flex: 0 0 auto; margin-top: 2px; }
+.delete-warning p { margin: 4px 0 0; color: #765b59; line-height: 1.45; }
+.danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 10px; padding: 10px 14px; background: #b93e38; color: white; font-weight: 800; cursor: pointer; }
+.danger-button:disabled { opacity: .55; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .transaction-manager { margin-top: 14px; }
+  .transaction-manager-head { align-items: flex-start; }
+  .transaction-tabs { padding: 0 12px 12px; }
+  .transaction-row { align-items: flex-start; padding: 14px 12px; gap: 10px; }
+  .transaction-side { gap: 7px; }
+  .transaction-actions { flex-direction: column; width: 88px; }
+  .transaction-actions button { justify-content: center; padding: 7px 8px; }
+  .transaction-main small { font-size: 11px; }
+  .transaction-side > strong { font-size: 14px; }
+  .transaction-history-row { flex-direction: column; }
+  .transaction-history-row .transaction-side { width: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .transaction-history-row .transaction-actions { width: auto; flex-direction: row; }
+}
+
+
+/* v8.9.5 Final Settlement grace deadline */
+.return-deadline-card {
+  display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 12px;
+  margin: 2px 0 12px; padding: 12px 14px; border: 1px solid #e2def8; background: #faf9ff; border-radius: 13px;
+}
+.return-deadline-card > div { min-width: 0; display: grid; gap: 3px; }
+.return-deadline-card span { color: #777287; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .035em; }
+.return-deadline-card strong { color: #272139; font-size: 13px; line-height: 1.3; }
+.return-deadline-card small { color: #6c6680; font-size: 10px; line-height: 1.35; }
+.return-deadline-card .grace-deadline strong { color: #5b4bdb; }
+.grace-return-note {
+  margin-top: 10px; padding: 10px 12px; border: 1px solid #ddd7ff; background: #f7f5ff;
+  color: #584bb5; border-radius: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 650;
+}
+@media (max-width: 520px) {
+  .return-deadline-card { grid-template-columns: 1fr; gap: 7px; }
+  .return-deadline-card > svg { display: none; }
+}
