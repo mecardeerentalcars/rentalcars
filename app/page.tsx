@@ -60,7 +60,7 @@ if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addV
 else pdfMakeClient.vfs = pdfFonts;
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts" | "reports" | "settings";
-type DialogType = null | "new-rental" | "new-booking" | "booking-detail" | "booking-start" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
+type DialogType = null | "new-rental" | "new-booking" | "booking-detail" | "booking-start" | "rental-detail" | "pending-payments" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
 type Rental = {
@@ -415,13 +415,10 @@ export default function Home() {
     const link = document.createElement("a"); link.href = url; link.download = `mecardee-payments-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
   }
 
-  async function manualSync() {
+  function manualSync() {
     if (syncing) return;
     setSyncing(true);
-    try {
-      await refreshData();
-      showToast("Mecardee synced");
-    } finally { setSyncing(false); }
+    window.location.reload();
   }
 
   async function installApp() {
@@ -488,7 +485,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
+          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} />}
@@ -507,6 +504,7 @@ export default function Home() {
       {dialog === "booking-start" && selectedReservation && <StartBookingDialog reservation={selectedReservation} vehicle={vehicleList.find((item) => item.id === selectedReservation.vehicleId) ?? null} close={() => setDialog("booking-detail")} done={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
+      {dialog === "pending-payments" && <PendingPaymentsDialog rentals={rentalList} close={() => setDialog(null)} receive={(rental) => { setSelectedRental(rental); setDialog("payment"); }} />}
       {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} />}
@@ -544,7 +542,7 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, goTo, sendWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
+function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openPendingPayments, goTo, sendWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   const stats = [
@@ -563,7 +561,7 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
       <h2>{metrics.overdue ? `${metrics.overdue} rental${metrics.overdue === 1 ? " needs" : "s need"} attention.` : "Your fleet is moving smoothly."}</h2>
       <p>{metrics.availableCars} car{metrics.availableCars === 1 ? " is" : "s are"} ready to rent. {metrics.returningToday ? `${metrics.returningToday} return${metrics.returningToday === 1 ? " is" : "s are"} due today.` : "No returns are due today."}</p>
       <div className="ai-brief-insights"><span><b>{money(metrics.outstanding)}</b><small>to collect</small></span><span><b>{metrics.availableCars}</b><small>cars ready</small></span><span><b>{metrics.overdue}</b><small>urgent task{metrics.overdue === 1 ? "" : "s"}</small></span></div>
-      <button disabled={!focus} onClick={() => focus && openRental(focus)}>Review today’s focus <ArrowRight size={15} /></button>
+      <button onClick={openPendingPayments}>Pending payments <ArrowRight size={15} /></button>
     </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span>{stat.label}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
     <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!focus} onClick={() => focus && openRental(focus)}>Review now <ArrowRight size={14} /></button></section>
@@ -1606,6 +1604,39 @@ function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp }: { ren
     <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span><h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental, completed ? "completed rental payment reminder" : "rental reminder")}><MessageCircle size={16} />WhatsApp</button></div></div>
     <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Settlement completed — return details are locked" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Rental days</small><strong>{rental.days} days</strong></div><div><small>Daily rate</small><strong>{money(rental.rate)}</strong></div><div><small>Starting odometer</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>Expected return KM</small><strong>{calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section></div><aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>{completed ? "Final settlement — payment only" : "Updated live"}</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button></aside></div>
     {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} />Extend rental</button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} />Return vehicle</button></footer>}
+  </DialogShell>;
+}
+
+function PendingPaymentsDialog({ rentals, close, receive }: { rentals: Rental[]; close: () => void; receive: (rental: Rental) => void }) {
+  const pending = rentals
+    .filter((rental) => rental.state === "completed" && rental.balance > 0)
+    .sort((a, b) => b.balance - a.balance);
+  const totalPending = pending.reduce((sum, rental) => sum + rental.balance, 0);
+
+  return <DialogShell title="Pending payments" subtitle="Completed rentals with an unpaid balance" close={close} wide>
+    <div className="pending-payments-dialog">
+      <div className="pending-payments-summary">
+        <span><small>Completed rentals pending</small><strong>{pending.length}</strong></span>
+        <span><small>Total to collect</small><strong>{money(totalPending)}</strong></span>
+      </div>
+      {pending.length ? <div className="pending-payments-list">
+        {pending.map((rental) => <article className="pending-payment-card" key={rental.id}>
+          <img src={rental.image} alt={`${rental.vehicle} ${rental.plate}`} />
+          <div className="pending-payment-main">
+            <strong>{rental.vehicle}</strong>
+            <small>{rental.plate} · {rental.id}</small>
+            <b>{rental.customer}</b>
+            <small>Returned: {rental.returnDate}</small>
+          </div>
+          <div className="pending-payment-money">
+            <span><small>Total</small><strong>{money(rental.total)}</strong></span>
+            <span><small>Paid</small><strong>{money(rental.paid)}</strong></span>
+            <span className="pending-balance"><small>Balance</small><strong>{money(rental.balance)}</strong></span>
+          </div>
+          <button className="primary-button pending-payment-action" onClick={() => receive(rental)}><CreditCard size={15} />Receive payment</button>
+        </article>)}
+      </div> : <div className="pending-payments-empty"><CheckCircle2 size={22} /><strong>All completed rentals are fully paid</strong><p>There are no completed rentals with a pending balance.</p></div>}
+    </div>
   </DialogShell>;
 }
 
