@@ -583,24 +583,23 @@ export default function Home() {
   }
 
   // MECARDEE_IPHONE_WHATSAPP_FIX_V8_9_27
+  // MECARDEE_IPHONE_WHATSAPP_NO_POPUP_V8_9_29
   function openWhatsAppSafely(phone: string, text: string) {
     const encodedText = encodeURIComponent(text);
     const webUrl = `https://wa.me/${phone}?text=${encodedText}`;
-    const appUrl = `whatsapp://send?phone=${phone}&text=${encodedText}`;
 
     const isIOS =
       /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
     if (isIOS) {
-      // iOS Safari/Chrome can leave a new blank tab behind when wa.me is opened
-      // with window.open(). Launch WhatsApp from the CURRENT tab instead.
-      // When the user returns from WhatsApp, the Mecardee page remains the tab.
-      window.location.href = appUrl;
+      // iPhone/iPad: use the normal HTTPS universal link in the CURRENT tab.
+      // This avoids both a blank new tab and the repeated external-app warning.
+      window.location.href = webUrl;
       return;
     }
 
-    // Keep the existing Android/desktop behaviour unchanged.
+    // Android and desktop keep the existing new-tab behaviour.
     window.open(webUrl, "_blank", "noopener,noreferrer");
   }
 
