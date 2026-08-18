@@ -504,10 +504,13 @@ export default function Home() {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
-  function sendBookingWhatsApp(reservation: Reservation) {
+  function sendBookingWhatsApp(reservation: Reservation, purpose: "confirmation" | "reminder" = "confirmation") {
     const digits = (reservation.whatsappNumber || reservation.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
-    const text = `Mecardee Rental — Booking confirmation\n\nHello ${reservation.customer},\nYour vehicle booking is reserved.\n\nVehicle: ${reservation.vehicle} (${reservation.plate})\nBooking: ${reservation.bookingNumber}\nPickup: ${reservation.start}\nExpected return: ${reservation.returnDate}\nRental days: ${reservation.days}\nEstimated rent: ${money(reservation.amount)}\n\nPlease reply to confirm the booking details.`;
+    const label = purpose === "reminder" ? "Upcoming booking reminder" : "Booking confirmation";
+    const intro = purpose === "reminder" ? "This is a reminder for your upcoming vehicle booking." : "Your vehicle booking is reserved.";
+    const closing = purpose === "reminder" ? "Please reply to confirm that the pickup details are still correct." : "Please reply to confirm the booking details.";
+    const text = `Mecardee Rental - ${label}\n\nHello ${reservation.customer},\n${intro}\n\nVehicle: ${reservation.vehicle} (${reservation.plate})\nBooking: ${reservation.bookingNumber}\nPickup: ${reservation.start}\nExpected return: ${reservation.returnDate}\nRental days: ${reservation.days}\nEstimated rent: ${money(reservation.amount)}\n\n${closing}`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
@@ -591,7 +594,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
+          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openNewBooking={newBookingFromTab} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "bookings" && <BookingsView bookings={bookingList} vehicles={vehicleList} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
@@ -655,9 +658,26 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation) => void }) {
+function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
+  // MECARDEE_BOOKING_PRIORITY_DASHBOARD_V8_9_17
+  const bookingBriefNow = Date.now();
+  const upcomingBookings = reservations
+    .filter((booking) => new Date(booking.endAt).getTime() >= bookingBriefNow)
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+  const nearestBookings = upcomingBookings.slice(0, 3);
+  const bookingMoment = (booking: Reservation) => {
+    const startMs = new Date(booking.startAt).getTime();
+    const dateKey = indiaDateKey(booking.startAt);
+    const todayKey = indiaDateKey(new Date(bookingBriefNow));
+    const tomorrowKey = indiaDateKey(new Date(bookingBriefNow + 86400000));
+    const time = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).format(new Date(booking.startAt));
+    if (startMs <= bookingBriefNow) return `Pickup due - ${time}`;
+    if (dateKey === todayKey) return `Today - ${time}`;
+    if (dateKey === tomorrowKey) return `Tomorrow - ${time}`;
+    return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).format(new Date(booking.startAt));
+  };
   const stats = [
     { label: "Total cars", value: String(metrics.totalCars), note: "Registered fleet", icon: CarFront, tone: "neutral" },
     { label: "Available", value: String(metrics.availableCars), note: "Ready to rent", icon: CheckCircle2, tone: "green" },
@@ -668,13 +688,36 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
   ];
   return <>
     <PageHeading eyebrow={dateLabel} title="Good morning, Admin" description="Here’s what needs your attention today." action={<button className="mobile-new" onClick={openNew}><Plus size={16} />New rental</button>} />
-    <section className="ai-brief-card">
+    <section className="ai-brief-card booking-brief-card">
       <div className="ai-glow ai-glow-one" /><div className="ai-glow ai-glow-two" />
-      <div className="ai-brief-top"><span><Sparkles size={14} />Smart briefing</span><i>Live</i></div>
-      <h2>{metrics.overdue ? `${metrics.overdue} rental${metrics.overdue === 1 ? " needs" : "s need"} attention.` : "Your fleet is moving smoothly."}</h2>
-      <p>{metrics.availableCars} car{metrics.availableCars === 1 ? " is" : "s are"} ready to rent. {metrics.returningToday ? `${metrics.returningToday} return${metrics.returningToday === 1 ? " is" : "s are"} due today.` : "No returns are due today."}</p>
-      <div className="ai-brief-insights"><span><b>{money(metrics.outstanding)}</b><small>to collect</small></span><span><b>{metrics.availableCars}</b><small>cars ready</small></span><span><b>{metrics.overdue}</b><small>urgent task{metrics.overdue === 1 ? "" : "s"}</small></span></div>
-      <button onClick={openPendingPayments}>Pending payments <ArrowRight size={15} /></button>
+      <div className="booking-brief-header">
+        <div className="booking-brief-label"><span><CalendarRange size={14} />Booking priority</span><i>Live</i></div>
+        <div className="booking-brief-actions">
+          <button type="button" onClick={openNew} title="New rental"><CarFront size={16} /><span>New rental</span></button>
+          <button type="button" onClick={openNewBooking} title="New booking"><CalendarDays size={16} /><span>New booking</span></button>
+        </div>
+      </div>
+      <div className="booking-brief-heading">
+        <div><small>Nearest bookings in pickup order</small><h2>{nearestBookings.length ? "What is coming next" : "No upcoming bookings"}</h2></div>
+        <span>{upcomingBookings.length ? `${upcomingBookings.length} scheduled` : "Fleet clear"}</span>
+      </div>
+      {nearestBookings.length ? <div className="booking-priority-list">
+        {nearestBookings.map((booking, index) => <article className={`booking-priority-item ${index === 0 ? "is-next" : ""}`} key={booking.id}>
+          <button type="button" className="booking-priority-open" onClick={() => openReservation(booking)}>
+            <span className="booking-priority-order">{index === 0 ? "NEXT" : `#${index + 1}`}</span>
+            <img src={booking.image} alt="" />
+            <span className="booking-priority-body">
+              <span className="booking-priority-car"><strong>{booking.vehicle}</strong><small>{booking.plate}</small></span>
+              <span className="booking-priority-customer"><UserRound size={13} />{booking.customer}</span>
+              <span className="booking-priority-time"><b>{bookingMoment(booking)}</b><small>{booking.start} to {booking.returnDate}</small></span>
+            </span>
+          </button>
+          <button type="button" className="booking-priority-whatsapp" title="Send WhatsApp reminder" aria-label={`Send WhatsApp reminder to ${booking.customer}`} onClick={() => sendBookingWhatsApp(booking, "reminder")}><MessageCircle size={17} /><span>Reminder</span></button>
+        </article>)}
+      </div> : <div className="booking-brief-empty"><span><CalendarRange size={22} /></span><div><strong>No customer is waiting for an upcoming pickup.</strong><small>Create a booking now and it will appear here automatically.</small></div></div>}
+      <div className="booking-brief-footer">
+        <button type="button" onClick={openPendingPayments}><IndianRupee size={15} /><span>Pending payments</span><strong>{money(metrics.outstanding)}</strong><ArrowRight size={15} /></button>
+      </div>
     </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span>{stat.label}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
     <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>

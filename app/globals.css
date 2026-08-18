@@ -1690,3 +1690,344 @@ body { font-size: 15px; line-height: 1.45; }
   .booking-calendar-day button span { font-size: 6.5px; }
 }
 
+
+
+/* MECARDEE_BOOKING_PRIORITY_DASHBOARD_CSS_V8_9_17 */
+.booking-brief-card {
+  padding: 22px 24px 18px;
+  background:
+    radial-gradient(circle at 88% 4%, rgba(119, 99, 236, .31), transparent 25%),
+    linear-gradient(135deg, #171a2f 0%, #272653 48%, #155153 115%);
+}
+.booking-brief-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.booking-brief-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.booking-brief-label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #ddd8ff;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .75px;
+  text-transform: uppercase;
+}
+.booking-brief-label > i {
+  padding: 5px 8px;
+  color: #b9f0da;
+  background: rgba(110,224,183,.12);
+  border: 1px solid rgba(140,239,203,.16);
+  border-radius: 999px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+.booking-brief-actions {
+  display: flex;
+  gap: 8px;
+}
+.booking-brief-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 12px;
+  background: rgba(255,255,255,.09);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  transition: transform .16s ease, background .16s ease;
+}
+.booking-brief-actions button:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,.15);
+}
+.booking-brief-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 20px 0 12px;
+}
+.booking-brief-heading small {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(234,235,247,.65);
+  font-size: 10px;
+  font-weight: 700;
+}
+.booking-brief-card .booking-brief-heading h2 {
+  margin: 0;
+  max-width: none;
+  color: white;
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 780;
+  line-height: 1.05;
+  letter-spacing: -.55px;
+}
+.booking-brief-heading > span {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  color: #d8d9e8;
+  font-size: 9px;
+  font-weight: 800;
+}
+.booking-priority-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.booking-priority-item {
+  min-width: 0;
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 16px;
+  background: rgba(255,255,255,.065);
+  backdrop-filter: blur(8px);
+}
+.booking-priority-item.is-next {
+  border-color: rgba(191,181,255,.45);
+  background: linear-gradient(145deg, rgba(132,112,242,.18), rgba(255,255,255,.07));
+  box-shadow: inset 0 0 0 1px rgba(174,160,255,.08);
+}
+.booking-priority-open {
+  min-width: 0;
+  width: 100%;
+  padding: 11px;
+  border: 0;
+  background: transparent;
+  color: white;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 8px 10px;
+  text-align: left;
+}
+.booking-priority-open:hover { background: rgba(255,255,255,.035); }
+.booking-priority-order {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-width: 34px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.09);
+  color: #cfc8ff;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .55px;
+  text-align: center;
+}
+.booking-priority-item.is-next .booking-priority-order {
+  background: #8270ee;
+  color: white;
+}
+.booking-priority-open > img {
+  width: 56px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 11px;
+  background: rgba(255,255,255,.08);
+}
+.booking-priority-body {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.booking-priority-car,
+.booking-priority-time {
+  min-width: 0;
+  display: grid;
+}
+.booking-priority-car strong {
+  overflow: hidden;
+  color: white;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booking-priority-car small,
+.booking-priority-time small {
+  overflow: hidden;
+  margin-top: 1px;
+  color: rgba(232,234,246,.59);
+  font-size: 8px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.booking-priority-customer {
+  min-width: 0;
+  color: #e8e9f3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 650;
+}
+.booking-priority-time b {
+  color: #d9d3ff;
+  font-size: 9px;
+  font-weight: 850;
+}
+.booking-priority-whatsapp {
+  width: calc(100% - 18px);
+  min-height: 34px;
+  margin: 0 9px 9px;
+  padding: 0 9px;
+  border: 1px solid rgba(112,232,169,.18);
+  border-radius: 10px;
+  background: rgba(52,196,120,.11);
+  color: #a7f0cb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 850;
+}
+.booking-priority-whatsapp:hover { background: rgba(52,196,120,.18); }
+.booking-brief-empty {
+  min-height: 98px;
+  padding: 14px;
+  border: 1px dashed rgba(255,255,255,.15);
+  border-radius: 15px;
+  background: rgba(255,255,255,.05);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.booking-brief-empty > span {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  background: rgba(130,112,238,.18);
+  color: #cfc8ff;
+  display: grid;
+  place-items: center;
+}
+.booking-brief-empty strong,
+.booking-brief-empty small { display: block; }
+.booking-brief-empty strong { color: white; font-size: 12px; }
+.booking-brief-empty small { margin-top: 3px; color: rgba(232,234,246,.62); font-size: 9px; }
+.booking-brief-footer {
+  display: flex;
+  margin-top: 11px;
+}
+.booking-brief-footer button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  background: rgba(255,255,255,.085);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.booking-brief-footer button strong {
+  margin-left: 2px;
+  color: #fff;
+  font-size: 11px;
+}
+.booking-brief-footer button svg:last-child {
+  margin-left: 2px;
+  opacity: .75;
+}
+
+@media (max-width: 900px) {
+  .booking-priority-list { grid-template-columns: 1fr; }
+  .booking-priority-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    align-items: stretch;
+  }
+  .booking-priority-whatsapp {
+    width: 44px;
+    min-height: 44px;
+    margin: 8px 8px 8px 0;
+    padding: 0;
+    align-self: center;
+  }
+  .booking-priority-whatsapp span { display: none; }
+  .booking-priority-open {
+    grid-template-columns: 48px minmax(0, 1fr);
+    padding: 9px;
+  }
+  .booking-priority-open > img { width: 48px; height: 44px; }
+}
+
+@media (max-width: 720px) {
+  .booking-brief-card {
+    padding: 16px;
+    border-radius: 22px;
+  }
+  .booking-brief-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .booking-brief-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .booking-brief-actions button {
+    min-height: 42px;
+    padding: 0 9px;
+    font-size: 10px;
+  }
+  .booking-brief-heading {
+    align-items: start;
+    margin: 17px 0 10px;
+  }
+  .booking-brief-card .booking-brief-heading h2 {
+    font-size: 22px;
+  }
+  .booking-brief-heading > span {
+    margin-top: 2px;
+    font-size: 8px;
+  }
+  .booking-priority-list { gap: 7px; }
+  .booking-priority-item { border-radius: 14px; }
+  .booking-priority-open { min-height: 78px; }
+  .booking-priority-order { font-size: 7px; }
+  .booking-priority-car strong { font-size: 12px; }
+  .booking-priority-customer,
+  .booking-priority-time b { font-size: 9px; }
+  .booking-priority-time small { font-size: 8px; white-space: normal; }
+  .booking-brief-footer button {
+    width: 100%;
+    justify-content: flex-start;
+    min-height: 42px;
+  }
+  .booking-brief-footer button svg:last-child { margin-left: auto; }
+}
+
+@media (max-width: 420px) {
+  .booking-brief-heading > span { display: none; }
+  .booking-brief-actions button span { font-size: 9px; }
+  .booking-priority-open {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .booking-priority-open > img { width: 44px; height: 42px; }
+}
