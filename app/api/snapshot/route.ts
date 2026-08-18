@@ -29,6 +29,12 @@ const dateKey = (value: Date) => {
 
 const monthKey = (value: Date) => dateKey(value).slice(0, 7);
 
+const calendarDayDistance = (fromKey: string, toKey: string) => {
+  const [fy, fm, fd] = fromKey.split("-").map(Number);
+  const [ty, tm, td] = toKey.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+};
+
 const formatDateTime = (value: Date, todayKey: string) => {
   const sameDay = dateKey(value) === todayKey;
   const time = new Intl.DateTimeFormat("en-IN", {
@@ -498,12 +504,25 @@ export async function GET() {
         ? 100
         : 0;
 
-    const reminders: { key: string; tone: string; type: string; title: string; text: string; rentalId?: string }[] = [];
+    const reminders: { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string }[] = [];
     for (const rental of overdueRentals) {
       reminders.push({ key: `overdue:${rental.id}`, tone: "urgent", type: "overdue", title: `${rental.vehicle} is overdue`, text: rental.statusText, rentalId: rental.id });
     }
     for (const rental of returningToday) {
       reminders.push({ key: `today:${rental.id}`, tone: "upcoming", type: "today", title: `${rental.vehicle} returns today`, text: rental.returnDate, rentalId: rental.id });
+    }
+    for (const reservation of reservations) {
+      const daysUntilBooking = calendarDayDistance(today, dateKey(new Date(reservation.startAt)));
+      if (daysUntilBooking === 2) {
+        reminders.push({
+          key: `booking:${reservation.id}`,
+          tone: "upcoming",
+          type: "booking",
+          title: `${reservation.vehicle} booking in 2 days`,
+          text: `${reservation.customer} · pickup ${reservation.start}`,
+          reservationId: reservation.id,
+        });
+      }
     }
     for (const rental of outstandingRentals.sort((a, b) => b.balance - a.balance).slice(0, 2)) {
       reminders.push({ key: `payment:${rental.id}`, tone: "normal", type: "payment", title: `Payment pending from ${rental.customer}`, text: `${rental.id} · ₹${rental.balance.toLocaleString("en-IN")} due`, rentalId: rental.id });

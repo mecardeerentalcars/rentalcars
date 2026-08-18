@@ -60,7 +60,7 @@ if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addV
 else pdfMakeClient.vfs = pdfFonts;
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts" | "reports" | "settings";
-type DialogType = null | "new-rental" | "new-booking" | "booking-detail" | "booking-start" | "rental-detail" | "pending-payments" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
+type DialogType = null | "new-rental" | "new-booking" | "booking-detail" | "booking-start" | "rental-detail" | "pending-payments" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer" | "customer-edit";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
 type Rental = {
@@ -180,7 +180,7 @@ type TransactionManagerData = {
   ok: boolean; error?: string; payments: ManagedPaymentTransaction[]; expenses: ManagedExpenseTransaction[]; history: DeletedTransactionHistory[];
 };
 
-type ReminderRow = { key: string; tone: string; type: string; title: string; text: string; rentalId?: string };
+type ReminderRow = { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string };
 
 type Metrics = {
   totalCars: number; availableCars: number; onRentCars: number; maintenanceCars: number; roadReadyPercent: number; activeRentals: number; returningToday: number; overdue: number; outstanding: number; outstandingRentals: number; outstandingCustomers: number; totalCustomers: number; newCustomersThisMonth: number; currentlyRentingCustomers: number; collectedToday: number; paymentsToday: number; expensesToday: number; netToday: number; collectedMonth: number; collectedLastMonth: number; collectionChangePercent: number; rentalRevenueMonth: number; expensesMonth: number; netIncomeMonth: number; depositsHeld: number; twelveMonthCollected: number; monthlyCollected: { key: string; label: string; amount: number }[];
@@ -254,6 +254,7 @@ export default function Home() {
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [bookingSeed, setBookingSeed] = useState<{ vehicleId: string; date: string } | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -386,6 +387,17 @@ export default function Home() {
     setSearch("");
   }
 
+  function openReservationById(reservationId: string) {
+    const reservation = reservationList.find((item) => item.id === reservationId);
+    if (reservation) openReservation(reservation);
+  }
+
+  function openCustomerEdit(customer: CustomerRow) {
+    setSelectedCustomer(customer);
+    setDialog("customer-edit");
+    setSearch("");
+  }
+
   function openRentalById(rentalId: string) {
     const rental = rentalList.find((item) => item.id === rentalId);
     if (rental) openRental(rental);
@@ -402,6 +414,13 @@ export default function Home() {
     const digits = (rental.whatsappNumber || rental.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${rental.customer}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}\nBalance due: ${money(rental.balance)}`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  }
+
+  function sendBookingWhatsApp(reservation: Reservation) {
+    const digits = (reservation.whatsappNumber || reservation.phone).replace(/\D/g, "");
+    const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
+    const text = `Mecardee Rental — Booking confirmation\n\nHello ${reservation.customer},\nYour vehicle booking is reserved.\n\nVehicle: ${reservation.vehicle} (${reservation.plate})\nBooking: ${reservation.bookingNumber}\nPickup: ${reservation.start}\nExpected return: ${reservation.returnDate}\nRental days: ${reservation.days}\nEstimated rent: ${money(reservation.amount)}\n\nPlease reply to confirm the booking details.`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
@@ -469,7 +488,7 @@ export default function Home() {
             <button className="icon-button mobile-sync-button" onClick={() => void manualSync()} aria-label="Sync latest data"><RefreshCw size={18} className={syncing ? "spin" : ""} /></button>
             <div className="notification-wrap" ref={notificationRef}>
               <button className="icon-button" onClick={() => setNotificationsOpen((open) => !open)} aria-label="Notifications"><Bell size={18} />{reminders.length > 0 && <span className="notification-dot" />}</button>
-              {notificationsOpen && <Notifications reminders={reminders} onClose={() => setNotificationsOpen(false)} openRental={openRentalById} />}
+              {notificationsOpen && <Notifications reminders={reminders} onClose={() => setNotificationsOpen(false)} openRental={openRentalById} openReservation={openReservationById} />}
             </div>
             <button className="primary-button" onClick={() => setDialog("new-rental")}><Plus size={17} /> New rental</button>
           </div>
@@ -485,14 +504,14 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
+          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
-          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} />}
+          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
+          {view === "settings" && <SettingsView rentals={rentalList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
         </div>
       </main>
 
@@ -500,7 +519,7 @@ export default function Home() {
       {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
       {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} customers={customerList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
-      {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} close={() => setDialog(null)} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
+      {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} canStart={vehicleList.find((item) => item.id === selectedReservation.vehicleId)?.statusKey === "available"} close={() => setDialog(null)} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "booking-start" && selectedReservation && <StartBookingDialog reservation={selectedReservation} vehicle={vehicleList.find((item) => item.id === selectedReservation.vehicleId) ?? null} close={() => setDialog("booking-detail")} done={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
@@ -509,6 +528,7 @@ export default function Home() {
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} />}
       {dialog === "customer" && <CustomerDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
+      {dialog === "customer-edit" && selectedCustomer && <CustomerEditDialog customer={selectedCustomer} close={() => { setDialog(null); setSelectedCustomer(null); }} done={(message) => { setDialog(null); setSelectedCustomer(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></DialogShell>}
       {dialog === "expense" && <ExpenseDialog vehicles={vehicleList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
@@ -539,10 +559,11 @@ function reminderIcon(type: string): LucideIcon {
   if (type === "today") return Clock3;
   if (type === "payment") return IndianRupee;
   if (type === "document") return ShieldCheck;
+  if (type === "booking") return CalendarRange;
   return Wrench;
 }
 
-function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openPendingPayments, goTo, sendWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
+function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation) => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   const stats = [
@@ -564,13 +585,13 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
       <button onClick={openPendingPayments}>Pending payments <ArrowRight size={15} /></button>
     </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span>{stat.label}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
-    <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!focus} onClick={() => focus && openRental(focus)}>Review now <ArrowRight size={14} /></button></section>
+    <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
     <div className="dashboard-layout">
-      <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} />
+      <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} sendBookingWhatsApp={sendBookingWhatsApp} />
       <aside className="dashboard-side">
         <section className="side-card">
           <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div><button aria-label="Reminder settings" onClick={() => window.alert("Reminders are generated automatically from live rentals, balances, maintenance and document dates.")}><SlidersHorizontal size={15} /></button></div>
-          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
+          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
           <button className="full-link" onClick={() => window.alert(reminders.length ? reminders.map((item) => `${item.title} — ${item.text}`).join("\n") : "No active reminders.")}>View all reminders <ChevronRight size={15} /></button>
         </section>
         <section className="side-card money-snapshot">
@@ -583,39 +604,47 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
   </>;
 }
 
-function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVehicle, openReservation, openBooking }: { vehicles: Vehicle[]; rentals: Rental[]; reservations: Reservation[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void }) {
-  const [availabilityDate, setAvailabilityDate] = useState(() => dateInputValue(new Date()));
+function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVehicle, openReservation, openBooking, sendBookingWhatsApp }: { vehicles: Vehicle[]; rentals: Rental[]; reservations: Reservation[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; sendBookingWhatsApp: (reservation: Reservation) => void }) {
+  const todayValue = dateInputValue(new Date());
+  const [availabilityDate, setAvailabilityDate] = useState(() => todayValue);
   const dayStart = new Date(`${availabilityDate}T00:00:00+05:30`).getTime();
   const dayEnd = new Date(`${availabilityDate}T23:59:59+05:30`).getTime();
+  const checkingToday = availabilityDate === todayValue;
   const overlapsDay = (startAt: string, endAt: string) => new Date(startAt).getTime() <= dayEnd && new Date(endAt).getTime() >= dayStart;
   const prettyDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${availabilityDate}T12:00:00+05:30`));
 
   const cards = vehicles.map((vehicle) => {
-    const rental = rentals.find((item) => item.vehicleId === vehicle.id && item.state !== "completed" && overlapsDay(item.startAt, item.endAt));
+    const liveOpenRental = rentals.find((item) => item.vehicleId === vehicle.id && item.state !== "completed");
+    const rental = checkingToday && liveOpenRental
+      ? liveOpenRental
+      : rentals.find((item) => item.vehicleId === vehicle.id && item.state !== "completed" && overlapsDay(item.startAt, item.endAt));
     const reservation = reservations.find((item) => item.vehicleId === vehicle.id && overlapsDay(item.startAt, item.endAt));
     const blocked = ["maintenance", "inactive"].includes(vehicle.statusKey);
+    const canBook = !rental && !reservation;
     let key = "available";
     let label = "Available";
     let detail = `Ready on ${prettyDate}`;
-    if (blocked) {
-      key = vehicle.statusKey;
-      label = vehicle.statusKey === "maintenance" ? "Maintenance" : "Inactive";
-      detail = vehicle.note;
-    } else if (rental) {
+    if (rental) {
       key = "rented";
       label = "On rent";
-      detail = `${rental.customer} · until ${rental.returnDate}`;
+      detail = rental.state === "overdue"
+        ? `${rental.customer} · overdue until returned`
+        : `${rental.customer} · until ${rental.returnDate}`;
     } else if (reservation) {
       key = "booked";
       label = "Booked";
       detail = `${reservation.customer} · ${reservation.start} → ${reservation.returnDate}`;
+    } else if (blocked) {
+      key = vehicle.statusKey;
+      label = vehicle.statusKey === "maintenance" ? "Maintenance" : "Inactive";
+      detail = `${vehicle.note} · future booking allowed`;
     } else {
       const next = reservations
         .filter((item) => item.vehicleId === vehicle.id && new Date(item.startAt).getTime() > dayEnd)
         .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0];
       if (next) detail = `Next booking: ${next.start} · ${next.customer}`;
     }
-    return { vehicle, rental, reservation, key, label, detail };
+    return { vehicle, rental, reservation, canBook, blocked, key, label, detail };
   });
   const availableCount = cards.filter((item) => item.key === "available").length;
   const bookedCount = cards.filter((item) => item.key === "booked").length;
@@ -624,18 +653,18 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
   return <section className="fleet-status-section">
     <div className="fleet-status-heading">
       <div><h2>Car Status & Availability</h2><p>Choose a date and see the full fleet in one look.</p></div>
-      <label className="availability-date"><CalendarDays size={16} /><span>Check date</span><input type="date" value={availabilityDate} min={dateInputValue(new Date())} onChange={(event) => setAvailabilityDate(event.target.value || dateInputValue(new Date()))} /></label>
+      <label className="availability-date"><CalendarDays size={16} /><span>Check date</span><input type="date" value={availabilityDate} min={todayValue} onChange={(event) => setAvailabilityDate(event.target.value || todayValue)} /></label>
     </div>
     <div className="availability-summary"><span className="available"><b>{availableCount}</b> Available</span><span className="booked"><b>{bookedCount}</b> Booked</span><span className="rented"><b>{rentedCount}</b> On rent</span></div>
     <div className="fleet-status-grid">
-      {cards.map(({ vehicle, rental, reservation, key, label, detail }) => <article className={`fleet-status-card ${key}`} key={vehicle.id}>
+      {cards.map(({ vehicle, rental, reservation, canBook, blocked, key, label, detail }) => <article className={`fleet-status-card ${key}`} key={vehicle.id}>
         <div className="fleet-status-image"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`fleet-status-badge ${key}`}><i />{label}</span></div>
         <div className="fleet-status-body"><div><h3>{vehicle.name}</h3><strong>{vehicle.plate}</strong></div><p>{detail}</p>
           <div className="fleet-status-actions">
-            {key === "available" && <button className="primary-button" onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book for {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${availabilityDate}T12:00:00+05:30`))}</button>}
-            {reservation && <button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />Manage booking</button>}
+            {canBook && <button className="primary-button" onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book for {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${availabilityDate}T12:00:00+05:30`))}</button>}
+            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation)} aria-label={`WhatsApp booking confirmation to ${reservation.customer}`} title="WhatsApp booking confirmation"><MessageCircle size={17} /></button></>}
             {rental && <button className="primary-button" onClick={() => openRental(rental)}><CarFront size={15} />View rental</button>}
-            {!rental && !reservation && key !== "available" && <button onClick={() => openVehicle(vehicle)}>View vehicle</button>}
+            {canBook && blocked && <button className="fleet-secondary-action" onClick={() => openVehicle(vehicle)}>View vehicle</button>}
           </div>
         </div>
       </article>)}
@@ -700,7 +729,7 @@ function VehiclesView({ vehicles, metrics, openNew, addVehicle, openVehicle, sho
   </>;
 }
 
-function CustomersView({ customers, metrics, openNew, openRentalById, addCustomer }: { customers: CustomerRow[]; metrics: Metrics; openNew: () => void; openRentalById: (rentalId: string) => void; addCustomer: () => void }) {
+function CustomersView({ customers, metrics, openNew, openRentalById, addCustomer, editCustomer }: { customers: CustomerRow[]; metrics: Metrics; openNew: () => void; openRentalById: (rentalId: string) => void; addCustomer: () => void; editCustomer: (customer: CustomerRow) => void }) {
   const [search, setSearch] = useState("");
   const [cityFilter, setCityFilter] = useState("");
   const shown = customers.filter((customer) => {
@@ -710,7 +739,7 @@ function CustomersView({ customers, metrics, openNew, openRentalById, addCustome
   return <>
     <PageHeading eyebrow="CUSTOMER DIRECTORY" title="Customers" description="Rental history, documents and balances—without duplicate records." action={<button className="primary-button" onClick={addCustomer}><UserRoundPlus size={17} />Add customer</button>} />
     <section className="customer-summary"><article><UsersRound size={20} /><div><strong>{metrics.totalCustomers}</strong><span>Total customers</span></div><small><TrendingUp size={13} /> {metrics.newCustomersThisMonth} this month</small></article><article><CalendarDays size={20} /><div><strong>{metrics.currentlyRentingCustomers}</strong><span>Currently renting</span></div><small>{metrics.totalCustomers ? Math.round((metrics.currentlyRentingCustomers / metrics.totalCustomers) * 100) : 0}% of customers</small></article><article><IndianRupee size={20} /><div><strong>{money(metrics.outstanding)}</strong><span>Pending balance</span></div><small className="warn"><AlertTriangle size={13} /> {metrics.outstandingCustomers} customers</small></article></section>
-    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
+    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customer.name}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
   </>;
 }
 
@@ -1034,9 +1063,9 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   </>;
 }
 
-function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
+function SettingsView({ rentals, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
-  const [tab, setTab] = useState<"payments" | "expenses" | "history">("payments");
+  const [tab, setTab] = useState<"rentals" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1045,6 +1074,8 @@ function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | 
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<{ type: "payment" | "expense"; id: string; number: string; label: string } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [rentalEditTarget, setRentalEditTarget] = useState<Rental | null>(null);
+  const [rentalScheduleForm, setRentalScheduleForm] = useState({ startAt: "", endAt: "" });
 
   const formatWhen = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
   const toLocalDateTimeInput = (value: string) => {
@@ -1142,31 +1173,77 @@ function SettingsView({ lastSyncedAt, syncing, onSync }: { lastSyncedAt: Date | 
     }
   };
 
+  const editableRentals = rentals.filter((rental) => rental.state !== "completed");
+
+  const openRentalScheduleEdit = (rental: Rental) => {
+    setError("");
+    setRentalEditTarget(rental);
+    setRentalScheduleForm({
+      startAt: toLocalDateTimeInput(rental.startAt),
+      endAt: toLocalDateTimeInput(rental.endAt),
+    });
+  };
+
+  const saveRentalSchedule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rentalEditTarget) return;
+    setBusy(true);
+    setError("");
+    try {
+      const startAt = new Date(rentalScheduleForm.startAt);
+      const endAt = new Date(rentalScheduleForm.endAt);
+      if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) throw new Error("Please enter valid rental dates and times.");
+      if (endAt <= startAt) throw new Error("Expected return must be after the start date/time.");
+      const response = await fetch("/api/settings/rentals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: rentalEditTarget.databaseId, startAt: startAt.toISOString(), endAt: endAt.toISOString() }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; rentalDays?: number; baseRentalAmount?: number }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not update rental schedule.");
+      setRentalEditTarget(null);
+      onSync();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not update rental schedule.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const paymentRows = data.payments;
   const expenseRows = data.expenses;
   const historyRows = data.history;
 
   return <>
-    <PageHeading eyebrow="APP" title="Settings" description="Sync live data and safely correct financial transactions without touching the database directly." />
+    <PageHeading eyebrow="APP" title="Settings" description="Sync live data, safely correct transactions, and adjust active rental schedules without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe transaction manager</h3><p>Only payments and expenses can be edited or deleted here. Rentals, return settlements, extensions, customers and vehicles are protected so the rental workflow cannot be broken.</p></div></article>
+      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active rental start/return dates can be corrected here. Completed settlements stay locked. Payments and expenses keep their existing edit/delete history protection.</p></div></article>
     </section>
 
     <section className="data-panel transaction-manager">
-      <div className="panel-heading transaction-manager-head"><div><h2>Transaction manager</h2><p>Latest 100 payments and expenses · every delete is archived first</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
+      <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Active rental schedules + latest payments and expenses · completed rentals stay protected</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
       <div className="transaction-tabs">
+        <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Rental dates <span>{editableRentals.length}</span></button>
         <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}><WalletCards size={15} />Payments <span>{paymentRows.length}</span></button>
         <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}><ReceiptIndianRupee size={15} />Expenses <span>{expenseRows.length}</span></button>
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}><History size={15} />Delete history <span>{historyRows.length}</span></button>
       </div>
       {error && <p className="form-error transaction-manager-error">{error}</p>}
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
+        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small></div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit date & time</button></div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
       </div>}
     </section>
+
+    {rentalEditTarget && <DialogShell title="Edit rental date & time" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.customer}`} close={() => !busy && setRentalEditTarget(null)}><form className="simple-form" onSubmit={saveRentalSchedule}>
+      <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Schedule-only correction</strong><small>Vehicle, customer, payments, kilometres and settlement data cannot be changed here. Completed rentals are locked.</small></span></div>
+      <div className="field-grid"><label className="field"><span>Rental start date / time</span><input required type="datetime-local" value={rentalScheduleForm.startAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startAt: event.target.value }))} /></label><label className="field"><span>Expected return date / time</span><input required type="datetime-local" value={rentalScheduleForm.endAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, endAt: event.target.value }))} /></label></div>
+      <div className="rental-edit-note"><CalendarDays size={16} /><span>Rental days and rental amount will recalculate automatically from the new schedule using the same daily rate and existing discount. The change is blocked if it overlaps another booking/rental or would make existing payments exceed the recalculated bill.</span></div>
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy}><Check size={15} />{busy ? "Saving…" : "Save rental schedule"}</button></div>
+    </form></DialogShell>}
 
     {editTarget && <DialogShell title={`Edit ${editTarget.type}`} subtitle="Linked rental/customer/vehicle stays locked for workflow safety" close={() => !busy && setEditTarget(null)}><form className="simple-form" onSubmit={saveEdit}>
       {editTarget.type === "payment" ? <>
@@ -1209,8 +1286,8 @@ function AccountsView({ expenses, metrics, openExpense }: { expenses: ExpenseRow
   </>;
 }
 
-function Notifications({ reminders, onClose, openRental }: { reminders: ReminderRow[]; onClose: () => void; openRental: (rentalId: string) => void }) {
-  return <div className="notifications-panel"><div className="notification-head"><div><strong>Notifications</strong><span>{reminders.length} new</span></div><button onClick={onClose}><X size={16} /></button></div>{reminders.slice(0,3).map((reminder) => { const Icon = reminderIcon(reminder.type); return <button key={reminder.key} onClick={() => { if (reminder.rentalId) openRental(reminder.rentalId); onClose(); }}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time>Live</time></div></button>; })}<div className="notification-footer" onClick={onClose}>Close notifications</div></div>;
+function Notifications({ reminders, onClose, openRental, openReservation }: { reminders: ReminderRow[]; onClose: () => void; openRental: (rentalId: string) => void; openReservation: (reservationId: string) => void }) {
+  return <div className="notifications-panel"><div className="notification-head"><div><strong>Notifications</strong><span>{reminders.length} new</span></div><button onClick={onClose}><X size={16} /></button></div>{reminders.slice(0,3).map((reminder) => { const Icon = reminderIcon(reminder.type); return <button key={reminder.key} onClick={() => { if (reminder.reservationId) openReservation(reminder.reservationId); else if (reminder.rentalId) openRental(reminder.rentalId); onClose(); }}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time>Live</time></div></button>; })}<div className="notification-footer" onClick={onClose}>Close notifications</div></div>;
 }
 
 function MobileNav({ view, goTo, openNew }: { view: View; goTo: (view: View) => void; openNew: () => void }) {
@@ -1303,6 +1380,45 @@ function VehicleDialog({ close, done }: { close: () => void; done: (message: str
   </DialogShell>;
 }
 
+function CustomerEditDialog({ customer, close, done }: { customer: CustomerRow; close: () => void; done: (message: string) => void }) {
+  const [name, setName] = useState(customer.name);
+  const [phone, setPhone] = useState(customer.phone);
+  const [whatsappNumber, setWhatsappNumber] = useState(customer.whatsappNumber || customer.phone);
+  const [drivingLicence, setDrivingLicence] = useState(customer.fullLicence || customer.licence || "");
+  const [city, setCity] = useState(customer.city || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/customers/${customer.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, phone, whatsappNumber, drivingLicence, city }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string } }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not update customer.");
+      done(`${payload.customer?.name ?? name} updated`);
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Could not update customer.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <DialogShell title="Edit customer" subtitle="Update customer details without changing rental history" close={close}>
+    <form className="simple-form" onSubmit={submit}>
+      <label className="field"><span>Customer name</span><input required value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="field"><span>Phone</span><input required inputMode="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+      <label className="field"><span>WhatsApp</span><input inputMode="tel" value={whatsappNumber} onChange={(event) => setWhatsappNumber(event.target.value)} /></label>
+      <label className="field"><span>Driving licence (optional)</span><input value={drivingLicence} onChange={(event) => setDrivingLicence(event.target.value.toUpperCase())} /></label>
+      <label className="field"><span>City / place</span><input value={city} onChange={(event) => setCity(event.target.value)} /></label>
+      <div className="customer-edit-note"><ShieldCheck size={15} /><span>Existing rentals, bookings, payments and history remain linked to this customer.</span></div>
+      {error && <p className="form-error">{error}</p>}
+      <div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || !name.trim() || !phone.trim()}><Check size={16} />{saving ? "Saving…" : "Save changes"}</button></div>
+    </form>
+  </DialogShell>;
+}
+
 function CustomerDialog({ close, done }: { close: () => void; done: (message: string) => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -1345,7 +1461,7 @@ function CustomerDialog({ close, done }: { close: () => void; done: (message: st
 }
 
 function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; seed: { vehicleId: string; date: string } | null; close: () => void; done: (message: string) => void; showToast: (message: string) => void }) {
-  const bookableVehicles = vehicles.filter((item) => !["maintenance", "inactive"].includes(item.statusKey));
+  const bookableVehicles = vehicles;
   const initialVehicle = bookableVehicles.find((item) => item.id === seed?.vehicleId) ?? bookableVehicles[0] ?? null;
   const [vehicleId, setVehicleId] = useState(initialVehicle?.id ?? "");
   const [customerPhone, setCustomerPhone] = useState(customers[0]?.phone ?? "");
@@ -1403,7 +1519,7 @@ function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }:
   return <DialogShell title="Book a car" subtitle="Reserve the vehicle now. Start the actual rental when the customer arrives." close={close} wide>
     <form className="rental-form booking-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}>
       <div className="form-content">
-        <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle & customer</h3><p>A booking blocks only the selected rental period.</p></div></div><div className="field-grid"><label className="field span-2"><span>Vehicle</span><select value={vehicleId} onChange={(e) => { setVehicleId(e.target.value); const v = bookableVehicles.find((item) => item.id === e.target.value); if (v) setRate(v.rate); }}>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate}</option>)}</select></label><label className="field"><span>Customer</span><select value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name}</option>}{customers.map((item) => <option value={item.phone} key={item.id}>{item.name} — {item.phone}</option>)}{!customers.length && !createdCustomer && <option value="">No customers yet</option>}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((value) => !value)}><UserRoundPlus size={16} />{showCustomerForm ? "Close" : "Add new customer"}</button></div></section>
+        <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle & customer</h3><p>A booking blocks only the selected rental period.</p></div></div><div className="field-grid"><label className="field span-2"><span>Vehicle</span><select value={vehicleId} onChange={(e) => { setVehicleId(e.target.value); const v = bookableVehicles.find((item) => item.id === e.target.value); if (v) setRate(v.rate); }}>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate} · {item.status}</option>)}</select></label><label className="field"><span>Customer</span><select value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name}</option>}{customers.map((item) => <option value={item.phone} key={item.id}>{item.name} — {item.phone}</option>)}{!customers.length && !createdCustomer && <option value="">No customers yet</option>}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((value) => !value)}><UserRoundPlus size={16} />{showCustomerForm ? "Close" : "Add new customer"}</button></div></section>
         {showCustomerForm && <section className="form-section"><div className="field-grid"><label className="field"><span>Name</span><input value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={() => setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer ? "Saving…" : "Save customer"}</button></div></section>}
         <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booking period</h3><p>The vehicle will show Booked when this date is checked on the dashboard.</p></div></div><div className="field-grid rental-schedule-grid"><label className="field"><span>Start date</span><input type="date" min={dateInputValue(new Date())} value={startDate} onChange={(e)=>{ const next=e.target.value; setStartDate(next); setReturnDate(addDays(next,days)); }} /></label><label className="field"><span>Start time</span><input type="time" value={startTime} onChange={(e)=>{ const next=e.target.value; setStartTime(next); setReturnTime((current)=>current===startTime?next:current); }} /></label><label className="field"><span>Rental days</span><input type="number" min="1" inputMode="numeric" value={daysInput} onChange={(e)=>{ const raw=e.target.value.replace(/\D/g,""); setDaysInput(raw); if(raw) setReturnDate(addDays(startDate,Number(raw))); }} /></label><label className="field"><span>Expected return</span><input type="date" value={returnDate} onChange={(e)=>{ const next=e.target.value; const [sy,sm,sd]=startDate.split("-").map(Number); const [ey,em,ed]=next.split("-").map(Number); const diff=Math.max(1,Math.round((Date.UTC(ey,em-1,ed)-Date.UTC(sy,sm-1,sd))/86_400_000)); setDaysInput(String(diff)); setReturnDate(next); }} /></label><label className="field"><span>Return time</span><input type="time" value={returnTime} onChange={(e)=>setReturnTime(e.target.value)} /></label><label className="field"><span>Daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} booked day{days===1?"":"s"}</strong><span>{money(days*rate)} estimated rental</span></div></section>
       </div>
@@ -1412,7 +1528,7 @@ function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }:
   </DialogShell>;
 }
 
-function BookingDetailDialog({ reservation, close, start, cancelled }: { reservation: Reservation; close: () => void; start: () => void; cancelled: (message: string) => void }) {
+function BookingDetailDialog({ reservation, canStart, close, start, cancelled }: { reservation: Reservation; canStart: boolean; close: () => void; start: () => void; cancelled: (message: string) => void }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1431,7 +1547,7 @@ function BookingDetailDialog({ reservation, close, start, cancelled }: { reserva
     <section className="detail-section"><div className="timeline"><div><i /><span><small>Booked from</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Expected return</small><strong>{reservation.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Booked days</small><strong>{reservation.days}</strong></div><div><small>Daily rate</small><strong>{money(reservation.rate)}</strong></div><div><small>Estimated rent</small><strong>{money(reservation.amount)}</strong></div></div></section>
     {error && <p className="form-error">{error}</p>}
     {confirmCancel && <div className="booking-cancel-warning"><AlertTriangle size={18} /><div><strong>Cancel this booking?</strong><p>No rental/payment data will be deleted. The booking is marked Cancelled and the dates become available again.</p></div><button disabled={saving} onClick={() => void cancelBooking()}>{saving ? "Cancelling…" : "Yes, cancel"}</button><button disabled={saving} onClick={() => setConfirmCancel(false)}>Keep booking</button></div>}
-    <footer className="detail-actions"><button className="return-button" onClick={start}><CarFront size={16} />Start rental</button><button className="danger-action" onClick={() => setConfirmCancel(true)} disabled={confirmCancel}><X size={16} />Cancel booking</button></footer>
+    <footer className="detail-actions"><button className="return-button" onClick={start} disabled={!canStart} title={canStart ? "Start this rental" : "Vehicle must be Available before the booking can start"}><CarFront size={16} />{canStart ? "Start rental" : "Waiting for availability"}</button><button className="danger-action" onClick={() => setConfirmCancel(true)} disabled={confirmCancel}><X size={16} />Cancel booking</button></footer>
   </DialogShell>;
 }
 
