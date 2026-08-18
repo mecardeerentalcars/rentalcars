@@ -417,6 +417,7 @@ export default function Home() {
   }
 
   function openBookingForVehicle(vehicleId: string, date: string) {
+    void refreshData({ silent: true });
     setBookingSeed({ vehicleId, date });
     setDialog("new-booking");
     setSearch("");
@@ -464,6 +465,7 @@ export default function Home() {
   }
 
   function newBookingFromTab() {
+    void refreshData({ silent: true });
     setBookingSeed({ vehicleId: vehicleList[0]?.id ?? "", date: dateInputValue(new Date()) });
     setDialog("new-booking");
     setSearch("");
@@ -604,7 +606,7 @@ export default function Home() {
       <MobileNav view={view} goTo={goTo} openNew={() => setDialog("new-rental")} />
       {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
-      {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} customers={customerList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
+      {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} customers={customerList} bookings={bookingList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} canStart={vehicleList.find((item) => item.id === selectedReservation.vehicleId)?.statusKey === "available" && Date.now() >= new Date(selectedReservation.startAt).getTime()} close={() => setDialog(null)} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "booking-start" && selectedReservation && <StartBookingDialog reservation={selectedReservation} vehicle={vehicleList.find((item) => item.id === selectedReservation.vehicleId) ?? null} close={() => setDialog("booking-detail")} done={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "booking-history-detail" && selectedBookingRecord && <BookingHistoryDialog booking={selectedBookingRecord} close={() => { setDialog(null); setSelectedBookingRecord(null); }} sendWhatsApp={() => sendBookingRecordWhatsApp(selectedBookingRecord)} />}
@@ -1618,7 +1620,7 @@ function CustomerDialog({ close, done }: { close: () => void; done: (message: st
   </DialogShell>;
 }
 
-function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; seed: { vehicleId: string; date: string } | null; close: () => void; done: (message: string) => void; showToast: (message: string) => void }) {
+function NewBookingDialog({ vehicles, customers, bookings, seed, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; bookings: BookingRecord[]; seed: { vehicleId: string; date: string } | null; close: () => void; done: (message: string) => void; showToast: (message: string) => void }) {
   const bookableVehicles = vehicles;
   const initialVehicle = bookableVehicles.find((item) => item.id === seed?.vehicleId) ?? bookableVehicles[0] ?? null;
   const [vehicleId, setVehicleId] = useState(initialVehicle?.id ?? "");
@@ -1642,6 +1644,29 @@ function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const days = Math.max(1, Number(daysInput) || 1);
+  // MECARDEE_BOOKING_CONFLICT_GUARD_V8_9_16
+  const requestedStartMs = useMemo(() => new Date(`${startDate}T${startTime}:00+05:30`).getTime(), [startDate, startTime]);
+  const requestedEndMs = useMemo(() => new Date(`${returnDate}T${returnTime}:00+05:30`).getTime(), [returnDate, returnTime]);
+  const vehicleBookings = useMemo(() => bookings
+    .filter((booking) => booking.vehicleId === vehicleId && ["booked", "rented"].includes(booking.status))
+    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()), [bookings, vehicleId]);
+  const conflictingBooking = useMemo(() => {
+    if (!Number.isFinite(requestedStartMs) || !Number.isFinite(requestedEndMs) || requestedEndMs <= requestedStartMs) return null;
+    return vehicleBookings.find((booking) => {
+      const existingStart = new Date(booking.startAt).getTime();
+      const existingEnd = new Date(booking.endAt).getTime();
+      return existingStart < requestedEndMs && existingEnd > requestedStartMs;
+    }) ?? null;
+  }, [vehicleBookings, requestedStartMs, requestedEndMs]);
+  const conflictToastKey = useRef("");
+
+  useEffect(() => {
+    if (!conflictingBooking) { conflictToastKey.current = ""; return; }
+    const key = `${conflictingBooking.id}|${startDate}|${startTime}|${returnDate}|${returnTime}`;
+    if (conflictToastKey.current === key) return;
+    conflictToastKey.current = key;
+    showToast(`Date unavailable: ${selectedVehicle?.name ?? "Vehicle"} is already booked for ${conflictingBooking.customer} (${conflictingBooking.bookingNumber}).`);
+  }, [conflictingBooking, returnDate, returnTime, selectedVehicle?.name, showToast, startDate, startTime]);
 
   async function addCustomerHere() {
     setSavingCustomer(true); setError(null);
@@ -1657,6 +1682,7 @@ function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }:
     event.preventDefault();
     if (!selectedVehicle) return setError("Select a vehicle.");
     if (!customerPhone) return setError("Select or add a customer.");
+    if (conflictingBooking) return setError(`Cannot book this period. ${conflictingBooking.vehicle} is already booked for ${conflictingBooking.customer} (${conflictingBooking.bookingNumber}) from ${conflictingBooking.start} to ${conflictingBooking.returnDate}. Choose another date/time.`);
     setSaving(true); setError(null);
     try {
       const response = await fetch("/api/bookings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
@@ -1681,7 +1707,7 @@ function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }:
         {showCustomerForm && <section className="form-section"><div className="field-grid"><label className="field"><span>Name</span><input value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={() => setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer ? "Saving…" : "Save customer"}</button></div></section>}
         <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booking period</h3><p>The vehicle will show Booked when this date is checked on the dashboard.</p></div></div><div className="field-grid rental-schedule-grid"><label className="field"><span>Start date</span><input type="date" min={dateInputValue(new Date())} value={startDate} onChange={(e)=>{ const next=e.target.value; setStartDate(next); setReturnDate(addDays(next,days)); }} /></label><label className="field"><span>Start time</span><input type="time" value={startTime} onChange={(e)=>{ const next=e.target.value; setStartTime(next); setReturnTime((current)=>current===startTime?next:current); }} /></label><label className="field"><span>Rental days</span><input type="number" min="1" inputMode="numeric" value={daysInput} onChange={(e)=>{ const raw=e.target.value.replace(/\D/g,""); setDaysInput(raw); if(raw) setReturnDate(addDays(startDate,Number(raw))); }} /></label><label className="field"><span>Expected return</span><input type="date" value={returnDate} onChange={(e)=>{ const next=e.target.value; const [sy,sm,sd]=startDate.split("-").map(Number); const [ey,em,ed]=next.split("-").map(Number); const diff=Math.max(1,Math.round((Date.UTC(ey,em-1,ed)-Date.UTC(sy,sm-1,sd))/86_400_000)); setDaysInput(String(diff)); setReturnDate(next); }} /></label><label className="field"><span>Return time</span><input type="time" value={returnTime} onChange={(e)=>setReturnTime(e.target.value)} /></label><label className="field"><span>Daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} booked day{days===1?"":"s"}</strong><span>{money(days*rate)} estimated rental</span></div></section>
       </div>
-      <footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || !selectedVehicle || !customerPhone}>{saving ? "Booking…" : "Confirm booking"}<CalendarDays size={16} /></button><button type="button" className="save-draft" onClick={close}>Cancel</button></div></footer>
+      <footer className="rental-submit-footer">{conflictingBooking && <p className="form-error booking-conflict-inline"><strong>Date unavailable.</strong> {selectedVehicle?.name} already has {conflictingBooking.bookingNumber} for {conflictingBooking.customer}: {conflictingBooking.start} to {conflictingBooking.returnDate}. Choose another date/time.</p>}{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || !selectedVehicle || !customerPhone || Boolean(conflictingBooking)}>{conflictingBooking ? "Date unavailable" : saving ? "Booking..." : "Confirm booking"}<CalendarDays size={16} /></button><button type="button" className="save-draft" onClick={close}>Cancel</button></div></footer>
     </form>
   </DialogShell>;
 }

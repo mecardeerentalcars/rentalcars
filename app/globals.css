@@ -1498,3 +1498,195 @@ body { font-size: 15px; line-height: 1.45; }
   .booking-calendar-panel { overflow-x: auto; }
   .booking-calendar-weekdays, .booking-calendar-grid { min-width: 700px; }
 }
+
+
+/* MECARDEE_BOOKINGS_MOBILE_V8_9_16 */
+.booking-conflict-inline {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #f2c9c6;
+  border-radius: 10px;
+  background: #fff4f3;
+  color: #9b3f39;
+  line-height: 1.4;
+}
+.booking-conflict-inline strong { margin-right: 4px; }
+
+@media (max-width: 760px) {
+  /* Booking page summary: no horizontal-only controls. */
+  .booking-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    overflow: visible !important;
+    padding-bottom: 0 !important;
+  }
+  .booking-summary-strip button {
+    min-width: 0 !important;
+    min-height: 54px;
+    padding: 10px 12px !important;
+    display: flex !important;
+  }
+  .booking-summary-strip button:last-child { grid-column: 1 / -1; }
+
+  /* Every booking filter remains visible and touch-friendly. */
+  .bookings-toolbar {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .booking-view-switch,
+  .booking-search,
+  .bookings-toolbar > select,
+  .bookings-toolbar > label:not(.booking-search) {
+    grid-column: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+  }
+  .booking-view-switch button { min-height: 40px; }
+  .booking-search input,
+  .bookings-toolbar select,
+  .bookings-toolbar input { font-size: 16px !important; }
+
+  /* Convert the desktop booking table into complete mobile cards. */
+  .booking-list-panel {
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+    display: grid;
+    gap: 10px;
+  }
+  .booking-list-head { display: none !important; }
+  .booking-list-row {
+    min-width: 0 !important;
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 12px 14px !important;
+    padding: 13px !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 14px;
+    background: white;
+  }
+  .booking-list-row > span { min-width: 0 !important; }
+  .booking-list-row > span::before {
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .booking-list-row > span:nth-child(1) { grid-column: 1 / -1; }
+  .booking-list-row > span:nth-child(2)::before { content: "Customer"; }
+  .booking-list-row > span:nth-child(3)::before { content: "Pickup"; }
+  .booking-list-row > span:nth-child(4)::before { content: "Return"; }
+  .booking-list-row > span:nth-child(5)::before { content: "Amount"; }
+  .booking-list-row > span:nth-child(6)::before { content: "Status"; }
+  .booking-list-row > span:nth-child(6) { align-content: start; }
+  .booking-car {
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+  .booking-car img { width: 58px !important; height: 46px !important; }
+  .booking-list-row strong { font-size: 13px; white-space: normal; }
+  .booking-list-row small { font-size: 11px; white-space: normal; line-height: 1.35; }
+
+  /* View, Edit, WhatsApp and Start Rental are all visible on mobile. */
+  .booking-list-row > span.booking-row-actions {
+    grid-column: 1 / -1 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+  .booking-row-actions::before { content: none !important; }
+  .booking-row-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    padding: 0 9px !important;
+    font-size: 11px !important;
+  }
+  .booking-row-actions button.whatsapp {
+    width: 100% !important;
+    color: #168f53;
+  }
+  .booking-row-actions button.start { grid-column: auto; }
+
+  /* Calendar fits the phone instead of forcing a 700px desktop canvas. */
+  .booking-calendar-panel { overflow: hidden !important; }
+  .booking-calendar-weekdays,
+  .booking-calendar-grid { min-width: 0 !important; width: 100%; }
+  .booking-calendar-weekdays span { padding: 6px 1px; font-size: 8px; }
+  .booking-calendar-day {
+    min-width: 0;
+    min-height: 78px;
+    padding: 3px;
+  }
+  .booking-calendar-day > strong { width: 20px; height: 20px; font-size: 9px; }
+  .booking-calendar-day > div { gap: 2px; margin-top: 2px; }
+  .booking-calendar-day button { padding: 3px; border-radius: 5px; }
+  .booking-calendar-day button span { font-size: 7px; }
+  .booking-calendar-day button small { display: none; }
+  .booking-more { font-size: 7px; padding-left: 1px; }
+
+  /* New Booking dialog: every field and action is usable on a phone. */
+  .booking-form .field-grid,
+  .booking-form .rental-schedule-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .booking-form .span-2 { grid-column: 1 !important; }
+  .booking-form .form-section { padding: 13px !important; }
+  .booking-form .field input,
+  .booking-form .field select,
+  .booking-form .field textarea { font-size: 16px !important; }
+  .booking-form .new-customer {
+    width: 100%;
+    min-height: 44px;
+  }
+  .booking-form .duration-note {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 5px 8px;
+  }
+  .booking-form .duration-note span {
+    display: block !important;
+    grid-column: 2;
+    font-size: 11px;
+  }
+  .booking-form .rental-submit-footer { padding: 12px !important; }
+  .booking-form .rental-submit-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .booking-form .rental-submit-actions button {
+    width: 100%;
+    min-height: 46px;
+  }
+  .booking-conflict-inline { font-size: 11px; }
+
+  /* Booking detail/edit/start dialogs keep every footer action visible. */
+  .booking-detail-card { min-width: 0; }
+  .detail-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .detail-actions > button,
+  .detail-actions > a { width: 100% !important; min-height: 44px; justify-content: center; }
+  .booking-cancel-warning { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 420px) {
+  .booking-summary-strip { grid-template-columns: 1fr 1fr !important; }
+  .booking-list-row { grid-template-columns: 1fr !important; }
+  .booking-list-row > span,
+  .booking-list-row > span:nth-child(1),
+  .booking-list-row > span.booking-row-actions { grid-column: 1 !important; }
+  .booking-list-row > span.booking-row-actions { grid-template-columns: 1fr 1fr !important; }
+  .booking-calendar-day { min-height: 70px; padding: 2px; }
+  .booking-calendar-day button span { font-size: 6.5px; }
+}
+
