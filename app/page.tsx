@@ -1,5 +1,9 @@
 "use client";
 
+// MECARDEE_CUSTOMER_DELETE_DUPLICATE_PHONE_V8_9_22
+
+// MECARDEE_AUTO_PORTRAIT_VEHICLE_PHOTOS_V8_9_21
+
 // MECARDEE_CURRENT_RENTAL_BALANCE_LABEL_V8_9_20
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -208,6 +212,7 @@ type TransactionManagerData = {
 };
 
 type ReminderRow = { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string };
+type NotificationHistoryItem = ReminderRow & { readAt: string };
 
 type Metrics = {
   totalCars: number; availableCars: number; onRentCars: number; maintenanceCars: number; roadReadyPercent: number; activeRentals: number; returningToday: number; overdue: number; outstanding: number; outstandingRentals: number; outstandingCustomers: number; totalCustomers: number; newCustomersThisMonth: number; currentlyRentingCustomers: number; collectedToday: number; paymentsToday: number; expensesToday: number; netToday: number; collectedMonth: number; collectedLastMonth: number; collectionChangePercent: number; rentalRevenueMonth: number; expensesMonth: number; netIncomeMonth: number; depositsHeld: number; twelveMonthCollected: number; monthlyCollected: { key: string; label: string; amount: number }[];
@@ -299,6 +304,9 @@ export default function Home() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [seenNotificationKeys, setSeenNotificationKeys] = useState<string[]>([]);
+  const [readNotificationKeys, setReadNotificationKeys] = useState<string[]>([]);
+  const [notificationHistory, setNotificationHistory] = useState<NotificationHistoryItem[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -336,6 +344,22 @@ export default function Home() {
   }, [showToast]);
 
   useEffect(() => { void refreshData(); }, [refreshData]);
+
+  // MECARDEE_MOBILE_LAST_EDITS_V8_9_23
+  useEffect(() => {
+    try {
+      const seen = JSON.parse(localStorage.getItem("mecardee-notifications-seen-v1") || "[]");
+      const read = JSON.parse(localStorage.getItem("mecardee-notifications-read-v1") || "[]");
+      const history = JSON.parse(localStorage.getItem("mecardee-notifications-history-v1") || "[]");
+      if (Array.isArray(seen)) setSeenNotificationKeys((seen as unknown[]).filter((value): value is string => typeof value === "string").slice(-200));
+      if (Array.isArray(read)) setReadNotificationKeys((read as unknown[]).filter((value): value is string => typeof value === "string").slice(-200));
+      if (Array.isArray(history)) setNotificationHistory((history as NotificationHistoryItem[]).slice(0, 10));
+    } catch {
+      localStorage.removeItem("mecardee-notifications-seen-v1");
+      localStorage.removeItem("mecardee-notifications-read-v1");
+      localStorage.removeItem("mecardee-notifications-history-v1");
+    }
+  }, []);
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -397,6 +421,44 @@ export default function Home() {
     const bookingResults = bookingList.filter((r) => `${r.bookingNumber} ${r.vehicle} ${r.plate} ${r.customer} ${r.phone}`.toLowerCase().includes(query)).map((r) => ({ type: "Booking", title: r.bookingNumber, meta: `${r.vehicle} · ${r.customer}`, action: () => openBookingRecord(r) }));
     return [...vehicleResults, ...customerResults, ...rentalResults, ...bookingResults].slice(0, 6);
   }, [search, rentalList, bookingList, vehicleList, customerList]);
+
+  function markCurrentNotificationsSeen() {
+    const keys = reminders.map((reminder) => reminder.key);
+    if (!keys.length) return;
+    setSeenNotificationKeys((current) => {
+      const next = Array.from(new Set([...current, ...keys])).slice(-200);
+      localStorage.setItem("mecardee-notifications-seen-v1", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function openNotificationsPanel() {
+    markCurrentNotificationsSeen();
+    setNotificationsOpen(true);
+  }
+
+  function toggleNotificationsPanel() {
+    if (notificationsOpen) { setNotificationsOpen(false); return; }
+    openNotificationsPanel();
+  }
+
+  function markNotificationRead(reminder: ReminderRow) {
+    setSeenNotificationKeys((current) => {
+      const next = Array.from(new Set([...current, reminder.key])).slice(-200);
+      localStorage.setItem("mecardee-notifications-seen-v1", JSON.stringify(next));
+      return next;
+    });
+    setReadNotificationKeys((current) => {
+      const next = Array.from(new Set([...current, reminder.key])).slice(-200);
+      localStorage.setItem("mecardee-notifications-read-v1", JSON.stringify(next));
+      return next;
+    });
+    setNotificationHistory((current) => {
+      const next = [{ ...reminder, readAt: new Date().toISOString() }, ...current.filter((item) => item.key !== reminder.key)].slice(0, 10);
+      localStorage.setItem("mecardee-notifications-history-v1", JSON.stringify(next));
+      return next;
+    });
+  }
 
   function goTo(next: View) {
     setView(next);
@@ -485,6 +547,25 @@ export default function Home() {
     setSelectedCustomer(customer);
     setDialog("customer-edit");
     setSearch("");
+  }
+
+  async function deleteCustomer(customer: CustomerRow) {
+    const confirmed = window.confirm(`Delete ${customer.name}?\n\nThis will permanently remove the customer only if there is no booking or rental history. This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      const response = await fetch("/api/customers/delete", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: customer.id }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string } }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not delete customer.");
+      if (selectedCustomer?.id === customer.id) setSelectedCustomer(null);
+      showToast(`${payload.customer?.name ?? customer.name} deleted from customers`);
+      await refreshData({ silent: true });
+    } catch (deleteError) {
+      showToast(deleteError instanceof Error ? deleteError.message : "Could not delete customer.");
+    }
   }
 
   function openRentalById(rentalId: string) {
@@ -579,8 +660,8 @@ export default function Home() {
           <div className="top-actions">
             <button className="icon-button mobile-sync-button" onClick={() => void manualSync()} aria-label="Sync latest data"><RefreshCw size={18} className={syncing ? "spin" : ""} /></button>
             <div className="notification-wrap" ref={notificationRef}>
-              <button className="icon-button" onClick={() => setNotificationsOpen((open) => !open)} aria-label="Notifications"><Bell size={18} />{reminders.length > 0 && <span className="notification-dot" />}</button>
-              {notificationsOpen && <Notifications reminders={reminders} onClose={() => setNotificationsOpen(false)} openRental={openRentalById} openReservation={openReservationById} />}
+              <button className="icon-button" onClick={toggleNotificationsPanel} aria-label="Notifications"><Bell size={18} />{reminders.some((reminder) => !seenNotificationKeys.includes(reminder.key)) && <span className="notification-dot" />}</button>
+              {notificationsOpen && <Notifications reminders={reminders} history={notificationHistory} readKeys={readNotificationKeys} onClose={() => setNotificationsOpen(false)} markRead={markNotificationRead} openRental={openRentalById} openReservation={openReservationById} />}
             </div>
             <button className="primary-button" onClick={() => setDialog("new-rental")}><Plus size={17} /> New rental</button>
           </div>
@@ -596,11 +677,11 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openNewBooking={newBookingFromTab} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
+          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} openNewBooking={newBookingFromTab} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "bookings" && <BookingsView bookings={bookingList} vehicles={vehicleList} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
-          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} />}
+          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
@@ -622,7 +703,7 @@ export default function Home() {
       {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} />}
-      {dialog === "customer" && <CustomerDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
+      {dialog === "customer" && <CustomerDialog customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "customer-edit" && selectedCustomer && <CustomerEditDialog customer={selectedCustomer} close={() => { setDialog(null); setSelectedCustomer(null); }} done={(message) => { setDialog(null); setSelectedCustomer(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></DialogShell>}
@@ -660,7 +741,7 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
+function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openNotifications, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   // MECARDEE_BOOKING_PRIORITY_DASHBOARD_V8_9_17
@@ -733,7 +814,7 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
         <section className="side-card">
           <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div><button aria-label="Reminder settings" onClick={() => window.alert("Reminders are generated automatically from live rentals, balances, maintenance and document dates.")}><SlidersHorizontal size={15} /></button></div>
           {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
-          <button className="full-link" onClick={() => window.alert(reminders.length ? reminders.map((item) => `${item.title} — ${item.text}`).join("\n") : "No active reminders.")}>View all reminders <ChevronRight size={15} /></button>
+          <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>
         </section>
         <section className="side-card money-snapshot">
           <div className="side-card-title"><div><h3>Today’s money</h3><span>Live snapshot</span></div><span className="round-icon"><WalletCards size={16} /></span></div>
@@ -792,12 +873,12 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
     <div className="availability-summary"><span className="available"><b>{availableCount}</b> Available</span><span className="booked"><b>{bookedCount}</b> Booked</span><span className="rented"><b>{rentedCount}</b> On rent</span></div>
     <div className="fleet-status-grid">
       {cards.map(({ vehicle, rental, reservation, canBook, blocked, key, label, detail }) => <article className={`fleet-status-card ${key}`} key={vehicle.id}>
-        <div className="fleet-status-image"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`fleet-status-badge ${key}`}><i />{label}</span></div>
+        <div className="fleet-status-image"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><span className={`fleet-status-badge ${key}`}><i />{label}</span></div>
         <div className="fleet-status-body"><div><h3>{vehicle.name}</h3><strong>{vehicle.plate}</strong></div><p>{detail}</p>
           <div className="fleet-status-actions">
-            {canBook && <button className="primary-button" onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book for {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${availabilityDate}T12:00:00+05:30`))}</button>}
-            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation)} aria-label={`WhatsApp booking confirmation to ${reservation.customer}`} title="WhatsApp booking confirmation"><MessageCircle size={17} /></button></>}
             {rental && <button className="primary-button" onClick={() => openRental(rental)}><CarFront size={15} />View rental</button>}
+            {(canBook || Boolean(rental)) && <button className={`primary-button ${rental ? "rental-book-action" : ""}`} onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book now</button>}
+            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation)} aria-label={`WhatsApp booking confirmation to ${reservation.customer}`} title="WhatsApp booking confirmation"><MessageCircle size={17} /></button></>}
             {canBook && blocked && <button className="fleet-secondary-action" onClick={() => openVehicle(vehicle)}>View vehicle</button>}
           </div>
         </div>
@@ -982,11 +1063,24 @@ function VehiclesView({ vehicles, metrics, openNew, addVehicle, openVehicle, sho
     <PageHeading eyebrow="FLEET" title="Vehicles" description="Your full fleet, availability and document health in one place." action={<div className="heading-actions"><button className="secondary-button mobile-vehicle-add" onClick={addVehicle} aria-label="Add vehicle"><Plus size={16} /><span>Add vehicle</span></button><button className="primary-button" onClick={openNew}><CalendarDays size={16} />Rent a car</button></div>} />
     <section className="fleet-strip"><div><span className="strip-icon"><CarFront size={19} /></span><p><strong>{metrics.totalCars} vehicles</strong><small>Total fleet</small></p></div><div><i className="dot available" /><p><strong>{metrics.availableCars} available</strong><small>{metrics.totalCars ? Math.round((metrics.availableCars / metrics.totalCars) * 100) : 0}% of fleet</small></p></div><div><i className="dot rented" /><p><strong>{metrics.onRentCars} on rent</strong><small>{metrics.overdue ? `${metrics.overdue} overdue` : "No overdue rentals"}</small></p></div><div><i className="dot maintenance" /><p><strong>{metrics.maintenanceCars} in service</strong><small>Maintenance status</small></p></div><span className="fleet-progress"><i style={{ width: `${metrics.roadReadyPercent}%` }} /></span></section>
     <div className="panel-toolbar vehicle-toolbar"><div className="filter-tabs">{["All vehicles", "Available", "Rented", "Maintenance", "Inactive"].map((item) => <button className={filter === item ? "active" : ""} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><button className="filter-button" onClick={() => setTextFilter(window.prompt("Filter by vehicle, make, plate, fuel or transmission", textFilter) ?? textFilter)}><SlidersHorizontal size={15} />More filters</button></div>
-    <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => openVehicle(vehicle)}>View vehicle</button><button onClick={openNew} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
+    <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => openVehicle(vehicle)}>View vehicle</button><button onClick={openNew} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
   </>;
 }
 
-function CustomersView({ customers, metrics, openNew, openRentalById, addCustomer, editCustomer }: { customers: CustomerRow[]; metrics: Metrics; openNew: () => void; openRentalById: (rentalId: string) => void; addCustomer: () => void; editCustomer: (customer: CustomerRow) => void }) {
+function customerPhoneKey(value: string) {
+  let digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return `91${digits.slice(1)}`;
+  return digits;
+}
+
+function customerCreateError(message: string | undefined) {
+  const detail = String(message ?? "");
+  if (/duplicate|unique|customers_phone_unique|already exists/i.test(detail)) return "This phone number is already added to another customer. Please use the existing customer.";
+  return detail || "Could not save customer.";
+}
+function CustomersView({ customers, metrics, openNew, openRentalById, addCustomer, editCustomer, deleteCustomer }: { customers: CustomerRow[]; metrics: Metrics; openNew: () => void; openRentalById: (rentalId: string) => void; addCustomer: () => void; editCustomer: (customer: CustomerRow) => void; deleteCustomer: (customer: CustomerRow) => void }) {
   const [search, setSearch] = useState("");
   const [cityFilter, setCityFilter] = useState("");
   const shown = customers.filter((customer) => {
@@ -996,7 +1090,7 @@ function CustomersView({ customers, metrics, openNew, openRentalById, addCustome
   return <>
     <PageHeading eyebrow="CUSTOMER DIRECTORY" title="Customers" description="Rental history, documents and balances—without duplicate records." action={<button className="primary-button" onClick={addCustomer}><UserRoundPlus size={17} />Add customer</button>} />
     <section className="customer-summary"><article><UsersRound size={20} /><div><strong>{metrics.totalCustomers}</strong><span>Total customers</span></div><small><TrendingUp size={13} /> {metrics.newCustomersThisMonth} this month</small></article><article><CalendarDays size={20} /><div><strong>{metrics.currentlyRentingCustomers}</strong><span>Currently renting</span></div><small>{metrics.totalCustomers ? Math.round((metrics.currentlyRentingCustomers / metrics.totalCustomers) * 100) : 0}% of customers</small></article><article><IndianRupee size={20} /><div><strong>{money(metrics.outstanding)}</strong><span>Pending balance</span></div><small className="warn"><AlertTriangle size={13} /> {metrics.outstandingCustomers} customers</small></article></section>
-    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customer.name}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
+    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customer.name}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customer.name}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button><button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
   </>;
 }
 
@@ -1495,8 +1589,24 @@ function AccountsView({ expenses, metrics, openExpense }: { expenses: ExpenseRow
   </>;
 }
 
-function Notifications({ reminders, onClose, openRental, openReservation }: { reminders: ReminderRow[]; onClose: () => void; openRental: (rentalId: string) => void; openReservation: (reservationId: string) => void }) {
-  return <div className="notifications-panel"><div className="notification-head"><div><strong>Notifications</strong><span>{reminders.length} new</span></div><button onClick={onClose}><X size={16} /></button></div>{reminders.slice(0,3).map((reminder) => { const Icon = reminderIcon(reminder.type); return <button key={reminder.key} onClick={() => { if (reminder.reservationId) openReservation(reminder.reservationId); else if (reminder.rentalId) openRental(reminder.rentalId); onClose(); }}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time>Live</time></div></button>; })}<div className="notification-footer" onClick={onClose}>Close notifications</div></div>;
+function Notifications({ reminders, history, readKeys, onClose, markRead, openRental, openReservation }: { reminders: ReminderRow[]; history: NotificationHistoryItem[]; readKeys: string[]; onClose: () => void; markRead: (reminder: ReminderRow) => void; openRental: (rentalId: string) => void; openReservation: (reservationId: string) => void }) {
+  const activeKeys = new Set(reminders.map((reminder) => reminder.key));
+  const historyOnly = history.filter((item) => !activeKeys.has(item.key)).slice(0, 10);
+  const newCount = reminders.filter((reminder) => !readKeys.includes(reminder.key)).length;
+  const openItem = (reminder: ReminderRow) => {
+    markRead(reminder);
+    if (reminder.reservationId) openReservation(reminder.reservationId);
+    else if (reminder.rentalId) openRental(reminder.rentalId);
+    onClose();
+  };
+  return <div className="notifications-panel">
+    <div className="notification-head"><div><strong>Notifications</strong><span>{newCount ? `${newCount} new` : reminders.length ? "All seen" : "No new"}</span></div><button onClick={onClose}><X size={16} /></button></div>
+    <div className="notification-section-label"><span>Active notifications</span><b>{reminders.length}</b></div>
+    {reminders.length ? reminders.map((reminder) => { const Icon = reminderIcon(reminder.type); const isRead = readKeys.includes(reminder.key); return <button className={isRead ? "notification-is-read" : "notification-is-new"} key={reminder.key} onClick={() => openItem(reminder)}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time className={`notification-status ${isRead ? "read" : "new"}`}>{isRead ? "READ" : "NEW"}</time></div></button>; }) : <div className="notification-empty-state">No active notifications right now.</div>}
+    <div className="notification-section-label history"><span>Recent read</span><b>{historyOnly.length}</b></div>
+    {historyOnly.length ? historyOnly.map((item) => { const Icon = reminderIcon(item.type); return <div className="notification-history-row" key={`history-${item.key}`}><span className={`notice-icon ${item.tone === "urgent" ? "urgent" : item.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{item.title}</strong><small>{item.text}</small><time className="notification-status read">READ</time></div></div>; }) : <div className="notification-empty-state compact">Read notifications will stay here, up to the last 10.</div>}
+    <div className="notification-footer" onClick={onClose}>Close notifications</div>
+  </div>;
 }
 
 function MobileNav({ view, goTo, openNew }: { view: View; goTo: (view: View) => void; openNew: () => void }) {
@@ -1628,7 +1738,7 @@ function CustomerEditDialog({ customer, close, done }: { customer: CustomerRow; 
   </DialogShell>;
 }
 
-function CustomerDialog({ close, done }: { close: () => void; done: (message: string) => void }) {
+function CustomerDialog({ customers, close, done }: { customers: CustomerRow[]; close: () => void; done: (message: string) => void }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
@@ -1639,7 +1749,14 @@ function CustomerDialog({ close, done }: { close: () => void; done: (message: st
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaving(true); setError(null);
+    setError(null);
+    const phoneKey = customerPhoneKey(phone);
+    const duplicateCustomer = phoneKey ? customers.find((customer) => customerPhoneKey(customer.phone) === phoneKey) : null;
+    if (duplicateCustomer) {
+      setError(`This phone number is already added for ${duplicateCustomer.name}. Please use the existing customer.`);
+      return;
+    }
+    setSaving(true);
     try {
       const response = await fetch("/api/customers", {
         method: "POST",
@@ -1647,7 +1764,7 @@ function CustomerDialog({ close, done }: { close: () => void; done: (message: st
         body: JSON.stringify({ name, phone, whatsappNumber, drivingLicence, city }),
       });
       const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string } }>(response);
-      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
+      if (!response.ok || !payload.customer) throw new Error(customerCreateError(payload.error));
       done(`${payload.customer.name} added to customers`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not save customer.");
@@ -1718,11 +1835,18 @@ function NewBookingDialog({ vehicles, customers, bookings, seed, close, done, sh
   }, [conflictingBooking, returnDate, returnTime, selectedVehicle?.name, showToast, startDate, startTime]);
 
   async function addCustomerHere() {
-    setSavingCustomer(true); setError(null);
+    setError(null);
+    const phoneKey = customerPhoneKey(newCustomerPhone);
+    const duplicateCustomer = phoneKey ? (customers.find((customer) => customerPhoneKey(customer.phone) === phoneKey) ?? (createdCustomer && customerPhoneKey(createdCustomer.phone) === phoneKey ? createdCustomer : null)) : null;
+    if (duplicateCustomer) {
+      setError(`This phone number is already added for ${duplicateCustomer.name}. Please select the existing customer.`);
+      return;
+    }
+    setSavingCustomer(true);
     try {
       const response = await fetch("/api/customers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: newCustomerName, phone: newCustomerPhone, whatsappNumber: newCustomerWhatsapp, drivingLicence: newCustomerLicence, city: newCustomerCity }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string } }>(response);
-      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
+      if (!response.ok || !payload.customer) throw new Error(customerCreateError(payload.error));
       setCreatedCustomer(payload.customer); setCustomerPhone(payload.customer.phone); setShowCustomerForm(false); showToast(`${payload.customer.name} added and selected`);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save customer."); } finally { setSavingCustomer(false); }
   }
@@ -1954,7 +2078,14 @@ function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehi
   }
 
   async function addCustomerHere() {
-    setSavingCustomer(true); setError(null);
+    setError(null);
+    const phoneKey = customerPhoneKey(newCustomerPhone);
+    const duplicateCustomer = phoneKey ? (customers.find((customer) => customerPhoneKey(customer.phone) === phoneKey) ?? (createdCustomer && customerPhoneKey(createdCustomer.phone) === phoneKey ? createdCustomer : null)) : null;
+    if (duplicateCustomer) {
+      setError(`This phone number is already added for ${duplicateCustomer.name}. Please select the existing customer.`);
+      return;
+    }
+    setSavingCustomer(true);
     try {
       const response = await fetch("/api/customers", {
         method: "POST",
@@ -1968,7 +2099,7 @@ function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehi
         }),
       });
       const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string } }>(response);
-      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
+      if (!response.ok || !payload.customer) throw new Error(customerCreateError(payload.error));
       setCreatedCustomer(payload.customer);
       setCustomerPhone(payload.customer.phone);
       setShowCustomerForm(false);

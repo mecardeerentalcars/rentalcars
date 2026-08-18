@@ -2031,3 +2031,201 @@ body { font-size: 15px; line-height: 1.45; }
   }
   .booking-priority-open > img { width: 44px; height: 42px; }
 }
+
+
+/* MECARDEE_AUTO_PORTRAIT_VEHICLE_PHOTOS_CSS_V8_9_21 */
+
+/*
+  Uploaded portrait vehicle photos are detected from their real image dimensions.
+  Landscape photos stay unchanged. Portrait photos get a little extra zoom so
+  they fill the wide vehicle cards naturally instead of looking like a narrow strip.
+*/
+.fleet-status-image > img,
+.vehicle-photo > img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center center !important;
+}
+
+/* Only portrait uploads receive the extra crop/zoom. */
+.fleet-status-image > img[data-photo-shape="portrait"] {
+  transform: scale(1.18) !important;
+}
+
+.vehicle-photo > img[data-photo-shape="portrait"] {
+  transform: scale(1.12) !important;
+}
+
+/* Keep the existing Vehicles-tab hover effect while preserving portrait zoom. */
+.vehicle-card:hover .vehicle-photo > img[data-photo-shape="portrait"] {
+  transform: scale(1.16) !important;
+}
+
+/* Smooth change after the browser detects the image orientation. */
+.fleet-status-image > img,
+.vehicle-photo > img {
+  transition: transform .3s ease, object-position .3s ease !important;
+}
+
+
+/* MECARDEE_CUSTOMER_DELETE_DUPLICATE_PHONE_CSS_V8_9_22 */
+.customer-actions .customer-delete-action {
+  color: #c93232 !important;
+  border-color: #f0cccc !important;
+  background: #fff8f8 !important;
+}
+.customer-actions .customer-delete-action:hover,
+.customer-actions .customer-delete-action:focus-visible {
+  color: #fff !important;
+  border-color: #c93232 !important;
+  background: #c93232 !important;
+}
+@media (max-width: 720px) {
+  .customer-actions .customer-delete-action {
+    flex: 0 0 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+  }
+}
+
+
+/* MECARDEE_MOBILE_LAST_EDITS_CSS_V8_9_23 */
+
+/* Keep the notification panel visible even when opened from "View all reminders". */
+.notifications-panel {
+  position: fixed !important;
+  top: 72px !important;
+  right: 24px !important;
+  width: min(380px, calc(100vw - 32px)) !important;
+  max-height: calc(100vh - 96px) !important;
+  overflow-y: auto !important;
+  z-index: 120 !important;
+}
+
+.notification-section-label {
+  min-height: 34px;
+  padding: 8px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #edf0ef;
+  color: #68716f;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.notification-section-label b {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ece9ff;
+  color: #5f48d7;
+  font-size: 10px;
+}
+
+.notification-section-label.history {
+  border-top: 1px solid #e8ebea;
+}
+
+.notifications-panel > button.notification-is-new {
+  background: #fff;
+}
+
+.notifications-panel > button.notification-is-read {
+  background: #fafbfb;
+}
+
+.notification-status {
+  width: max-content;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 9px !important;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+
+.notification-status.new {
+  background: #fff0f0;
+  color: #c63e3e !important;
+}
+
+.notification-status.read {
+  background: #edf5f1;
+  color: #3e7562 !important;
+}
+
+.notification-history-row {
+  min-height: 66px;
+  padding: 11px 13px;
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 9px;
+  align-items: start;
+  border-bottom: 1px solid #edf0ef;
+  background: #fafbfb;
+}
+
+.notification-history-row strong,
+.notification-history-row small,
+.notification-history-row time {
+  display: block;
+}
+
+.notification-history-row strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.notification-history-row small {
+  margin-top: 4px;
+  color: #596562;
+  font-size: 11px;
+}
+
+.notification-empty-state {
+  padding: 18px 14px;
+  color: #6b7472;
+  font-size: 11px;
+  text-align: center;
+  border-bottom: 1px solid #edf0ef;
+  background: #fff;
+}
+
+.notification-empty-state.compact {
+  padding: 13px 14px;
+  background: #fafbfb;
+}
+
+/* On-rent cards have two equal actions: View rental + Book now. */
+@media (max-width: 720px) {
+  .fleet-status-actions:has(.rental-book-action) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
+  .fleet-status-actions:has(.rental-book-action) button {
+    min-width: 0;
+    padding-left: 5px;
+    padding-right: 5px;
+    white-space: nowrap;
+  }
+
+  .notifications-panel {
+    top: 74px !important;
+    left: 14px !important;
+    right: 14px !important;
+    width: auto !important;
+    max-height: calc(100dvh - 104px) !important;
+    border-radius: 18px !important;
+  }
+}
+
