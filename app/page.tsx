@@ -663,6 +663,10 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   // MECARDEE_BOOKING_PRIORITY_DASHBOARD_V8_9_17
   const bookingBriefNow = Date.now();
+  // MECARDEE_SETTLED_PENDING_VALUE_V8_9_19
+  const settledPendingAmount = rentals
+    .filter((rental) => rental.state === "completed" && Number(rental.balance) > 0)
+    .reduce((sum, rental) => sum + Number(rental.balance), 0);
   const upcomingBookings = reservations
     .filter((booking) => new Date(booking.endAt).getTime() >= bookingBriefNow)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
@@ -716,7 +720,7 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
         </article>)}
       </div> : <div className="booking-brief-empty"><span><CalendarRange size={22} /></span><div><strong>No customer is waiting for an upcoming pickup.</strong><small>Create a booking now and it will appear here automatically.</small></div></div>}
       <div className="booking-brief-footer">
-        <button type="button" onClick={openPendingPayments}><IndianRupee size={15} /><span>Pending payments</span><strong>{money(metrics.outstanding)}</strong><ArrowRight size={15} /></button>
+        <button type="button" onClick={openPendingPayments}><IndianRupee size={15} /><span>Pending payments</span><strong>{money(settledPendingAmount)}</strong><ArrowRight size={15} /></button>
       </div>
     </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span>{stat.label}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
