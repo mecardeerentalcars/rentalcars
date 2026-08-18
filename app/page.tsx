@@ -1,5 +1,7 @@
 "use client";
 
+// MECARDEE_CURRENT_RENTAL_BALANCE_LABEL_V8_9_20
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateRentalChargeForActualReturn, calculateSettlement } from "@/lib/rental-calculations";
@@ -688,7 +690,7 @@ function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRe
     { label: "On rent", value: String(metrics.onRentCars), note: "With customers", icon: CalendarDays, tone: "blue" },
     { label: "Returning today", value: String(metrics.returningToday), note: metrics.returningToday ? "Due today" : "Nothing due today", icon: Clock3, tone: "amber" },
     { label: "Overdue", value: String(metrics.overdue), note: metrics.overdue ? "Follow up now" : "No overdue rentals", icon: AlertTriangle, tone: "red" },
-    { label: "Pending payments", value: money(metrics.outstanding), note: `Across ${metrics.outstandingRentals} rentals`, icon: IndianRupee, tone: "money" },
+    { label: "Current rental balance", value: money(metrics.outstanding), note: `Across ${metrics.outstandingRentals} rentals`, icon: IndianRupee, tone: "money" },
   ];
   return <>
     <PageHeading eyebrow={dateLabel} title="Good morning, Admin" description="Here’s what needs your attention today." action={<button className="mobile-new" onClick={openNew}><Plus size={16} />New rental</button>} />
