@@ -63,6 +63,7 @@ export function calculateRentalChargeForActualReturn(
   dailyRate: number,
   bookedRentalDays: number,
   bookedBaseRentalAmount: number,
+  graceHours = 3,
 ): ActualReturnRentalCharge {
   const start = startAt instanceof Date ? startAt : new Date(startAt);
   const expected = expectedReturnAt instanceof Date ? expectedReturnAt : new Date(expectedReturnAt);
@@ -75,7 +76,14 @@ export function calculateRentalChargeForActualReturn(
   }
 
   const elapsedMs = Math.max(0, actual.getTime() - start.getTime());
-  const chargeableRentalDays = Math.min(bookedDays, Math.max(1, Math.ceil(elapsedMs / 86_400_000)));
+  // Apply the same cooling/grace window at every rental-day boundary.
+  // Example: start 10:00 AM -> day 2 starts only after 1:00 PM the next day.
+  // At exactly 1:00 PM the previous day's rate still applies; 1:01 PM starts
+  // the next chargeable day. This is only used inside final settlement and
+  // never mutates the original booking schedule.
+  const graceMs = Math.max(0, graceHours) * 60 * 60 * 1000;
+  const chargeableElapsedMs = Math.max(0, elapsedMs - graceMs);
+  const chargeableRentalDays = Math.min(bookedDays, Math.max(1, Math.ceil(chargeableElapsedMs / 86_400_000)));
   const bookedGross = roundMoney(bookedDays * nonNegative(dailyRate));
   const bookingDiscount = roundMoney(Math.max(0, bookedGross - currentBase));
   const adjustedGross = roundMoney(chargeableRentalDays * nonNegative(dailyRate));

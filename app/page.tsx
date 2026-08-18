@@ -60,7 +60,7 @@ if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addV
 else pdfMakeClient.vfs = pdfFonts;
 
 type View = "dashboard" | "rentals" | "vehicles" | "customers" | "payments" | "accounts" | "reports" | "settings";
-type DialogType = null | "new-rental" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
+type DialogType = null | "new-rental" | "new-booking" | "booking-detail" | "booking-start" | "rental-detail" | "payment" | "extend" | "return" | "expense" | "vehicle" | "vehicle-detail" | "customer";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
 type Rental = {
@@ -79,6 +79,7 @@ type Rental = {
   returnDate: string;
   startAt: string;
   endAt: string;
+  actualReturnAt: string | null;
   days: number;
   rate: number;
   rentalAmount: number;
@@ -98,6 +99,27 @@ type Rental = {
   allowedKmPerDay: number;
   extraKmRate: number;
   mileageKmPerLitre: number;
+};
+
+type Reservation = {
+  id: string;
+  bookingNumber: string;
+  vehicleId: string;
+  vehicle: string;
+  plate: string;
+  image: string;
+  customerId: string;
+  customer: string;
+  phone: string;
+  whatsappNumber: string;
+  startAt: string;
+  endAt: string;
+  start: string;
+  returnDate: string;
+  days: number;
+  rate: number;
+  amount: number;
+  createdAt: string;
 };
 
 type Vehicle = {
@@ -164,7 +186,7 @@ type Metrics = {
   totalCars: number; availableCars: number; onRentCars: number; maintenanceCars: number; roadReadyPercent: number; activeRentals: number; returningToday: number; overdue: number; outstanding: number; outstandingRentals: number; outstandingCustomers: number; totalCustomers: number; newCustomersThisMonth: number; currentlyRentingCustomers: number; collectedToday: number; paymentsToday: number; expensesToday: number; netToday: number; collectedMonth: number; collectedLastMonth: number; collectionChangePercent: number; rentalRevenueMonth: number; expensesMonth: number; netIncomeMonth: number; depositsHeld: number; twelveMonthCollected: number; monthlyCollected: { key: string; label: string; amount: number }[];
 };
 
-type AppSnapshot = { ok: boolean; error?: string; rentals: Rental[]; vehicles: Vehicle[]; vehicleProfiles: Record<string, VehicleProfilePayload>; customers: CustomerRow[]; payments: PaymentRow[]; expenses: ExpenseRow[]; reminders: ReminderRow[]; metrics: Metrics };
+type AppSnapshot = { ok: boolean; error?: string; rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; vehicleProfiles: Record<string, VehicleProfilePayload>; customers: CustomerRow[]; payments: PaymentRow[]; expenses: ExpenseRow[]; reminders: ReminderRow[]; metrics: Metrics };
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -221,6 +243,7 @@ export default function Home() {
   const [dialog, setDialog] = useState<DialogType>(null);
   const [rentalList, setRentalList] = useState<Rental[]>([]);
   const [vehicleList, setVehicleList] = useState<Vehicle[]>([]);
+  const [reservationList, setReservationList] = useState<Reservation[]>([]);
   const [vehicleProfiles, setVehicleProfiles] = useState<Record<string, VehicleProfilePayload>>({});
   const [customerList, setCustomerList] = useState<CustomerRow[]>([]);
   const [paymentList, setPaymentList] = useState<PaymentRow[]>([]);
@@ -228,6 +251,8 @@ export default function Home() {
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [metrics, setMetrics] = useState<Metrics>(emptyMetrics);
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [bookingSeed, setBookingSeed] = useState<{ vehicleId: string; date: string } | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -250,6 +275,7 @@ export default function Home() {
       const payload = await readApiResponse<AppSnapshot>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not load live database data.");
       setRentalList(payload.rentals);
+      setReservationList(payload.reservations ?? []);
       setVehicleList(payload.vehicles);
       setVehicleProfiles(payload.vehicleProfiles ?? {});
       setCustomerList(payload.customers);
@@ -324,8 +350,9 @@ export default function Home() {
     const vehicleResults = vehicleList.filter((v) => `${v.name} ${v.plate}`.toLowerCase().includes(query)).map((v) => ({ type: "Vehicle", title: v.name, meta: `${v.plate} · ${v.status}`, action: () => openVehicle(v) }));
     const customerResults = customerList.filter((c) => `${c.name} ${c.phone}`.toLowerCase().includes(query)).map((c) => ({ type: "Customer", title: c.name, meta: `${c.phone} · ${c.rentals} rentals`, action: () => goTo("customers") }));
     const rentalResults = rentalList.filter((r) => `${r.id} ${r.vehicle} ${r.plate} ${r.customer}`.toLowerCase().includes(query)).map((r) => ({ type: "Rental", title: r.id, meta: `${r.vehicle} · ${r.customer}`, action: () => openRental(r) }));
-    return [...vehicleResults, ...customerResults, ...rentalResults].slice(0, 6);
-  }, [search, rentalList, vehicleList, customerList]);
+    const bookingResults = reservationList.filter((r) => `${r.bookingNumber} ${r.vehicle} ${r.plate} ${r.customer}`.toLowerCase().includes(query)).map((r) => ({ type: "Booking", title: r.bookingNumber, meta: `${r.vehicle} · ${r.customer}`, action: () => { setSelectedReservation(r); setDialog("booking-detail"); setSearch(""); } }));
+    return [...vehicleResults, ...customerResults, ...rentalResults, ...bookingResults].slice(0, 6);
+  }, [search, rentalList, reservationList, vehicleList, customerList]);
 
   function goTo(next: View) {
     setView(next);
@@ -344,6 +371,18 @@ export default function Home() {
   function openVehicle(vehicle: Vehicle) {
     setSelectedVehicle(vehicle);
     setDialog("vehicle-detail");
+    setSearch("");
+  }
+
+  function openBookingForVehicle(vehicleId: string, date: string) {
+    setBookingSeed({ vehicleId, date });
+    setDialog("new-booking");
+    setSearch("");
+  }
+
+  function openReservation(reservation: Reservation) {
+    setSelectedReservation(reservation);
+    setDialog("booking-detail");
     setSearch("");
   }
 
@@ -449,7 +488,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard rentals={rentalList} metrics={metrics} reminders={reminders} openRental={openRental} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
+          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => setDialog("new-rental")} goTo={goTo} sendWhatsApp={sendWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => setDialog("new-rental")} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={() => setDialog("new-rental")} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => setDialog("new-rental")} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} />}
@@ -463,6 +502,9 @@ export default function Home() {
       <MobileNav view={view} goTo={goTo} openNew={() => setDialog("new-rental")} />
       {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
+      {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} customers={customerList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
+      {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} close={() => setDialog(null)} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
+      {dialog === "booking-start" && selectedReservation && <StartBookingDialog reservation={selectedReservation} vehicle={vehicleList.find((item) => item.id === selectedReservation.vehicleId) ?? null} close={() => setDialog("booking-detail")} done={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} customers={customerList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
       {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
@@ -502,9 +544,8 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ rentals, metrics, reminders, openRental, openNew, goTo, sendWhatsApp }: { rentals: Rental[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openNew: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
+function Dashboard({ rentals, reservations, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, goTo, sendWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
-  const active = rentals.filter((rental) => rental.state !== "completed");
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   const stats = [
     { label: "Total cars", value: String(metrics.totalCars), note: "Registered fleet", icon: CarFront, tone: "neutral" },
@@ -527,10 +568,7 @@ function Dashboard({ rentals, metrics, reminders, openRental, openNew, goTo, sen
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span>{stat.label}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
     <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!focus} onClick={() => focus && openRental(focus)}>Review now <ArrowRight size={14} /></button></section>
     <div className="dashboard-layout">
-      <section className="rentals-section">
-        <div className="section-title"><div><h2>Current rentals</h2><p>{active.length} vehicle{active.length === 1 ? " is" : "s are"} currently with customers</p></div><button onClick={() => goTo("rentals")}>View all <ArrowRight size={14} /></button></div>
-        <div className="rental-stack">{active.slice(0, 3).map((rental) => <RentalCard rental={rental} key={rental.id} open={() => openRental(rental)} sendWhatsApp={() => sendWhatsApp(rental)} />)}</div>
-      </section>
+      <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} />
       <aside className="dashboard-side">
         <section className="side-card">
           <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div><button aria-label="Reminder settings" onClick={() => window.alert("Reminders are generated automatically from live rentals, balances, maintenance and document dates.")}><SlidersHorizontal size={15} /></button></div>
@@ -545,6 +583,66 @@ function Dashboard({ rentals, metrics, reminders, openRental, openNew, goTo, sen
       </aside>
     </div>
   </>;
+}
+
+function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVehicle, openReservation, openBooking }: { vehicles: Vehicle[]; rentals: Rental[]; reservations: Reservation[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void }) {
+  const [availabilityDate, setAvailabilityDate] = useState(() => dateInputValue(new Date()));
+  const dayStart = new Date(`${availabilityDate}T00:00:00+05:30`).getTime();
+  const dayEnd = new Date(`${availabilityDate}T23:59:59+05:30`).getTime();
+  const overlapsDay = (startAt: string, endAt: string) => new Date(startAt).getTime() <= dayEnd && new Date(endAt).getTime() >= dayStart;
+  const prettyDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${availabilityDate}T12:00:00+05:30`));
+
+  const cards = vehicles.map((vehicle) => {
+    const rental = rentals.find((item) => item.vehicleId === vehicle.id && item.state !== "completed" && overlapsDay(item.startAt, item.endAt));
+    const reservation = reservations.find((item) => item.vehicleId === vehicle.id && overlapsDay(item.startAt, item.endAt));
+    const blocked = ["maintenance", "inactive"].includes(vehicle.statusKey);
+    let key = "available";
+    let label = "Available";
+    let detail = `Ready on ${prettyDate}`;
+    if (blocked) {
+      key = vehicle.statusKey;
+      label = vehicle.statusKey === "maintenance" ? "Maintenance" : "Inactive";
+      detail = vehicle.note;
+    } else if (rental) {
+      key = "rented";
+      label = "On rent";
+      detail = `${rental.customer} · until ${rental.returnDate}`;
+    } else if (reservation) {
+      key = "booked";
+      label = "Booked";
+      detail = `${reservation.customer} · ${reservation.start} → ${reservation.returnDate}`;
+    } else {
+      const next = reservations
+        .filter((item) => item.vehicleId === vehicle.id && new Date(item.startAt).getTime() > dayEnd)
+        .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0];
+      if (next) detail = `Next booking: ${next.start} · ${next.customer}`;
+    }
+    return { vehicle, rental, reservation, key, label, detail };
+  });
+  const availableCount = cards.filter((item) => item.key === "available").length;
+  const bookedCount = cards.filter((item) => item.key === "booked").length;
+  const rentedCount = cards.filter((item) => item.key === "rented").length;
+
+  return <section className="fleet-status-section">
+    <div className="fleet-status-heading">
+      <div><h2>Car Status & Availability</h2><p>Choose a date and see the full fleet in one look.</p></div>
+      <label className="availability-date"><CalendarDays size={16} /><span>Check date</span><input type="date" value={availabilityDate} min={dateInputValue(new Date())} onChange={(event) => setAvailabilityDate(event.target.value || dateInputValue(new Date()))} /></label>
+    </div>
+    <div className="availability-summary"><span className="available"><b>{availableCount}</b> Available</span><span className="booked"><b>{bookedCount}</b> Booked</span><span className="rented"><b>{rentedCount}</b> On rent</span></div>
+    <div className="fleet-status-grid">
+      {cards.map(({ vehicle, rental, reservation, key, label, detail }) => <article className={`fleet-status-card ${key}`} key={vehicle.id}>
+        <div className="fleet-status-image"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} /><span className={`fleet-status-badge ${key}`}><i />{label}</span></div>
+        <div className="fleet-status-body"><div><h3>{vehicle.name}</h3><strong>{vehicle.plate}</strong></div><p>{detail}</p>
+          <div className="fleet-status-actions">
+            {key === "available" && <button className="primary-button" onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book for {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${availabilityDate}T12:00:00+05:30`))}</button>}
+            {reservation && <button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />Manage booking</button>}
+            {rental && <button className="primary-button" onClick={() => openRental(rental)}><CarFront size={15} />View rental</button>}
+            {!rental && !reservation && key !== "available" && <button onClick={() => openVehicle(vehicle)}>View vehicle</button>}
+          </div>
+        </div>
+      </article>)}
+    </div>
+  </section>;
 }
 
 function RentalCard({ rental, open, sendWhatsApp }: { rental: Rental; open: () => void; sendWhatsApp: () => void }) {
@@ -1248,6 +1346,127 @@ function CustomerDialog({ close, done }: { close: () => void; done: (message: st
   </DialogShell>;
 }
 
+function NewBookingDialog({ vehicles, customers, seed, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; seed: { vehicleId: string; date: string } | null; close: () => void; done: (message: string) => void; showToast: (message: string) => void }) {
+  const bookableVehicles = vehicles.filter((item) => !["maintenance", "inactive"].includes(item.statusKey));
+  const initialVehicle = bookableVehicles.find((item) => item.id === seed?.vehicleId) ?? bookableVehicles[0] ?? null;
+  const [vehicleId, setVehicleId] = useState(initialVehicle?.id ?? "");
+  const [customerPhone, setCustomerPhone] = useState(customers[0]?.phone ?? "");
+  const [startDate, setStartDate] = useState(seed?.date ?? dateInputValue(new Date()));
+  const [startTime, setStartTime] = useState("10:00");
+  const [daysInput, setDaysInput] = useState("1");
+  const addDays = (base: string, count: number) => { const [y,m,d] = base.split("-").map(Number); const value = new Date(y,m-1,d); value.setDate(value.getDate() + Math.max(1, Math.trunc(count || 1))); return dateInputValue(value); };
+  const [returnDate, setReturnDate] = useState(() => addDays(seed?.date ?? dateInputValue(new Date()), 1));
+  const [returnTime, setReturnTime] = useState("10:00");
+  const selectedVehicle = bookableVehicles.find((item) => item.id === vehicleId) ?? initialVehicle;
+  const [rate, setRate] = useState(initialVehicle?.rate ?? 0);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+  const [newCustomerWhatsapp, setNewCustomerWhatsapp] = useState("");
+  const [newCustomerLicence, setNewCustomerLicence] = useState("");
+  const [newCustomerCity, setNewCustomerCity] = useState("");
+  const [createdCustomer, setCreatedCustomer] = useState<{ name: string; phone: string } | null>(null);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const days = Math.max(1, Number(daysInput) || 1);
+
+  async function addCustomerHere() {
+    setSavingCustomer(true); setError(null);
+    try {
+      const response = await fetch("/api/customers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: newCustomerName, phone: newCustomerPhone, whatsappNumber: newCustomerWhatsapp, drivingLicence: newCustomerLicence, city: newCustomerCity }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string } }>(response);
+      if (!response.ok || !payload.customer) throw new Error(payload.error ?? "Could not save customer.");
+      setCreatedCustomer(payload.customer); setCustomerPhone(payload.customer.phone); setShowCustomerForm(false); showToast(`${payload.customer.name} added and selected`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save customer."); } finally { setSavingCustomer(false); }
+  }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedVehicle) return setError("Select a vehicle.");
+    if (!customerPhone) return setError("Select or add a customer.");
+    setSaving(true); setError(null);
+    try {
+      const response = await fetch("/api/bookings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        vehicleRegistration: selectedVehicle.plate,
+        customerPhone,
+        startAt: new Date(`${startDate}T${startTime}:00+05:30`).toISOString(),
+        endAt: new Date(`${returnDate}T${returnTime}:00+05:30`).toISOString(),
+        rentalDays: days,
+        dailyRate: rate,
+      }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; booking?: { bookingNumber: string } }>(response);
+      if (!response.ok || !payload.booking) throw new Error(payload.error ?? "Could not save booking.");
+      const customer = customers.find((item) => item.phone === customerPhone)?.name ?? createdCustomer?.name ?? customerPhone;
+      done(`${selectedVehicle.name} booked for ${customer} · ${payload.booking.bookingNumber}`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save booking."); } finally { setSaving(false); }
+  }
+
+  return <DialogShell title="Book a car" subtitle="Reserve the vehicle now. Start the actual rental when the customer arrives." close={close} wide>
+    <form className="rental-form booking-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}>
+      <div className="form-content">
+        <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Vehicle & customer</h3><p>A booking blocks only the selected rental period.</p></div></div><div className="field-grid"><label className="field span-2"><span>Vehicle</span><select value={vehicleId} onChange={(e) => { setVehicleId(e.target.value); const v = bookableVehicles.find((item) => item.id === e.target.value); if (v) setRate(v.rate); }}>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate}</option>)}</select></label><label className="field"><span>Customer</span><select value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name}</option>}{customers.map((item) => <option value={item.phone} key={item.id}>{item.name} — {item.phone}</option>)}{!customers.length && !createdCustomer && <option value="">No customers yet</option>}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((value) => !value)}><UserRoundPlus size={16} />{showCustomerForm ? "Close" : "Add new customer"}</button></div></section>
+        {showCustomerForm && <section className="form-section"><div className="field-grid"><label className="field"><span>Name</span><input value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={() => setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer ? "Saving…" : "Save customer"}</button></div></section>}
+        <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booking period</h3><p>The vehicle will show Booked when this date is checked on the dashboard.</p></div></div><div className="field-grid rental-schedule-grid"><label className="field"><span>Start date</span><input type="date" min={dateInputValue(new Date())} value={startDate} onChange={(e)=>{ const next=e.target.value; setStartDate(next); setReturnDate(addDays(next,days)); }} /></label><label className="field"><span>Start time</span><input type="time" value={startTime} onChange={(e)=>{ const next=e.target.value; setStartTime(next); setReturnTime((current)=>current===startTime?next:current); }} /></label><label className="field"><span>Rental days</span><input type="number" min="1" inputMode="numeric" value={daysInput} onChange={(e)=>{ const raw=e.target.value.replace(/\D/g,""); setDaysInput(raw); if(raw) setReturnDate(addDays(startDate,Number(raw))); }} /></label><label className="field"><span>Expected return</span><input type="date" value={returnDate} onChange={(e)=>{ const next=e.target.value; const [sy,sm,sd]=startDate.split("-").map(Number); const [ey,em,ed]=next.split("-").map(Number); const diff=Math.max(1,Math.round((Date.UTC(ey,em-1,ed)-Date.UTC(sy,sm-1,sd))/86_400_000)); setDaysInput(String(diff)); setReturnDate(next); }} /></label><label className="field"><span>Return time</span><input type="time" value={returnTime} onChange={(e)=>setReturnTime(e.target.value)} /></label><label className="field"><span>Daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} booked day{days===1?"":"s"}</strong><span>{money(days*rate)} estimated rental</span></div></section>
+      </div>
+      <footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || !selectedVehicle || !customerPhone}>{saving ? "Booking…" : "Confirm booking"}<CalendarDays size={16} /></button><button type="button" className="save-draft" onClick={close}>Cancel</button></div></footer>
+    </form>
+  </DialogShell>;
+}
+
+function BookingDetailDialog({ reservation, close, start, cancelled }: { reservation: Reservation; close: () => void; start: () => void; cancelled: (message: string) => void }) {
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function cancelBooking() {
+    setSaving(true); setError(null);
+    try {
+      const response = await fetch(`/api/bookings/${reservation.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not cancel booking.");
+      cancelled(`${reservation.bookingNumber} cancelled. The car is available for that period again.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not cancel booking."); } finally { setSaving(false); }
+  }
+  return <DialogShell title={reservation.bookingNumber} subtitle="Future booking · not yet handed over" close={close}>
+    <div className="booking-detail-card"><img src={reservation.image} alt={`${reservation.vehicle} vehicle`} /><div><span className="fleet-status-badge booked"><i />Booked</span><h2>{reservation.vehicle}</h2><p>{reservation.plate}</p></div></div>
+    <section className="detail-section"><div className="customer-detail-card"><span>{reservation.customer.split(" ").map((part)=>part[0]).join("")}</span><div><strong>{reservation.customer}</strong><small>{reservation.phone}</small></div></div></section>
+    <section className="detail-section"><div className="timeline"><div><i /><span><small>Booked from</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Expected return</small><strong>{reservation.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Booked days</small><strong>{reservation.days}</strong></div><div><small>Daily rate</small><strong>{money(reservation.rate)}</strong></div><div><small>Estimated rent</small><strong>{money(reservation.amount)}</strong></div></div></section>
+    {error && <p className="form-error">{error}</p>}
+    {confirmCancel && <div className="booking-cancel-warning"><AlertTriangle size={18} /><div><strong>Cancel this booking?</strong><p>No rental/payment data will be deleted. The booking is marked Cancelled and the dates become available again.</p></div><button disabled={saving} onClick={() => void cancelBooking()}>{saving ? "Cancelling…" : "Yes, cancel"}</button><button disabled={saving} onClick={() => setConfirmCancel(false)}>Keep booking</button></div>}
+    <footer className="detail-actions"><button className="return-button" onClick={start}><CarFront size={16} />Start rental</button><button className="danger-action" onClick={() => setConfirmCancel(true)} disabled={confirmCancel}><X size={16} />Cancel booking</button></footer>
+  </DialogShell>;
+}
+
+function StartBookingDialog({ reservation, vehicle, close, done }: { reservation: Reservation; vehicle: Vehicle | null; close: () => void; done: (message: string) => void }) {
+  const [startingKilometer, setStartingKilometer] = useState(vehicle?.odometerKm ?? 0);
+  const [startingFuelRangeKm, setStartingFuelRangeKm] = useState(100);
+  const [rate, setRate] = useState(reservation.rate);
+  const [advance, setAdvance] = useState(0);
+  const [deposit, setDeposit] = useState(0);
+  const [discount, setDiscount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const expectedKm = vehicle ? calculateExpectedReturnKilometer(startingKilometer, reservation.days, vehicle.allowedKmPerDay) : startingKilometer;
+  const total = Math.max(0, reservation.days * rate - discount);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true); setError(null);
+    try {
+      const response = await fetch(`/api/bookings/${reservation.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", startingKilometer, startingFuelRangeKm, dailyRate: rate, securityDeposit: deposit, advancePaid: advance, bookingDiscount: discount, paymentMethod, receivedBy: CURRENT_USER_NAME }) });
+      const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not start rental.");
+      done(`${reservation.bookingNumber} started as an active rental for ${reservation.customer}`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not start rental."); } finally { setSaving(false); }
+  }
+  return <DialogShell title="Start booked rental" subtitle={`${reservation.vehicle} · ${reservation.customer}`} close={close} wide>
+    <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}><div className="form-content">
+      <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booked schedule</h3><p>The reservation becomes an active rental only after this confirmation.</p></div></div><div className="timeline"><div><i /><span><small>Start</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Return</small><strong>{reservation.returnDate}</strong></span></div></div></section>
+      <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Vehicle handover</h3><p>Record the actual odometer and fuel range now.</p></div></div><div className="field-grid three"><label className="field"><span>Starting kilometer</span><input type="number" min="0" value={blankZero(startingKilometer)} onChange={(e)=>setStartingKilometer(numberFromInput(e.target.value))} /></label><label className="field"><span>Starting fuel range (KM)</span><input type="number" min="0" value={blankZero(startingFuelRangeKm)} onChange={(e)=>setStartingFuelRangeKm(numberFromInput(e.target.value))} /></label><label className="field"><span>Expected return KM</span><input readOnly value={`${expectedKm.toLocaleString("en-IN")} km`} /></label></div></section>
+      <section className="form-section"><div className="form-section-title"><span><WalletCards size={17} /></span><div><h3>Payment details</h3><p>Confirm the rate and record anything received at handover.</p></div></div><div className="field-grid three"><label className="field"><span>Daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label><label className="field"><span>Security deposit (₹)</span><input type="number" min="0" value={blankZero(deposit)} onChange={(e)=>setDeposit(numberFromInput(e.target.value))} /></label><label className="field"><span>Advance paid (₹)</span><input type="number" min="0" max={total} value={blankZero(advance)} onChange={(e)=>setAdvance(numberFromInput(e.target.value))} /></label><label className="field"><span>Discount (₹)</span><input type="number" min="0" max={reservation.days*rate} value={blankZero(discount)} onChange={(e)=>setDiscount(numberFromInput(e.target.value))} /></label><label className="field"><span>Payment method</span><select value={paymentMethod} onChange={(e)=>setPaymentMethod(e.target.value)}><option>UPI</option><option>Cash</option><option>Bank transfer</option><option>Other</option></select></label><label className="field"><span>Rental total</span><input readOnly value={money(total)} /></label></div></section>
+    </div><footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button className="confirm-rental" type="submit" disabled={saving || !vehicle}>{saving ? "Starting…" : "Start rental"}<ArrowRight size={16} /></button><button className="save-draft" type="button" onClick={close}>Back</button></div></footer></form>
+  </DialogShell>;
+}
+
 function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehicles: Vehicle[]; customers: CustomerRow[]; close: () => void; done: (message: string, plate: string) => void; showToast: (message: string) => void }) {
   const availableVehicles = vehicles.filter((item) => item.statusKey === "available");
   const firstVehicle = availableVehicles[0] ?? null;
@@ -1382,10 +1601,11 @@ function NewRentalDialog({ vehicles, customers, close, done, showToast }: { vehi
 
 function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp }: { rental: Rental; close: () => void; switchDialog: (dialog: DialogType) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
   const collectedPercent = rental.total > 0 ? Math.min(100, Math.round((rental.paid / rental.total) * 100)) : 100;
+  const completed = rental.state === "completed";
   return <DialogShell title={rental.id} subtitle={`${rental.vehicle} · ${rental.plate}`} close={close} wide>
-    <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span><h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental, "rental reminder")}><MessageCircle size={16} />WhatsApp</button></div></div>
-    <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>Original booking dates</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>Expected return</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Rental days</small><strong>{rental.days} days</strong></div><div><small>Daily rate</small><strong>{money(rental.rate)}</strong></div><div><small>Starting odometer</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>Expected return KM</small><strong>{calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section></div><aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>Updated live</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />Receive payment</button></aside></div>
-    <footer className="detail-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} />Extend rental</button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} />Return vehicle</button></footer>
+    <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span><h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental, completed ? "completed rental payment reminder" : "rental reminder")}><MessageCircle size={16} />WhatsApp</button></div></div>
+    <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Settlement completed — return details are locked" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Rental days</small><strong>{rental.days} days</strong></div><div><small>Daily rate</small><strong>{money(rental.rate)}</strong></div><div><small>Starting odometer</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>Expected return KM</small><strong>{calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section></div><aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>{completed ? "Final settlement — payment only" : "Updated live"}</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button></aside></div>
+    {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} />Extend rental</button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} />Return vehicle</button></footer>}
   </DialogShell>;
 }
 
@@ -1571,14 +1791,14 @@ function ReturnDialog({ rental, close, onConfirmed }: { rental: Rental; close: (
           <label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label>
           <label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" placeholder="0" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
           <label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
-        </div>{returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the rental start.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {rentalCharge.chargeableRentalDays} chargeable day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(rentalCharge.baseRentalAmount)}. The original booking stays unchanged.</span></div>}{withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}</section>
+        </div>{returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the rental start.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {rentalCharge.chargeableRentalDays} chargeable day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(rentalCharge.baseRentalAmount)}. A 3-hour cooling period applies at each daily rent boundary. The original booking stays unchanged.</span></div>}{withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}</section>
         <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM, fuel shortage and late-day rent are automatic. A 3-hour grace period applies after the expected return time.</p></div></div><div className="charge-grid">
           <label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label>
           <label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label>
           <label><span>Late return charge ({lateRental.extraRentalDays} extra day{lateRental.extraRentalDays === 1 ? "" : "s"})</span><input readOnly value={lateRental.charge} /></label>
           <label><span>Cleaning</span><input min="0" type="number" placeholder="0" value={blankZero(cleaning)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setCleaning(numberFromInput(event.target.value))} /></label>
           <label><span>Damage</span><input min="0" type="number" placeholder="0" value={blankZero(damage)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDamage(numberFromInput(event.target.value))} /></label>
-        </div><p className="calculation-note">Late rule: 3-hour grace, then each started 24 hours = 1 extra rental day · Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
+        </div><p className="calculation-note">Rent rule: each 24-hour rental-day boundary gets a 3-hour cooling period; after that the next day starts. After the booked return, the same 3-hour grace applies before late rent · Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
       </div>
       <aside className="final-bill"><h3>Final bill</h3><div><span>Rental amount ({rentalCharge.chargeableRentalDays} day{rentalCharge.chargeableRentalDays === 1 ? "" : "s"})</span><strong>{money(rentalCharge.baseRentalAmount)}</strong></div>{bookingOtherCharges > 0 && <div><span>Existing charges</span><strong>{money(bookingOtherCharges)}</strong></div>}<div><span>Extra kilometer charge</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div><div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div><div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div><label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
     </form>

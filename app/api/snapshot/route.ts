@@ -142,7 +142,7 @@ export async function GET() {
 
     const activeBookingByVehicle = new Map<string, (typeof bookingRows)[number]>();
     for (const row of bookingRows) {
-      if (!["booked", "rented"].includes(row.booking.status)) continue;
+      if (row.booking.status !== "rented") continue;
       if (!activeBookingByVehicle.has(row.booking.vehicleId)) activeBookingByVehicle.set(row.booking.vehicleId, row);
     }
 
@@ -179,7 +179,7 @@ export async function GET() {
     }
 
     const rentals = bookingRows
-      .filter((row) => row.booking.status !== "draft")
+      .filter((row) => ["rented", "completed"].includes(row.booking.status))
       .map((row) => {
         const { booking, vehicle, customer } = row;
         const settlement = settlementByBooking.get(booking.id);
@@ -232,9 +232,13 @@ export async function GET() {
           whatsappNumber: customer.whatsappNumber ?? customer.phone,
           licence: customer.drivingLicence,
           start: formatDateTime(booking.startAt, today),
-          returnDate: formatDateTime(booking.endAt, today),
+          // Once settlement is completed, show the actual handover/return time in
+          // rental history. Keep endAt as the original booked return timestamp so
+          // historical booking rules and reports can still reference the schedule.
+          returnDate: formatDateTime(booking.status === "completed" && settlement?.actualReturnAt ? settlement.actualReturnAt : booking.endAt, today),
           startAt: booking.startAt.toISOString(),
           endAt: booking.endAt.toISOString(),
+          actualReturnAt: settlement?.actualReturnAt?.toISOString() ?? null,
           days: booking.rentalDays,
           rate: booking.dailyRate,
           rentalAmount: booking.baseRentalAmount + booking.bookingDiscount,
@@ -256,6 +260,29 @@ export async function GET() {
           mileageKmPerLitre: vehicle.mileageKmPerLitre,
         };
       });
+
+    const reservations = bookingRows
+      .filter((row) => row.booking.status === "booked")
+      .map(({ booking, vehicle, customer }) => ({
+        id: booking.id,
+        bookingNumber: booking.bookingNumber,
+        vehicleId: vehicle.id,
+        vehicle: vehicle.name,
+        plate: vehicle.registrationNumber,
+        image: vehicle.imageUrl ?? "/cars/swift.jpg",
+        customerId: customer.id,
+        customer: customer.name,
+        phone: customer.phone,
+        whatsappNumber: customer.whatsappNumber ?? customer.phone,
+        startAt: booking.startAt.toISOString(),
+        endAt: booking.endAt.toISOString(),
+        start: formatDateTime(booking.startAt, today),
+        returnDate: formatDateTime(booking.endAt, today),
+        days: booking.rentalDays,
+        rate: booking.dailyRate,
+        amount: roundMoney(booking.baseRentalAmount + booking.bookingDiscount),
+        createdAt: booking.createdAt.toISOString(),
+      }));
 
     const rentalById = new Map(rentals.map((rental) => [rental.id, rental]));
     const vehicleDtos = vehicleRows.map((vehicle) => {
@@ -455,7 +482,7 @@ export async function GET() {
     );
     const depositsHeld = roundMoney(
       bookingRows
-        .filter((row) => ["booked", "rented"].includes(row.booking.status))
+        .filter((row) => row.booking.status === "rented")
         .reduce((sum, row) => sum + row.booking.securityDeposit, 0),
     );
     const newCustomersThisMonth = customerRows.filter((customer) => monthKey(customer.createdAt) === thisMonth).length;
@@ -495,6 +522,7 @@ export async function GET() {
       ok: true,
       generatedAt: current.toISOString(),
       rentals,
+      reservations,
       vehicles: vehicleDtos,
       vehicleProfiles,
       customers: customerDtos,
