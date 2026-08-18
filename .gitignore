@@ -42,3 +42,7 @@ yarn-error.log*
 /outputs/
 /work/
 *.tsbuildinfo
+
+.mecardee-patch-backup/
+
+.mecardee-patch-backup/
