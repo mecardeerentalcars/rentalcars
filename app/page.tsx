@@ -782,17 +782,44 @@ export default function Home() {
     openWhatsAppSafely(phone, text);
   }
 
+  // MECARDEE_REMINDER_NO_ESTIMATED_RENT_V8_9_41
   function sendBookingWhatsApp(reservation: Reservation, purpose: "confirmation" | "reminder" = "confirmation") {
     const digits = (reservation.whatsappNumber || reservation.phone).replace(/\D/g, "");
-    const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
-    const label = purpose === "reminder" ? "Upcoming booking reminder" : "Booking confirmation";
-    const intro = purpose === "reminder" ? "This is a reminder for your upcoming vehicle booking." : "Your vehicle booking is reserved.";
-    const closing = purpose === "reminder" ? "Please reply to confirm that the pickup details are still correct." : "Please reply to confirm the booking details.";
-    const amountLine = purpose === "reminder" ? "" : `\nEstimated rent: ${money(reservation.amount)}`;
-    const text = `Mecardee Rental - ${label}\n\nHello ${reservation.customer},\n${intro}\n\nVehicle: ${reservation.vehicle} (${reservation.plate})\nBooking: ${reservation.bookingNumber}\nPickup: ${reservation.start}\nExpected return: ${reservation.returnDate}\nRental days: ${reservation.days}${amountLine}\n\n${closing}`;
+    const phone =
+      digits.length === 10
+        ? `91${digits}`
+        : digits.startsWith("0") && digits.length === 11
+          ? `91${digits.slice(1)}`
+          : digits;
+
+    const isReminder = purpose === "reminder";
+    const label = isReminder ? "Upcoming booking reminder" : "Booking confirmation";
+    const intro = isReminder
+      ? "This is a reminder for your upcoming vehicle booking."
+      : "Your vehicle booking is reserved.";
+    const closing = isReminder
+      ? "Please reply to confirm that the pickup details are still correct."
+      : "Please reply to confirm the booking details.";
+
+    // IMPORTANT:
+    // Booking REMINDERS must never show Estimated rent / Estimated amount.
+    // Normal booking CONFIRMATIONS keep their existing estimated-rent line.
+    const estimatedRentLine = isReminder ? "" : `\nEstimated rent: ${money(reservation.amount)}`;
+
+    const text =
+      `Mecardee Rental - ${label}\n\n` +
+      `Hello ${reservation.customer},\n` +
+      `${intro}\n\n` +
+      `Vehicle: ${reservation.vehicle} (${reservation.plate})\n` +
+      `Booking: ${reservation.bookingNumber}\n` +
+      `Pickup: ${reservation.start}\n` +
+      `Expected return: ${reservation.returnDate}\n` +
+      `Rental days: ${reservation.days}` +
+      estimatedRentLine +
+      `\n\n${closing}`;
+
     openWhatsAppSafely(phone, text);
   }
-
 
   function exportPayments() {
     if (!paymentList.length) return showToast("No payments to export.");
