@@ -19,9 +19,12 @@ CREATE TABLE IF NOT EXISTS vehicles (
   extra_km_rate numeric(12,2) NOT NULL DEFAULT 0,
   mileage_km_per_litre numeric(6,2) NOT NULL DEFAULT 1,
   status varchar(24) NOT NULL DEFAULT 'available',
+  is_guest boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_guest boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS customers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,6 +40,7 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_number varchar(32) NOT NULL,
+  requested_vehicle_id uuid NOT NULL REFERENCES vehicles(id) ON DELETE RESTRICT,
   vehicle_id uuid NOT NULL REFERENCES vehicles(id) ON DELETE RESTRICT,
   customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
   start_at timestamptz NOT NULL,
@@ -57,6 +61,34 @@ CREATE TABLE IF NOT EXISTS bookings (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS requested_vehicle_id uuid REFERENCES vehicles(id) ON DELETE RESTRICT;
+UPDATE bookings SET requested_vehicle_id = vehicle_id WHERE requested_vehicle_id IS NULL;
+ALTER TABLE bookings ALTER COLUMN requested_vehicle_id SET NOT NULL;
+
+CREATE TABLE IF NOT EXISTS rental_segments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id uuid NOT NULL REFERENCES bookings(id) ON DELETE RESTRICT,
+  sequence integer NOT NULL,
+  vehicle_id uuid NOT NULL REFERENCES vehicles(id) ON DELETE RESTRICT,
+  start_at timestamptz NOT NULL,
+  end_at timestamptz,
+  starting_kilometer integer NOT NULL,
+  ending_kilometer integer,
+  starting_fuel_range_km integer NOT NULL DEFAULT 0,
+  daily_rate numeric(12,2) NOT NULL,
+  rental_days integer NOT NULL DEFAULT 1,
+  rental_charge numeric(12,2) NOT NULL DEFAULT 0,
+  allowed_km_per_day integer NOT NULL DEFAULT 100,
+  extra_km_rate numeric(12,2) NOT NULL DEFAULT 0,
+  extra_kilometers integer NOT NULL DEFAULT 0,
+  extra_km_charge numeric(12,2) NOT NULL DEFAULT 0,
+  status varchar(24) NOT NULL DEFAULT 'active',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE rental_segments ADD COLUMN IF NOT EXISTS starting_fuel_range_km integer NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS return_settlements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -183,9 +215,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS vehicles_registration_number_unique ON vehicle
 CREATE INDEX IF NOT EXISTS vehicles_status_idx ON vehicles(status);
 CREATE UNIQUE INDEX IF NOT EXISTS customers_phone_unique ON customers(phone);
 CREATE UNIQUE INDEX IF NOT EXISTS bookings_booking_number_unique ON bookings(booking_number);
+CREATE INDEX IF NOT EXISTS bookings_requested_vehicle_idx ON bookings(requested_vehicle_id);
 CREATE INDEX IF NOT EXISTS bookings_vehicle_dates_idx ON bookings(vehicle_id, start_at, end_at);
 CREATE INDEX IF NOT EXISTS bookings_customer_idx ON bookings(customer_id);
 CREATE INDEX IF NOT EXISTS bookings_status_idx ON bookings(status);
+CREATE UNIQUE INDEX IF NOT EXISTS rental_segments_booking_sequence_unique ON rental_segments(booking_id, sequence);
+CREATE INDEX IF NOT EXISTS rental_segments_booking_idx ON rental_segments(booking_id);
+CREATE INDEX IF NOT EXISTS rental_segments_vehicle_idx ON rental_segments(vehicle_id);
+CREATE INDEX IF NOT EXISTS rental_segments_status_idx ON rental_segments(status);
 CREATE UNIQUE INDEX IF NOT EXISTS return_settlements_booking_unique ON return_settlements(booking_id);
 CREATE UNIQUE INDEX IF NOT EXISTS payments_payment_number_unique ON payments(payment_number);
 CREATE INDEX IF NOT EXISTS payments_booking_idx ON payments(booking_id);
@@ -201,6 +238,49 @@ CREATE INDEX IF NOT EXISTS maintenance_records_vehicle_idx ON maintenance_record
 CREATE INDEX IF NOT EXISTS maintenance_records_status_idx ON maintenance_records(status);
 CREATE UNIQUE INDEX IF NOT EXISTS vehicle_tyres_vehicle_position_unique ON vehicle_tyres(vehicle_id, position);
 CREATE INDEX IF NOT EXISTS vehicle_tyres_vehicle_idx ON vehicle_tyres(vehicle_id);
+
+-- Backfill one usage segment for existing rentals so the new multi-vehicle flow
+-- starts without changing any historical booking or settlement data.
+INSERT INTO rental_segments (
+  booking_id,
+  sequence,
+  vehicle_id,
+  start_at,
+  end_at,
+  starting_kilometer,
+  ending_kilometer,
+  starting_fuel_range_km,
+  daily_rate,
+  rental_days,
+  rental_charge,
+  allowed_km_per_day,
+  extra_km_rate,
+  extra_kilometers,
+  extra_km_charge,
+  status
+)
+SELECT
+  b.id,
+  1,
+  b.vehicle_id,
+  b.start_at,
+  CASE WHEN b.status = 'completed' THEN COALESCE(rs.actual_return_at, b.end_at) ELSE NULL END,
+  COALESCE(b.starting_kilometer, v.odometer_km, 0),
+  CASE WHEN b.status = 'completed' THEN COALESCE(rs.actual_return_kilometer, v.odometer_km, b.starting_kilometer, 0) ELSE NULL END,
+  COALESCE(b.starting_fuel_range_km, 0),
+  b.daily_rate,
+  GREATEST(1, b.rental_days),
+  CASE WHEN b.status = 'completed' THEN ROUND((b.base_rental_amount + b.booking_discount)::numeric, 2) ELSE 0 END,
+  v.allowed_km_per_day,
+  v.extra_km_rate,
+  CASE WHEN b.status = 'completed' AND rs.extra_kilometers IS NOT NULL THEN rs.extra_kilometers ELSE 0 END,
+  CASE WHEN b.status = 'completed' AND rs.extra_km_charge IS NOT NULL THEN rs.extra_km_charge ELSE 0 END,
+  CASE WHEN b.status = 'completed' THEN 'completed' ELSE 'active' END
+FROM bookings b
+JOIN vehicles v ON v.id = b.vehicle_id
+LEFT JOIN return_settlements rs ON rs.booking_id = b.id
+WHERE b.status IN ('rented', 'completed')
+  AND NOT EXISTS (SELECT 1 FROM rental_segments s WHERE s.booking_id = b.id);
 
 -- Backfill the legacy bookings.advance_paid values into the new payment ledger.
 -- This prevents existing rentals from losing their already-paid balance after upgrade.

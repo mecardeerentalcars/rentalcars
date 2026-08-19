@@ -67,6 +67,7 @@ await db.transaction(async (tx) => {
     if (!vehicle || !customer) throw new Error(`Missing seed relation for ${booking.bookingNumber}`);
     const values = {
       bookingNumber: booking.bookingNumber,
+      requestedVehicleId: vehicle.id,
       vehicleId: vehicle.id,
       customerId: customer.id,
       startAt: new Date(booking.startAt),

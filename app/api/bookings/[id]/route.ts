@@ -1,6 +1,6 @@
-import { and, eq, gt, inArray, lt, ne } from "drizzle-orm";
+import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
-import { bookings, customers, payments, vehicles } from "@/db/schema";
+import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
 import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
 
 class RequestError extends Error {
@@ -20,6 +20,7 @@ const text = (value: unknown, field: string) => {
   if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`);
   return value.trim();
 };
+const optionalText = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
 const date = (value: unknown, field: string) => {
   const result = new Date(text(value, field));
   if (Number.isNaN(result.getTime())) throw new RequestError(`${field} is invalid.`);
@@ -55,16 +56,31 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         if (rentalDays < 1) throw new RequestError("Rental days must be at least 1.");
         if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");
 
-        const [overlap] = await tx.select({ id: bookings.id }).from(bookings).where(and(
-          eq(bookings.vehicleId, record.vehicle.id),
+        const requestedVehicleId = optionalText(body.vehicleId) ?? record.vehicle.id;
+        const targetVehicle = requestedVehicleId === record.vehicle.id
+          ? record.vehicle
+          : (await tx.select().from(vehicles).where(eq(vehicles.id, requestedVehicleId)).limit(1).for("update"))[0];
+        if (!targetVehicle) throw new RequestError("Selected vehicle was not found.", 404);
+
+        const [bookingConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
+          eq(bookings.vehicleId, targetVehicle.id),
           ne(bookings.id, id),
-          inArray(bookings.status, ["booked", "rented"]),
+          eq(bookings.status, "booked"),
           lt(bookings.startAt, endAt),
           gt(bookings.endAt, startAt),
         )).limit(1);
-        if (overlap) throw new RequestError("Vehicle is already booked or on rent for the selected period.", 409);
+        const [rentalConflict] = await tx.select({ id: rentalSegments.id }).from(rentalSegments)
+          .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
+          .where(and(
+            eq(rentalSegments.vehicleId, targetVehicle.id),
+            eq(rentalSegments.status, "active"),
+            ne(rentalSegments.bookingId, id),
+            lt(rentalSegments.startAt, endAt),
+          )).limit(1);
+        if (bookingConflict || rentalConflict) throw new RequestError("Vehicle is already booked or on rent for the selected period.", 409);
 
         await tx.update(bookings).set({
+          vehicleId: targetVehicle.id,
           startAt,
           endAt,
           rentalDays,
@@ -72,11 +88,60 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           baseRentalAmount: Math.round(rentalDays * dailyRate * 100) / 100,
           updatedAt: new Date(),
         }).where(eq(bookings.id, id));
-        return { action: "edited", bookingNumber: record.booking.bookingNumber };
+        return {
+          action: "edited",
+          bookingNumber: record.booking.bookingNumber,
+          vehicleId: targetVehicle.id,
+          requestedVehicleId: record.booking.requestedVehicleId,
+        };
       }
 
       if (action !== "start") throw new RequestError("Booking action is invalid.");
-      if (record.vehicle.status !== "available") throw new RequestError("Vehicle must be available before this booking can be started.", 409);
+
+      const replacementVehicleId = optionalText(body.replacementVehicleId);
+      let assignedVehicle = record.vehicle;
+      if (replacementVehicleId) {
+        const [replacement] = await tx.select().from(vehicles).where(eq(vehicles.id, replacementVehicleId)).limit(1).for("update");
+        if (!replacement) throw new RequestError("Replacement vehicle was not found.", 404);
+        if (["inactive", "maintenance"].includes(replacement.status)) throw new RequestError("Replacement vehicle is not available for rental.", 409);
+        const assignmentEnd = new Date(record.booking.startAt.getTime() + 1);
+        const [bookedConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
+          eq(bookings.vehicleId, replacement.id),
+          ne(bookings.id, record.booking.id),
+          eq(bookings.status, "booked"),
+          lt(bookings.startAt, assignmentEnd),
+          gt(bookings.endAt, record.booking.startAt),
+        )).limit(1);
+        if (bookedConflict) throw new RequestError("Replacement vehicle already has a booking at this pickup time.", 409);
+        const [activeConflict] = await tx.select({ id: rentalSegments.id }).from(rentalSegments).innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id)).where(and(
+          eq(rentalSegments.vehicleId, replacement.id),
+          eq(rentalSegments.status, "active"),
+          ne(rentalSegments.bookingId, record.booking.id),
+          lt(rentalSegments.startAt, assignmentEnd),
+        )).limit(1);
+        if (activeConflict) throw new RequestError("Replacement vehicle is currently assigned to another rental.", 409);
+        assignedVehicle = replacement;
+      } else {
+        const [futureBookingConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
+          eq(bookings.vehicleId, record.vehicle.id),
+          ne(bookings.id, record.booking.id),
+          eq(bookings.status, "booked"),
+          lt(bookings.startAt, record.booking.endAt),
+          gt(bookings.endAt, record.booking.startAt),
+        )).limit(1);
+        const [activeConflict] = await tx.select({ id: rentalSegments.id }).from(rentalSegments)
+          .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
+          .where(and(
+            eq(rentalSegments.vehicleId, record.vehicle.id),
+            eq(rentalSegments.status, "active"),
+            ne(rentalSegments.bookingId, record.booking.id),
+            lt(rentalSegments.startAt, record.booking.endAt),
+          ))
+          .limit(1);
+        if (record.vehicle.status !== "available" || futureBookingConflict || activeConflict) {
+          throw new RequestError("Booked vehicle is unavailable for this booking period. Select an available replacement vehicle or Guest Car to start this booking.", 409);
+        }
+      }
 
       const startingKilometer = whole(body.startingKilometer, "Starting kilometer");
       const startingFuelRangeKm = whole(body.startingFuelRangeKm, "Starting fuel range");
@@ -88,7 +153,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (bookingDiscount > gross) throw new RequestError("Discount cannot exceed the rental amount.");
       const total = Math.round((gross - bookingDiscount) * 100) / 100;
       if (advancePaid > total) throw new RequestError("Advance cannot exceed the rental total.");
-      const expectedReturnKilometer = calculateExpectedReturnKilometer(startingKilometer, record.booking.rentalDays, record.vehicle.allowedKmPerDay);
+      const expectedReturnKilometer = calculateExpectedReturnKilometer(startingKilometer, record.booking.rentalDays, assignedVehicle.allowedKmPerDay);
 
       await tx.update(bookings).set({
         dailyRate,
@@ -104,6 +169,21 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         updatedAt: new Date(),
       }).where(eq(bookings.id, id));
 
+      await tx.insert(rentalSegments).values({
+        bookingId: record.booking.id,
+        sequence: 1,
+        vehicleId: assignedVehicle.id,
+        startAt: record.booking.startAt,
+        startingKilometer,
+        startingFuelRangeKm,
+        dailyRate: assignedVehicle.id === record.vehicle.id ? dailyRate : assignedVehicle.dailyRate,
+        rentalDays: 1,
+        rentalCharge: 0,
+        allowedKmPerDay: assignedVehicle.allowedKmPerDay,
+        extraKmRate: assignedVehicle.extraKmRate,
+        status: "active",
+      });
+
       if (advancePaid > 0) {
         await tx.insert(payments).values({
           paymentNumber: numberId("PAY"),
@@ -117,7 +197,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           receivedAt: new Date(),
         });
       }
-      await tx.update(vehicles).set({ status: "rented", odometerKm: startingKilometer, updatedAt: new Date() }).where(eq(vehicles.id, record.vehicle.id));
+      await tx.update(vehicles).set({ status: "rented", odometerKm: startingKilometer, updatedAt: new Date() }).where(eq(vehicles.id, assignedVehicle.id));
       return { action: "started", bookingNumber: record.booking.bookingNumber };
     }));
 

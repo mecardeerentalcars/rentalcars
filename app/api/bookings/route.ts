@@ -1,8 +1,9 @@
-import { and, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
-import { bookings, customers, vehicles } from "@/db/schema";
+import { bookings, customers, rentalSegments, vehicles } from "@/db/schema";
 
 type CreateBookingBody = {
+  requestedVehicleRegistration?: unknown;
   vehicleRegistration?: unknown;
   customerPhone?: unknown;
   startAt?: unknown;
@@ -18,6 +19,7 @@ const text = (value: unknown, field: string) => {
   if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`);
   return value.trim();
 };
+const optionalText = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
 const date = (value: unknown, field: string) => {
   const result = new Date(text(value, field));
   if (Number.isNaN(result.getTime())) throw new RequestError(`${field} is invalid.`);
@@ -39,6 +41,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as CreateBookingBody;
     const vehicleRegistration = text(body.vehicleRegistration, "Vehicle registration");
+    const requestedVehicleRegistration = optionalText(body.requestedVehicleRegistration) ?? vehicleRegistration;
     const customerPhone = text(body.customerPhone, "Customer phone");
     const startAt = date(body.startAt, "Start date");
     const endAt = date(body.endAt, "Return date");
@@ -47,20 +50,32 @@ export async function POST(request: Request) {
     if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");
 
     const result = await withRequestDb((db) => db.transaction(async (tx) => {
-      const [vehicle] = await tx.select().from(vehicles).where(eq(vehicles.registrationNumber, vehicleRegistration)).limit(1).for("update");
-      if (!vehicle) throw new RequestError("Vehicle was not found.", 404);
+      const [requestedVehicle] = await tx.select().from(vehicles).where(eq(vehicles.registrationNumber, requestedVehicleRegistration)).limit(1).for("update");
+      if (!requestedVehicle) throw new RequestError("Original requested vehicle was not found.", 404);
+      if (requestedVehicle.isGuest) throw new RequestError("Select one of your own vehicles as the original requested vehicle.", 409);
 
-      // Future reservations are date-based, not current-status based. A car can be
-      // reserved while it is on rent, in maintenance or inactive, provided the
-      // requested period does not overlap another booking/rental. Starting the
-      // rental is still blocked until the live vehicle status is Available.
-      const [overlap] = await tx.select({ id: bookings.id }).from(bookings).where(and(
-        eq(bookings.vehicleId, vehicle.id),
-        inArray(bookings.status, ["booked", "rented"]),
+      const assignedVehicle = requestedVehicle.registrationNumber === vehicleRegistration
+        ? requestedVehicle
+        : (await tx.select().from(vehicles).where(eq(vehicles.registrationNumber, vehicleRegistration)).limit(1).for("update"))[0];
+      if (!assignedVehicle) throw new RequestError("Selected booking vehicle was not found.", 404);
+
+      // The booking reserves the vehicle actually selected for this period.
+      // requestedVehicleId preserves the customer's original vehicle request when
+      // a different own vehicle or Guest Car is used because of a conflict.
+      const [bookingConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
+        eq(bookings.vehicleId, assignedVehicle.id),
+        eq(bookings.status, "booked"),
         lt(bookings.startAt, endAt),
         gt(bookings.endAt, startAt),
       )).limit(1);
-      if (overlap) throw new RequestError("Vehicle is already booked or on rent for the selected period.", 409);
+      const [rentalConflict] = await tx.select({ id: rentalSegments.id }).from(rentalSegments)
+        .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
+        .where(and(
+          eq(rentalSegments.vehicleId, assignedVehicle.id),
+          eq(rentalSegments.status, "active"),
+          lt(rentalSegments.startAt, endAt),
+        )).limit(1);
+      if (bookingConflict || rentalConflict) throw new RequestError("Vehicle is already booked or on rent for the selected period.", 409);
 
       const [customer] = await tx.select().from(customers).where(eq(customers.phone, customerPhone)).limit(1);
       if (!customer) throw new RequestError("Customer was not found.", 404);
@@ -68,7 +83,8 @@ export async function POST(request: Request) {
       const bookingNumber = numberId("BKG");
       const [booking] = await tx.insert(bookings).values({
         bookingNumber,
-        vehicleId: vehicle.id,
+        requestedVehicleId: requestedVehicle.id,
+        vehicleId: assignedVehicle.id,
         customerId: customer.id,
         startAt,
         endAt,
@@ -86,7 +102,13 @@ export async function POST(request: Request) {
         handedOverAt: null,
       }).returning();
 
-      return { id: booking.id, bookingNumber };
+      return {
+        id: booking.id,
+        bookingNumber,
+        requestedVehicleId: requestedVehicle.id,
+        vehicleId: assignedVehicle.id,
+        replacementBooked: requestedVehicle.id !== assignedVehicle.id,
+      };
     }));
 
     return Response.json({ ok: true, booking: result }, { status: 201 });

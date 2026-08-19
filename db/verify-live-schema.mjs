@@ -12,6 +12,7 @@ const tables = [
   "vehicles",
   "customers",
   "bookings",
+  "rental_segments",
   "return_settlements",
   "payments",
   "rental_extensions",
@@ -29,11 +30,20 @@ try {
   const present = new Set(found.rows.map((row) => row.table_name));
   const missing = tables.filter((table) => !present.has(table));
   if (missing.length) throw new Error(`Database verification failed. Missing tables: ${missing.join(", ")}`);
+  const guestColumn = await pool.query(
+    "select 1 from information_schema.columns where table_schema = 'public' and table_name = 'vehicles' and column_name = 'is_guest'",
+  );
+  if (!guestColumn.rowCount) throw new Error("Database verification failed. vehicles.is_guest is missing.");
+  const requestedVehicleColumn = await pool.query(
+    "select 1 from information_schema.columns where table_schema = 'public' and table_name = 'bookings' and column_name = 'requested_vehicle_id'",
+  );
+  if (!requestedVehicleColumn.rowCount) throw new Error("Database verification failed. bookings.requested_vehicle_id is missing.");
+
   for (const table of tables) {
     const result = await pool.query(`select count(*)::int as count from ${table}`);
     console.log(`${table}: ${result.rows[0].count} rows`);
   }
-  console.log("Mecardee live database verification passed: all 10 tables are available.");
+  console.log("Mecardee live database verification passed: all 11 tables, vehicles.is_guest and bookings.requested_vehicle_id are available.");
 } finally {
   await pool.end();
 }

@@ -2282,3 +2282,1571 @@ body { font-size: 15px; line-height: 1.45; }
   }
 }
 
+
+/* MECARDEE_GUEST_CARS_MULTI_VEHICLE_V8_9_30 */
+/* Additive styles only: existing vehicle/rental/report layout is unchanged. */
+.guest-car-summary {
+  margin: 0 0 18px;
+  padding: 13px 15px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, auto)) minmax(220px, 1fr);
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.guest-car-summary > div { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--green); }
+.guest-car-summary > div > span { min-width: 0; }
+.guest-car-summary strong, .guest-car-summary small { display: block; }
+.guest-car-summary strong { color: var(--ink); font-size: 15px; }
+.guest-car-summary small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.guest-car-summary > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; text-align: right; }
+.guest-vehicle-card .vehicle-photo { position: relative; }
+.guest-car-badge {
+  position: absolute;
+  right: 11px;
+  bottom: 11px;
+  z-index: 3;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(30, 37, 69, .9);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .02em;
+  backdrop-filter: blur(6px);
+}
+.guest-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  margin: 5px 0 0;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f0eeff;
+  color: #5b50ca;
+  font-size: 9px;
+  font-weight: 850;
+}
+.guest-car-form-note,
+.guest-accounting-note,
+.replacement-rate-note {
+  padding: 10px 11px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid #dedaf7;
+  border-radius: 11px;
+  background: #f7f6ff;
+  color: #514a86;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.guest-car-form-note svg,
+.guest-accounting-note svg,
+.replacement-rate-note svg { flex: 0 0 auto; margin-top: 1px; }
+.guest-car-form-note strong,
+.guest-car-form-note small { display: block; }
+.guest-car-form-note small { margin-top: 3px; color: #706a91; }
+.guest-accounting-note { margin-top: 11px; }
+.replacement-rate-note { margin-top: 11px; background: #f4f8f6; border-color: #dce9e4; color: #3d6459; }
+
+.empty-state-card {
+  min-height: 240px;
+  padding: 30px 18px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  text-align: center;
+  background: #fff;
+  border: 1px dashed #ced8d5;
+  border-radius: 15px;
+  color: var(--muted);
+}
+.empty-state-card h3 { margin: 3px 0 0; color: var(--ink); font-size: 15px; }
+.empty-state-card p { max-width: 420px; margin: 0 0 5px; font-size: 11px; line-height: 1.5; }
+
+.replacement-conflict-panel {
+  padding: 13px;
+  display: grid;
+  gap: 11px;
+  border: 1px solid #efd2a5;
+  border-radius: 13px;
+  background: #fffaf1;
+}
+.replacement-conflict-head { display: flex; align-items: flex-start; gap: 9px; color: #9b621a; }
+.replacement-conflict-head > svg { flex: 0 0 auto; margin-top: 1px; }
+.replacement-conflict-head strong { display: block; color: #6f4310; font-size: 11px; }
+.replacement-conflict-head p { margin: 4px 0 0; color: #856535; font-size: 9px; line-height: 1.5; }
+.original-booking-context {
+  padding: 11px 12px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d9e5e1;
+  border-left: 4px solid var(--green);
+  border-radius: 11px;
+  background: #f5faf8;
+}
+.original-booking-context strong { color: var(--ink); font-size: 11px; }
+.original-booking-context span { color: #53625e; font-size: 9px; line-height: 1.45; }
+.original-booking-context small { color: #788581; font-size: 8px; }
+.original-booking-context.compact { padding: 9px 10px; }
+.rental-context-banner { margin: 0 18px 13px; }
+
+.rental-segment-list { display: grid; gap: 9px; }
+.rental-segment-card {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfc;
+}
+.rental-segment-card.active { border-color: #b9d8ce; background: #f5fbf8; box-shadow: inset 3px 0 0 var(--green); }
+.segment-vehicle { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.segment-vehicle > span { min-width: 0; }
+.segment-vehicle strong, .segment-vehicle small { display: block; }
+.segment-vehicle strong { color: var(--ink); font-size: 11px; }
+.segment-vehicle small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.segment-vehicle b { padding: 4px 7px; border-radius: 999px; background: #f0eeff; color: #5a50c7; font-size: 8px; }
+.segment-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.segment-facts > span,
+.segment-charge-preview > span {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 9px;
+  background: #f3f6f5;
+}
+.segment-facts small,
+.segment-facts strong,
+.segment-charge-preview small,
+.segment-charge-preview strong { display: block; }
+.segment-facts small,
+.segment-charge-preview small { color: var(--muted); font-size: 8px; }
+.segment-facts strong,
+.segment-charge-preview strong { margin-top: 3px; color: var(--ink); font-size: 9px; overflow-wrap: anywhere; }
+.segment-charge-preview { margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.change-vehicle-form .form-section { margin: 0; }
+
+.settlement-segment-preview,
+.settlement-segment-summary { display: grid; gap: 8px; }
+.settlement-segment-preview > article {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(140px, 1.25fr) repeat(4, minmax(90px, .8fr));
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfc;
+}
+.settlement-segment-preview article > div strong,
+.settlement-segment-preview article > div small,
+.settlement-segment-preview article > span small,
+.settlement-segment-preview article > span b { display: block; }
+.settlement-segment-preview article > div strong { font-size: 10px; }
+.settlement-segment-preview article > div small,
+.settlement-segment-preview article > span small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.settlement-segment-preview article > span b { margin-top: 3px; color: var(--ink); font-size: 9px; }
+.settlement-segment-summary { width: 100%; margin: 10px 0; text-align: left; }
+.settlement-segment-summary > article {
+  padding: 9px 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.settlement-segment-summary article > div { min-width: 0; }
+.settlement-segment-summary strong,
+.settlement-segment-summary small { display: block; }
+.settlement-segment-summary strong { font-size: 10px; }
+.settlement-segment-summary small,
+.settlement-segment-summary span { color: var(--muted); font-size: 8px; }
+.settlement-segment-summary span { grid-column: 1; }
+.settlement-segment-summary b { grid-row: 1 / 3; grid-column: 2; align-self: center; color: var(--green); font-size: 9px; }
+.final-bill .final-total small { margin-left: 8px; color: var(--muted); font-weight: 500; font-size: 8px; }
+
+@media (max-width: 900px) {
+  .guest-car-summary { grid-template-columns: repeat(3, 1fr); }
+  .guest-car-summary > p { grid-column: 1 / -1; text-align: left; }
+  .settlement-segment-preview > article { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settlement-segment-preview > article > div { grid-column: 1 / -1; }
+}
+
+@media (max-width: 720px) {
+  .guest-car-summary { grid-template-columns: 1fr 1fr 1fr; padding: 11px; }
+  .guest-car-summary > div { gap: 6px; }
+  .guest-car-summary > div > svg { width: 15px; height: 15px; }
+  .guest-car-summary strong { font-size: 13px; }
+  .guest-car-summary small { font-size: 9px; }
+  .guest-car-summary > p { font-size: 9px; }
+  .rental-context-banner { margin: 0 13px 11px; }
+  .segment-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .segment-charge-preview { grid-template-columns: 1fr; }
+  .settlement-segment-preview > article { grid-template-columns: 1fr 1fr; }
+  .settlement-segment-summary > article { grid-template-columns: 1fr; }
+  .settlement-segment-summary b { grid-row: auto; grid-column: 1; }
+  .detail-actions { flex-wrap: wrap; }
+  .detail-actions > button { min-width: calc(50% - 4px); }
+}
+
+/* MECARDEE_BOOKING_REPLACEMENT_MOBILE_COMPACT_V8_9_31 */
+.stat-label-mobile { display: none; }
+.booking-original-context { margin: 0 18px 12px; }
+
+/* Guest Car history/report lives only inside Guest Cars. */
+.guest-car-report-panel { margin-top: 20px; }
+.guest-report-total { display: grid; gap: 2px; text-align: right; }
+.guest-report-total small { color: var(--muted); font-size: 9px; }
+.guest-report-total strong { color: var(--ink); font-size: 15px; }
+.guest-usage-list { display: grid; }
+.guest-usage-head,
+.guest-usage-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.05fr) minmax(145px, 1.15fr) minmax(180px, 1.35fr) minmax(125px, .9fr) minmax(110px, .75fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.guest-usage-head {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.guest-usage-row {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.guest-usage-row:last-child { border-bottom: 0; }
+.guest-usage-row > span { min-width: 0; }
+.guest-usage-row strong,
+.guest-usage-row small { display: block; }
+.guest-usage-row strong { color: var(--ink); font-size: 10px; overflow-wrap: anywhere; }
+.guest-usage-row small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.35; }
+.guest-usage-row > button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.guest-report-empty { min-height: 150px; }
+
+.mobile-menu-section-label {
+  padding: 13px 11px 4px;
+  color: #6f8881;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 1.25px;
+}
+.mobile-menu-section-label.insights { margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .guest-usage-head { display: none; }
+  .guest-usage-list { gap: 8px; }
+  .guest-usage-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+    margin: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+  }
+  .guest-usage-row > button { justify-self: stretch; justify-content: center; }
+}
+
+@media (max-width: 720px) {
+  /* Keep Reports and Settings reachable after Guest Cars was added to the menu. */
+  .mobile-menu-overlay > aside { overflow: hidden; }
+  .mobile-menu-overlay nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 22px;
+  }
+  .mobile-menu-section-label { display: block; }
+
+  /* Greeting: date stays unchanged; remove the extra New rental action and reduce only the greeting height. */
+  .dashboard-greeting .page-heading {
+    margin-bottom: 10px;
+    align-items: flex-start;
+  }
+  .dashboard-greeting .page-heading h1 {
+    margin: 0 0 3px;
+    font-size: 21px;
+    line-height: 1.06;
+    letter-spacing: -.65px;
+  }
+  .dashboard-greeting .page-heading > div > p:last-child {
+    max-width: none;
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  /* Booking Priority remains first priority, but is intentionally much denser on phones. */
+  .booking-brief-card {
+    padding: 10px 11px 9px;
+    border-radius: 15px;
+  }
+  .booking-brief-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  .booking-brief-label { gap: 5px; }
+  .booking-brief-label > span {
+    gap: 5px;
+    font-size: 9px;
+    letter-spacing: .5px;
+  }
+  .booking-brief-label > span svg { width: 12px; height: 12px; }
+  .booking-brief-label > i {
+    padding: 3px 6px;
+    font-size: 8px;
+  }
+  .booking-brief-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 5px;
+  }
+  .booking-brief-actions button {
+    min-height: 30px;
+    padding: 0 7px;
+    border-radius: 9px;
+    gap: 4px;
+    font-size: 8px;
+  }
+  .booking-brief-actions button svg { width: 12px; height: 12px; }
+  .booking-brief-heading {
+    align-items: center;
+    margin: 8px 0 6px;
+    gap: 8px;
+  }
+  .booking-brief-heading small {
+    margin-bottom: 1px;
+    font-size: 7.5px;
+  }
+  .booking-brief-card .booking-brief-heading h2 {
+    font-size: 15px;
+    letter-spacing: -.25px;
+  }
+  .booking-brief-heading > span {
+    padding: 3px 6px;
+    font-size: 7px;
+  }
+  .booking-priority-list { gap: 4px; }
+  .booking-priority-item {
+    min-height: 0;
+    border-radius: 10px;
+  }
+  .booking-priority-open {
+    min-height: 54px;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 7px;
+    padding: 6px;
+  }
+  .booking-priority-open > img {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+  .booking-priority-order {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    z-index: 2;
+    padding: 2px 4px;
+    font-size: 6px;
+  }
+  .booking-priority-body { gap: 1px; }
+  .booking-priority-car strong { font-size: 10px; line-height: 1.1; }
+  .booking-priority-car small { font-size: 7.5px; }
+  .booking-priority-customer,
+  .booking-priority-time b { font-size: 7.5px; line-height: 1.15; }
+  .booking-priority-customer svg { width: 10px; height: 10px; }
+  .booking-priority-time small { display: none; }
+  .booking-priority-whatsapp {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    margin-right: 6px;
+    border-radius: 9px;
+  }
+  .booking-priority-whatsapp svg { width: 14px; height: 14px; }
+  .booking-brief-empty {
+    min-height: 54px;
+    padding: 8px;
+  }
+  .booking-brief-footer { margin-top: 5px; }
+  .booking-brief-footer button {
+    min-height: 31px;
+    padding: 0 8px;
+    font-size: 8px;
+    border-radius: 9px;
+  }
+  .booking-brief-footer button svg { width: 12px; height: 12px; }
+
+  /* Fleet KPIs are now a single small line instead of six large cards. */
+  .stats-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(64px, 1.25fr);
+    gap: 0;
+    margin: 7px 0 10px;
+    padding: 4px 2px;
+    overflow: hidden;
+    border: 1px solid #e5e5ee;
+    border-radius: 11px;
+    background: rgba(255,255,255,.9);
+    box-shadow: 0 3px 12px rgba(31,29,59,.035);
+  }
+  .stat-card,
+  .stat-card.money {
+    grid-column: auto;
+    min-width: 0;
+    min-height: 39px;
+    padding: 4px 3px;
+    border: 0;
+    border-right: 1px solid #ececf3;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--ink);
+  }
+  .stat-card:last-child { border-right: 0; }
+  .stat-card .stat-top {
+    display: block;
+    min-width: 0;
+  }
+  .stat-card .stat-top > i { display: none; }
+  .stat-label-full { display: none; }
+  .stat-label-mobile {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #77778a;
+    font-size: 6.7px !important;
+    line-height: 1;
+    font-weight: 850;
+  }
+  .stat-card > strong,
+  .stat-card.money > strong {
+    margin: 6px 0 0;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: -.35px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stat-card.money > strong { font-size: 10.5px; }
+  .stat-card small { display: none; }
+  .attention-card { display: none !important; }
+
+  /* Car Status & Availability follows immediately after the compact priority/KPI area. */
+  .dashboard-layout { margin-top: 0; }
+  .fleet-status-section { margin-top: 0; }
+
+  .booking-original-context { margin: 0 13px 10px; }
+  .booking-edit-form .original-booking-context { margin-bottom: 10px; }
+  .guest-car-report-panel { margin-top: 14px; }
+  .guest-car-report-panel .panel-heading { align-items: flex-start; gap: 8px; }
+  .guest-report-total strong { font-size: 12px; }
+  .guest-usage-row { grid-template-columns: 1fr; margin: 0 8px; }
+}
+
+@media (max-width: 420px) {
+  .booking-brief-actions button span { display: none; }
+  .booking-brief-actions button { width: 30px; padding: 0; }
+  .booking-brief-heading > span { display: none; }
+  .booking-priority-open { grid-template-columns: 34px minmax(0, 1fr); }
+  .booking-priority-open > img { width: 34px; height: 34px; }
+  .stat-label-mobile { font-size: 6.5px !important; }
+  .stat-card > strong { font-size: 13px; }
+  .stat-card.money > strong { font-size: 10.5px; }
+}
+
+/* MECARDEE_RESTORE_INSIGHTS_SIDEBAR_V8_9_32
+   Keep Reports + Settings visible on shorter desktop/laptop browser heights.
+   No navigation item, report, setting, Guest Car feature or mobile flow is removed. */
+
+/* Desktop sidebar gets a safe scroll fallback instead of clipping lower items. */
+@media (min-width: 721px) {
+  .sidebar {
+    overflow: hidden;
+  }
+
+  .sidebar nav {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.14) transparent;
+    padding-bottom: 4px;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .sidebar nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.14);
+    border-radius: 999px;
+  }
+
+  /* On normal short laptop/browser heights, compact only vertical spacing
+     so WORKSPACE + INSIGHTS + Reports + Settings remain in the first view. */
+  @media (max-height: 760px) {
+    .sidebar {
+      padding-top: 18px;
+      padding-bottom: 12px;
+    }
+
+    .sidebar .brand {
+      padding-bottom: 14px;
+    }
+
+    .sidebar nav {
+      gap: 1px;
+    }
+
+    .sidebar .nav-label {
+      padding-bottom: 4px;
+    }
+
+    .sidebar .nav-label.lower {
+      padding-top: 8px;
+    }
+
+    .sidebar .nav-item {
+      padding-top: 7px;
+      padding-bottom: 7px;
+      min-height: 34px;
+    }
+
+    .sidebar-health {
+      margin-top: 8px;
+      padding: 9px 11px;
+    }
+
+    .sidebar-health small {
+      display: none;
+    }
+
+    .health-head {
+      margin-bottom: 6px;
+    }
+  }
+
+  /* Extra protection for very short windows or browser zoom. */
+  @media (max-height: 650px) {
+    .sidebar {
+      padding-top: 12px;
+      padding-bottom: 8px;
+    }
+
+    .sidebar .brand {
+      padding-bottom: 9px;
+    }
+
+    .sidebar .nav-item {
+      padding-top: 5px;
+      padding-bottom: 5px;
+      min-height: 30px;
+      font-size: 11px;
+    }
+
+    .sidebar .nav-label.lower {
+      padding-top: 5px;
+    }
+
+    .sidebar-health {
+      padding: 7px 10px;
+    }
+
+    .sidebar-health .health-bar {
+      display: none;
+    }
+  }
+}
+
+/* MECARDEE_DESKTOP_SIDEBAR_COMPACT_KPIS_V8_9_34
+   Restore the comfortable pre-Guest-Cars desktop sidebar sizing and make
+   the low-priority dashboard KPI cards substantially shorter.
+   Mobile layout/Booking Priority/Car Status behavior is intentionally untouched. */
+
+@media (min-width: 1101px) {
+  /* Restore the original desktop sidebar dimensions instead of the short-window
+     compressed sidebar introduced only to expose INSIGHTS. */
+  .app-shell {
+    grid-template-columns: 246px minmax(0, 1fr) !important;
+  }
+
+  .sidebar {
+    width: 246px !important;
+    padding: 29px 18px 23px !important;
+  }
+
+  .brand {
+    padding: 0 9px 31px !important;
+  }
+
+  .sidebar nav {
+    gap: 4px !important;
+    min-height: 0;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: none;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar .nav-label {
+    padding: 0 13px 8px !important;
+  }
+
+  .sidebar .nav-label.lower {
+    padding-top: 21px !important;
+  }
+
+  .sidebar .nav-item {
+    min-height: 0 !important;
+    padding: 11px 12px !important;
+    font-size: 12px !important;
+  }
+
+  .sidebar-health {
+    padding: 14px !important;
+    margin-top: auto !important;
+  }
+
+  .sidebar-health small {
+    display: block !important;
+  }
+
+  .health-head {
+    margin-bottom: 0 !important;
+  }
+
+  /* Fleet health is less important than the navigation on short laptop screens.
+     Hide only this footer when vertical space is tight, instead of shrinking
+     every sidebar item. */
+  @media (max-height: 760px) {
+    .sidebar-health {
+      display: none !important;
+    }
+  }
+
+  /* The six dashboard KPIs are secondary information.
+     Keep all values/labels but reduce their vertical footprint. */
+  .stats-grid {
+    gap: 8px !important;
+    margin-top: 10px;
+  }
+
+  .stat-card,
+  .stat-card.money {
+    min-height: 82px !important;
+    padding: 10px 12px !important;
+    border-radius: 13px !important;
+  }
+
+  .stat-card .stat-top {
+    gap: 6px !important;
+  }
+
+  .stat-card .stat-top > span {
+    font-size: 10px !important;
+    line-height: 1.15 !important;
+  }
+
+  .stat-card .stat-top i {
+    width: 25px !important;
+    height: 25px !important;
+    min-width: 25px !important;
+    border-radius: 8px !important;
+  }
+
+  .stat-card .stat-top i svg {
+    width: 13px !important;
+    height: 13px !important;
+  }
+
+  .stat-card > strong,
+  .stat-card.money > strong {
+    margin: 7px 0 0 !important;
+    font-size: 22px !important;
+    line-height: 1 !important;
+  }
+
+  .stat-card.money > strong {
+    font-size: 20px !important;
+  }
+
+  .stat-card small {
+    display: none !important;
+  }
+}
+
+/* MECARDEE_CLEAN_FLEET_STATUS_RETURNS_CSS_V8_9_36
+   Cleaner Car Status & Availability schedule text.
+   The highlighted return date applies only to actively rented vehicles. */
+
+.fleet-card-detail {
+  margin: 7px 0 10px;
+  min-height: 40px;
+  color: #64748b;
+  font-size: .72rem;
+  line-height: 1.3;
+}
+
+.fleet-card-detail > p {
+  margin: 0;
+  color: #64748b;
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.fleet-card-customer {
+  display: block;
+  overflow: hidden;
+  color: #334155;
+  font-size: .73rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-booking-timing {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.fleet-booking-timing > span {
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid #f3dfc7;
+  border-radius: 8px;
+  background: #fffaf4;
+}
+
+.fleet-booking-timing small {
+  display: block;
+  margin-bottom: 2px;
+  color: #a16207;
+  font-size: .54rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.fleet-booking-timing strong {
+  display: block;
+  overflow: hidden;
+  color: #475569;
+  font-size: .62rem;
+  font-weight: 750;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-return-highlight {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.fleet-return-highlight small {
+  color: #64748b;
+  font-size: .58rem;
+  font-weight: 750;
+}
+
+.fleet-return-highlight strong {
+  color: #1d4ed8;
+  font-size: .78rem;
+  font-weight: 900;
+}
+
+.fleet-return-highlight em {
+  color: #475569;
+  font-size: .6rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* The old generic detail paragraph min-height is no longer needed now that
+   booked/rented cards have their own compact schedule layout. */
+.fleet-status-body > p {
+  min-height: 0;
+}
+
+@media (max-width: 700px) {
+  .fleet-card-detail {
+    min-height: 51px;
+    margin: 6px 0 8px;
+  }
+
+  .fleet-card-customer {
+    font-size: .68rem;
+  }
+
+  .fleet-booking-timing {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    margin-top: 5px;
+  }
+
+  .fleet-booking-timing > span {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+    padding: 4px 5px;
+  }
+
+  .fleet-booking-timing small {
+    margin: 0;
+    font-size: .5rem;
+  }
+
+  .fleet-booking-timing strong {
+    font-size: .59rem;
+  }
+
+  .fleet-return-highlight {
+    width: fit-content;
+    max-width: 100%;
+    padding: 5px 7px;
+  }
+}
+
+/* MECARDEE_FLEET_STATUS_MOBILE_FIT_CSS_V8_9_37
+   Final fit pass for Car Status & Availability.
+   Goals:
+   - Pickup/Return values must never overflow their boxes.
+   - Available vehicles also get a neat neutral box.
+   - Only actively rented cars emphasize "Returns on".
+   - Mobile cards remain readable even in narrow 2-column layouts. */
+
+.fleet-card-detail {
+  width: 100%;
+  min-width: 0;
+}
+
+/* BOOKED: equal compact boxes, no clipped/ellipsis date text. */
+.fleet-booking-timing {
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.fleet-booking-timing > span {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fleet-booking-timing small,
+.fleet-booking-timing strong {
+  font-family: inherit;
+}
+
+.fleet-booking-timing strong {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  font-size: .58rem;
+  font-weight: 700;
+  line-height: 1.22;
+}
+
+/* AVAILABLE: simple neutral box. No date highlighting, no oversized text. */
+.fleet-available-box {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid #d8e6df;
+  border-radius: 8px;
+  background: #f7fbf9;
+  color: #52635b;
+  font-family: inherit;
+  font-size: .64rem;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ON RENT: "Returns on" remains the only highlighted timing treatment. */
+.fleet-return-highlight {
+  max-width: 100%;
+}
+
+.fleet-return-highlight small,
+.fleet-return-highlight strong,
+.fleet-return-highlight em {
+  font-family: inherit;
+}
+
+/* MOBILE VERIFICATION / FIT:
+   Cards can become very narrow in the 2-column fleet layout. Stack pickup/return
+   vertically and keep every value inside its own box. */
+@media (max-width: 700px) {
+  .fleet-card-detail {
+    min-height: 0 !important;
+    margin: 5px 0 7px !important;
+  }
+
+  .fleet-card-customer {
+    max-width: 100%;
+    font-size: .65rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .fleet-booking-timing {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+    width: 100% !important;
+    margin-top: 5px !important;
+  }
+
+  .fleet-booking-timing > span {
+    display: grid !important;
+    grid-template-columns: 35px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 5px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 5px 6px !important;
+  }
+
+  .fleet-booking-timing small {
+    margin: 0 !important;
+    font-size: .48rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .fleet-booking-timing strong {
+    min-width: 0 !important;
+    font-size: .56rem !important;
+    line-height: 1.18 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .fleet-available-box {
+    min-height: 29px;
+    margin-top: 5px;
+    padding: 5px 6px;
+    font-size: .58rem;
+    line-height: 1.2;
+  }
+
+  .fleet-return-highlight {
+    display: grid !important;
+    grid-template-columns: auto auto !important;
+    align-items: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 2px 5px !important;
+    padding: 5px 6px !important;
+  }
+
+  .fleet-return-highlight small {
+    grid-column: 1 / -1;
+    font-size: .5rem !important;
+  }
+
+  .fleet-return-highlight strong {
+    font-size: .7rem !important;
+  }
+
+  .fleet-return-highlight em {
+    justify-self: end;
+    font-size: .55rem !important;
+  }
+}
+
+/* Extra-narrow phones: preserve readability instead of squeezing text. */
+@media (max-width: 390px) {
+  .fleet-booking-timing > span {
+    grid-template-columns: 31px minmax(0, 1fr) !important;
+    gap: 4px !important;
+    padding: 4px 5px !important;
+  }
+
+  .fleet-booking-timing strong {
+    font-size: .53rem !important;
+  }
+
+  .fleet-available-box {
+    font-size: .55rem !important;
+  }
+
+  .fleet-return-highlight strong {
+    font-size: .66rem !important;
+  }
+}
+
+/* MECARDEE_CALENDAR_RENTED_COLOUR_CSS_V8_9_38
+   Bookings Calendar:
+   - Existing booking/status colours remain intact.
+   - Active rented periods get a distinct teal/blue treatment.
+   - Small legend makes the difference immediately understandable. */
+
+.booking-calendar-heading {
+  position: relative;
+}
+
+.booking-calendar-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  margin-right: 8px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.booking-calendar-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.booking-calendar-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.booking-legend-booked i {
+  background: #fee8b6;
+  border: 1px solid #f3c66f;
+}
+
+.booking-legend-rented i {
+  background: #0f766e;
+  border: 1px solid #0f766e;
+}
+
+/* Rented is intentionally visually stronger than a normal future booking. */
+.booking-calendar-day button.calendar-rented {
+  position: relative;
+  padding-right: 38px;
+  border: 1px solid #5eead4 !important;
+  background: linear-gradient(135deg, #ccfbf1 0%, #dbeafe 100%) !important;
+  box-shadow: inset 3px 0 0 #0f766e;
+}
+
+.booking-calendar-day button.calendar-rented span {
+  color: #0f5f59 !important;
+  font-weight: 900 !important;
+}
+
+.booking-calendar-day button.calendar-rented small {
+  color: #475569 !important;
+}
+
+.calendar-rented-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 6px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+/* Do not alter existing booked/upcoming/completed/cancelled calendar colours. */
+.booking-calendar-day button.calendar-booking {
+  /* marker class only; existing status styling continues to control colour */
+}
+
+/* Mobile calendar remains compact and readable. */
+@media (max-width: 700px) {
+  .booking-calendar-heading {
+    display: grid !important;
+    grid-template-columns: 30px minmax(0, 1fr) 30px !important;
+    gap: 5px !important;
+  }
+
+  .booking-calendar-heading h2 {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .booking-calendar-heading > button:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .booking-calendar-heading > button:last-child {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .booking-calendar-legend {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+    margin: 2px 0 0;
+    gap: 9px;
+    font-size: 8px;
+  }
+
+  .booking-calendar-legend i {
+    width: 7px;
+    height: 7px;
+  }
+
+  .booking-calendar-day button.calendar-rented {
+    padding-right: 3px !important;
+    box-shadow: inset 2px 0 0 #0f766e;
+  }
+
+  .calendar-rented-tag {
+    position: static;
+    display: block;
+    width: fit-content;
+    margin-top: 2px;
+    padding: 1px 3px;
+    font-size: 5px;
+  }
+}
+
+@media (max-width: 420px) {
+  .booking-calendar-legend {
+    font-size: 7px;
+  }
+
+  .calendar-rented-tag {
+    font-size: 4.8px;
+  }
+}
+
+/* MECARDEE_DASHBOARD_CALENDAR_POPUP_CSS_V8_9_39
+   Dashboard quick calendar:
+   read-only, month navigation only, large enough for daily booking names. */
+
+.dashboard-calendar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d9dcec;
+  border-radius: 10px;
+  background: #fff;
+  color: #4f46a8;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 5px 14px rgba(44, 38, 94, .07);
+  cursor: pointer;
+}
+
+.dashboard-calendar-button:hover {
+  border-color: #c8c4f5;
+  background: #f8f7ff;
+}
+
+.dashboard-calendar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, .55);
+  backdrop-filter: blur(3px);
+}
+
+.dashboard-calendar-modal {
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border: 1px solid #dde1ee;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .28);
+}
+
+.dashboard-calendar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 10px;
+}
+
+.dashboard-calendar-top > div {
+  min-width: 0;
+}
+
+.dashboard-calendar-top small {
+  display: block;
+  margin-bottom: 2px;
+  color: #6d5ccf;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.dashboard-calendar-top strong {
+  color: #172033;
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.dashboard-calendar-close {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid #e2e5ee;
+  border-radius: 11px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.dashboard-calendar-month-nav {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 18px 10px;
+}
+
+.dashboard-calendar-month-nav h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 20px;
+  text-align: center;
+}
+
+.dashboard-calendar-month-nav button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 34px;
+  border: 1px solid #dde2ed;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #393275;
+  font-size: 23px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dashboard-calendar-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 0 18px 11px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.dashboard-calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dashboard-calendar-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+.dashboard-calendar-legend i.booked { background: #f5d991; }
+.dashboard-calendar-legend i.rented { background: #0f766e; }
+.dashboard-calendar-legend i.completed { background: #a9c9ef; }
+.dashboard-calendar-legend i.cancelled { background: #efb8b8; }
+
+.dashboard-calendar-scroll {
+  max-height: calc(100vh - 210px);
+  overflow: auto;
+  border-top: 1px solid #e5e7eb;
+}
+
+.dashboard-calendar-weekdays,
+.dashboard-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  min-width: 760px;
+}
+
+.dashboard-calendar-weekdays {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+
+.dashboard-calendar-weekdays span {
+  padding: 8px 6px;
+  border-right: 1px solid #e5e7eb;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.dashboard-calendar-day {
+  min-width: 0;
+  min-height: 112px;
+  padding: 7px;
+  border-top: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.dashboard-calendar-day.outside {
+  background: #fafafa;
+  opacity: .52;
+}
+
+.dashboard-calendar-day.today {
+  background: #fbfaff;
+  box-shadow: inset 0 0 0 2px #7567dd;
+}
+
+.dashboard-calendar-date {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  margin-bottom: 5px;
+  border-radius: 999px;
+  color: #172033;
+  font-size: 10px;
+}
+
+.dashboard-calendar-day.today .dashboard-calendar-date {
+  background: #171c27;
+  color: #fff;
+}
+
+.dashboard-calendar-events {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-calendar-entry {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 7px;
+  line-height: 1.12;
+}
+
+.dashboard-calendar-entry b,
+.dashboard-calendar-entry small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-calendar-entry b {
+  font-size: 8px;
+  font-weight: 850;
+}
+
+.dashboard-calendar-entry small {
+  margin-top: 2px;
+  font-size: 7px;
+  font-weight: 600;
+  opacity: .74;
+}
+
+.dashboard-calendar-entry.booked {
+  border: 1px solid #f4d895;
+  background: #fff3d4;
+  color: #8a5a00;
+}
+
+.dashboard-calendar-entry.rented {
+  padding-right: 36px;
+  border: 1px solid #5eead4;
+  background: linear-gradient(135deg, #ccfbf1, #dbeafe);
+  color: #0f5f59;
+  box-shadow: inset 3px 0 0 #0f766e;
+}
+
+.dashboard-calendar-entry.completed {
+  border: 1px solid #c4daf4;
+  background: #eaf3fd;
+  color: #315f94;
+}
+
+.dashboard-calendar-entry.cancelled {
+  border: 1px solid #efc6c6;
+  background: #fff0f0;
+  color: #a14444;
+}
+
+.dashboard-calendar-entry em {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 5px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dashboard-calendar-more {
+  padding-left: 3px;
+  color: #64748b;
+  font-size: 7px;
+  font-weight: 750;
+}
+
+/* Tablet / mobile:
+   Keep the popup nearly full-width. The month grid deliberately keeps a
+   readable minimum width and scrolls horizontally instead of crushing text. */
+@media (max-width: 700px) {
+  .dashboard-calendar-button {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 10px;
+  }
+
+  .dashboard-calendar-backdrop {
+    padding: 10px;
+  }
+
+  .dashboard-calendar-modal {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    border-radius: 16px;
+  }
+
+  .dashboard-calendar-top {
+    padding: 12px 12px 7px;
+  }
+
+  .dashboard-calendar-month-nav {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    padding: 3px 12px 8px;
+  }
+
+  .dashboard-calendar-month-nav h2 {
+    font-size: 17px;
+  }
+
+  .dashboard-calendar-legend {
+    justify-content: flex-start;
+    gap: 6px 10px;
+    padding: 0 12px 9px;
+    font-size: 8px;
+  }
+
+  .dashboard-calendar-scroll {
+    max-height: calc(100vh - 175px);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-calendar-weekdays,
+  .dashboard-calendar-grid {
+    min-width: 700px;
+  }
+
+  .dashboard-calendar-day {
+    min-height: 96px;
+    padding: 5px;
+  }
+
+  .dashboard-calendar-entry {
+    padding: 4px 5px;
+  }
+
+  .dashboard-calendar-entry b {
+    font-size: 7.5px;
+  }
+
+  .dashboard-calendar-entry small {
+    font-size: 6.5px;
+  }
+}
+
+@media (max-width: 390px) {
+  .dashboard-calendar-button span {
+    display: none;
+  }
+
+  .dashboard-calendar-button {
+    width: 36px;
+    padding: 0;
+  }
+
+  .dashboard-calendar-weekdays,
+  .dashboard-calendar-grid {
+    min-width: 660px;
+  }
+}

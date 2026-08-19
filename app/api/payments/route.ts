@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
-import { bookings, customers, payments, returnSettlements } from "@/db/schema";
+import { calculateSegmentCharge } from "@/lib/rental-segments";
+import { bookings, customers, payments, rentalSegments, returnSettlements } from "@/db/schema";
 
 type PaymentBody = {
   bookingNumber?: unknown;
@@ -59,7 +60,31 @@ export async function POST(request: Request) {
         .from(payments)
         .where(eq(payments.bookingId, record.booking.id));
       const alreadyPaid = Number(paidRow?.total ?? 0);
-      const total = Number(settlement?.finalAmount ?? record.booking.baseRentalAmount + record.booking.otherCharges);
+      let openRentalAmount = record.booking.baseRentalAmount + record.booking.otherCharges;
+      if (!settlement && record.booking.status === "rented") {
+        const segments = await tx.select().from(rentalSegments).where(eq(rentalSegments.bookingId, record.booking.id));
+        const replacementFlow = segments.length > 1 || (segments.length === 1 && segments[0]?.vehicleId !== record.booking.requestedVehicleId);
+        if (replacementFlow) {
+          const projectedGross = segments.reduce((sum, segment) => {
+            if (segment.status === "completed") return sum + segment.rentalCharge + segment.extraKmCharge;
+            const projectedEnd = record.booking.endAt.getTime() > segment.startAt.getTime()
+              ? record.booking.endAt
+              : new Date(Math.max(Date.now(), segment.startAt.getTime()));
+            const charge = calculateSegmentCharge({
+              startAt: segment.startAt,
+              endAt: projectedEnd,
+              dailyRate: segment.dailyRate,
+              startingKilometer: segment.startingKilometer,
+              endingKilometer: segment.startingKilometer,
+              allowedKmPerDay: segment.allowedKmPerDay,
+              extraKmRate: segment.extraKmRate,
+            });
+            return sum + charge.rentalCharge;
+          }, 0);
+          openRentalAmount = Math.max(0, Math.round((projectedGross - record.booking.bookingDiscount + record.booking.otherCharges) * 100) / 100);
+        }
+      }
+      const total = Number(settlement?.finalAmount ?? openRentalAmount);
       const balance = Math.max(0, Math.round((total - alreadyPaid) * 100) / 100);
       if (balance <= 0) throw new RequestError("This rental is already fully paid.", 409);
       if (receivedAmount > balance) {

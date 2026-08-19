@@ -37,6 +37,7 @@ export const vehicles = pgTable(
       .notNull()
       .default(1),
     status: varchar("status", { length: 24 }).notNull().default("available"),
+    isGuest: boolean("is_guest").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -66,6 +67,9 @@ export const bookings = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     bookingNumber: varchar("booking_number", { length: 32 }).notNull(),
+    requestedVehicleId: uuid("requested_vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "restrict" }),
     vehicleId: uuid("vehicle_id")
       .notNull()
       .references(() => vehicles.id, { onDelete: "restrict" }),
@@ -92,6 +96,7 @@ export const bookings = pgTable(
   },
   (table) => [
     uniqueIndex("bookings_booking_number_unique").on(table.bookingNumber),
+    index("bookings_requested_vehicle_idx").on(table.requestedVehicleId),
     index("bookings_vehicle_dates_idx").on(table.vehicleId, table.startAt, table.endAt),
     index("bookings_customer_idx").on(table.customerId),
     index("bookings_status_idx").on(table.status),
@@ -234,6 +239,41 @@ export const vehicleTyres = pgTable(
   ],
 );
 
+export const rentalSegments = pgTable(
+  "rental_segments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "restrict" }),
+    sequence: integer("sequence").notNull(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id, { onDelete: "restrict" }),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }),
+    startingKilometer: integer("starting_kilometer").notNull(),
+    endingKilometer: integer("ending_kilometer"),
+    startingFuelRangeKm: integer("starting_fuel_range_km").notNull().default(0),
+    dailyRate: money("daily_rate").notNull(),
+    rentalDays: integer("rental_days").notNull().default(1),
+    rentalCharge: money("rental_charge").notNull().default(0),
+    allowedKmPerDay: integer("allowed_km_per_day").notNull().default(100),
+    extraKmRate: money("extra_km_rate").notNull().default(0),
+    extraKilometers: integer("extra_kilometers").notNull().default(0),
+    extraKmCharge: money("extra_km_charge").notNull().default(0),
+    status: varchar("status", { length: 24 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("rental_segments_booking_sequence_unique").on(table.bookingId, table.sequence),
+    index("rental_segments_booking_idx").on(table.bookingId),
+    index("rental_segments_vehicle_idx").on(table.vehicleId),
+    index("rental_segments_status_idx").on(table.status),
+  ],
+);
+
 export const returnSettlements = pgTable(
   "return_settlements",
   {
@@ -289,3 +329,4 @@ export type Payment = typeof payments.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type RentalExtension = typeof rentalExtensions.$inferSelect;
 export type ReturnSettlement = typeof returnSettlements.$inferSelect;
+export type RentalSegment = typeof rentalSegments.$inferSelect;

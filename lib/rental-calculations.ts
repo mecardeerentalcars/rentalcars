@@ -194,6 +194,17 @@ type WhatsAppSettlement = {
   discountAmount: number;
   discountRemark?: string | null;
   calculation: SettlementCalculation;
+  segments?: {
+    sequence: number;
+    vehicleName: string;
+    registrationNumber: string;
+    isGuest: boolean;
+    bookingStart: string;
+    bookingEnd: string;
+    rentalDays: number;
+    rentalCharge: number;
+    extraKmCharge?: number;
+  }[];
 };
 
 const formatMoney = (value: number) =>
@@ -202,6 +213,13 @@ const formatMoney = (value: number) =>
     currency: "INR",
     maximumFractionDigits: 2,
   }).format(value);
+
+const formatWholeMoney = (value: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
 
 export function normaliseWhatsAppNumber(phone: string) {
   const digits = phone.replace(/\D/g, "");
@@ -220,10 +238,23 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     `Booking: ${input.bookingNumber}`,
     `Rental period: ${input.bookingStart} to ${input.bookingEnd}`,
     `Rental days: ${input.rentalDays}`,
-    `Starting kilometer: ${input.startingKilometer} km`,
-    `Actual return kilometer: ${input.actualReturnKilometer} km`,
-    `Allowed kilometers: ${calculation.allowedKilometers} km`,
   ];
+
+  if (input.segments && input.segments.length > 1) {
+    lines.push("", "Vehicle usage:");
+    for (const segment of input.segments) {
+      lines.push(`Vehicle ${segment.sequence}${segment.isGuest ? " — Guest Car" : ""}: ${segment.vehicleName} (${segment.registrationNumber})`);
+      lines.push(`Used: ${segment.bookingStart} to ${segment.bookingEnd}`);
+      lines.push(`Rental days: ${segment.rentalDays}`);
+      lines.push(`Rental charge: ${formatMoney(segment.rentalCharge)}`);
+      if ((segment.extraKmCharge ?? 0) > 0) lines.push(`Segment extra KM charge: ${formatMoney(segment.extraKmCharge ?? 0)}`);
+      lines.push("");
+    }
+  }
+
+  lines.push(`Starting kilometer: ${input.startingKilometer} km`);
+  lines.push(`Actual return kilometer: ${input.actualReturnKilometer} km`);
+  lines.push(`Allowed kilometers: ${calculation.allowedKilometers} km`);
 
   if (calculation.extraKilometers > 0) {
     lines.push(`Extra kilometers: ${calculation.extraKilometers} km`);
@@ -240,8 +271,8 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     lines.push(`Discount: ${formatMoney(input.discountAmount)}`);
     if (input.discountRemark?.trim()) lines.push(`Discount remark: ${input.discountRemark.trim()}`);
   }
-  lines.push(`Final amount: ${formatMoney(calculation.finalAmount)}`);
-  if (calculation.amountDue > 0) lines.push(`Balance due: ${formatMoney(calculation.amountDue)}`);
+  lines.push(`Final amount: ${formatWholeMoney(calculation.finalAmount)}`);
+  if (calculation.amountDue > 0) lines.push(`Balance due: ${formatWholeMoney(calculation.amountDue)}`);
   lines.push("Booking status: Completed");
   lines.push("", "Thank you for choosing Mecardee Rental Cars.");
   return lines.join("\n");

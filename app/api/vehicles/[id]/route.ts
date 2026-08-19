@@ -5,6 +5,7 @@ import {
   customers,
   expenses,
   maintenanceRecords,
+  rentalSegments,
   vehicleDocuments,
   vehicleTyres,
   vehicles,
@@ -73,21 +74,22 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       // Core vehicle details must keep loading even if a newer optional table has
       // not been migrated yet. This is especially useful during rolling Railway deploys.
       const [documents, maintenance, rentalRows, expenseRows] = await Promise.all([
-        db.select().from(vehicleDocuments).where(eq(vehicleDocuments.vehicleId, id)).orderBy(vehicleDocuments.documentType),
-        db.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, id)).orderBy(desc(maintenanceRecords.createdAt)),
+        vehicle.isGuest ? Promise.resolve([]) : db.select().from(vehicleDocuments).where(eq(vehicleDocuments.vehicleId, id)).orderBy(vehicleDocuments.documentType),
+        vehicle.isGuest ? Promise.resolve([]) : db.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, id)).orderBy(desc(maintenanceRecords.createdAt)),
         db
-          .select({ booking: bookings, customer: customers })
-          .from(bookings)
+          .select({ segment: rentalSegments, booking: bookings, customer: customers })
+          .from(rentalSegments)
+          .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
           .innerJoin(customers, eq(bookings.customerId, customers.id))
-          .where(eq(bookings.vehicleId, id))
-          .orderBy(desc(bookings.startAt)),
-        db.select().from(expenses).where(eq(expenses.vehicleId, id)).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
+          .where(eq(rentalSegments.vehicleId, id))
+          .orderBy(desc(rentalSegments.startAt)),
+        vehicle.isGuest ? Promise.resolve([]) : db.select().from(expenses).where(eq(expenses.vehicleId, id)).orderBy(desc(expenses.expenseDate), desc(expenses.createdAt)),
       ]);
 
       let tyres: typeof vehicleTyres.$inferSelect[] = [];
       let tyreWarning: string | null = null;
       try {
-        tyres = await loadTyres(db, id);
+        tyres = vehicle.isGuest ? [] : await loadTyres(db, id);
       } catch (error) {
         console.error("Tyre details are unavailable, continuing with vehicle profile", error);
         tyreWarning = "Tyre details are temporarily unavailable. Documents, maintenance and rental history are still available.";
@@ -110,6 +112,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
           extraKmRate: vehicle.extraKmRate,
           mileageKmPerLitre: vehicle.mileageKmPerLitre,
           status: vehicle.status,
+          isGuest: vehicle.isGuest,
           createdAt: vehicle.createdAt.toISOString(),
           updatedAt: vehicle.updatedAt.toISOString(),
         },
@@ -147,18 +150,18 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
           updatedAt: item.updatedAt.toISOString(),
         })),
         tyreWarning,
-        rentals: rentalRows.map(({ booking, customer }) => ({
-          id: booking.id,
+        rentals: rentalRows.map(({ segment, booking, customer }) => ({
+          id: segment.id,
           bookingNumber: booking.bookingNumber,
           customer: customer.name,
           phone: customer.phone,
-          startAt: booking.startAt.toISOString(),
-          endAt: booking.endAt.toISOString(),
-          rentalDays: booking.rentalDays,
-          dailyRate: booking.dailyRate,
-          baseRentalAmount: booking.baseRentalAmount,
-          otherCharges: booking.otherCharges,
-          status: booking.status,
+          startAt: segment.startAt.toISOString(),
+          endAt: (segment.endAt ?? booking.endAt).toISOString(),
+          rentalDays: segment.rentalDays,
+          dailyRate: segment.dailyRate,
+          baseRentalAmount: segment.rentalCharge,
+          otherCharges: segment.extraKmCharge,
+          status: segment.status === "active" ? booking.status : segment.status,
         })),
         expenses: expenseRows.map((item) => ({
           id: item.id,
@@ -224,10 +227,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     };
 
     const saved = await withRequestDb(async (db) => {
-      const [current] = await db.select({ id: vehicles.id, status: vehicles.status }).from(vehicles).where(eq(vehicles.id, id)).limit(1);
+      const [current] = await db.select({ id: vehicles.id, status: vehicles.status, isGuest: vehicles.isGuest }).from(vehicles).where(eq(vehicles.id, id)).limit(1);
       if (!current) return null;
 
       if (requestedStatus !== undefined) {
+        if (current.isGuest && requestedStatus === "maintenance") {
+          throw new VehicleUpdateError("Guest Cars do not use maintenance status.", 409);
+        }
         const currentStatus = current.status.toLowerCase();
         if (["rented", "booked"].includes(currentStatus)) {
           throw new VehicleUpdateError("This vehicle is currently controlled by an active rental/booking. Its operational status cannot be changed manually.", 409);
