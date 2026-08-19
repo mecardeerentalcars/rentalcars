@@ -3850,3 +3850,451 @@ body { font-size: 15px; line-height: 1.45; }
     min-width: 660px;
   }
 }
+
+/* MECARDEE_FINAL_MOBILE_POLISH_V8_9_40
+   Final mobile pass:
+   1. Uniform Car Status cards + distinct View rental colour.
+   2. Use the full Booking Priority row for larger readable information.
+   3. Keep New rental / New booking TEXT visible in Booking Priority.
+   4. Fit the Dashboard quick calendar into phone width with NO sideways scroll.
+   UI ONLY — no business logic/calculation/database changes. */
+
+@media (max-width: 700px) {
+
+  /* =========================================================
+     1) CAR STATUS & AVAILABILITY — UNIFORM MOBILE CARDS
+     ========================================================= */
+
+  .fleet-status-grid {
+    align-items: stretch !important;
+  }
+
+  .fleet-status-card {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .fleet-status-image {
+    flex: 0 0 92px !important;
+    height: 92px !important;
+  }
+
+  .fleet-status-body {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
+    padding: 9px !important;
+  }
+
+  .fleet-status-body > div:first-child {
+    min-height: 42px !important;
+  }
+
+  .fleet-status-body h3 {
+    min-height: 18px;
+    font-size: .82rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .fleet-status-body > div:first-child > strong {
+    font-size: .64rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .fleet-card-detail {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    min-height: 76px !important;
+    margin: 5px 0 7px !important;
+  }
+
+  .fleet-card-customer {
+    min-height: 14px;
+    font-size: .64rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .fleet-booking-timing {
+    gap: 4px !important;
+  }
+
+  .fleet-booking-timing > span,
+  .fleet-available-box,
+  .fleet-return-highlight {
+    box-sizing: border-box !important;
+    min-height: 30px !important;
+    border-radius: 8px !important;
+  }
+
+  .fleet-booking-timing > span {
+    grid-template-columns: 35px minmax(0, 1fr) !important;
+    padding: 5px 6px !important;
+  }
+
+  .fleet-booking-timing small,
+  .fleet-return-highlight small {
+    font-size: .48rem !important;
+    line-height: 1.05 !important;
+  }
+
+  .fleet-booking-timing strong {
+    font-size: .55rem !important;
+    line-height: 1.16 !important;
+  }
+
+  .fleet-available-box {
+    align-items: center !important;
+    margin-top: 5px !important;
+    padding: 6px !important;
+    font-size: .57rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .fleet-return-highlight {
+    width: 100% !important;
+    margin-top: 5px !important;
+    padding: 5px 6px !important;
+  }
+
+  .fleet-return-highlight strong {
+    font-size: .68rem !important;
+  }
+
+  .fleet-return-highlight em {
+    font-size: .53rem !important;
+  }
+
+  .fleet-status-actions {
+    margin-top: auto !important;
+  }
+
+  .fleet-status-actions button {
+    min-height: 42px !important;
+    border-radius: 9px !important;
+    font-size: .64rem !important;
+    line-height: 1.05 !important;
+  }
+
+  /* View booking stays orange. View rental becomes clearly blue.
+     Available Book now stays purple. */
+  .fleet-status-actions:has(.rental-book-action)
+  .primary-button:not(.rental-book-action) {
+    border-color: transparent !important;
+    background: linear-gradient(145deg, #2563eb, #1d4ed8) !important;
+    color: #fff !important;
+    box-shadow: 0 7px 16px rgba(37, 99, 235, .22) !important;
+  }
+
+
+  /* =========================================================
+     2) BOOKING PRIORITY — USE THE EMPTY RIGHT-SIDE SPACE
+     ========================================================= */
+
+  .booking-priority-item {
+    grid-template-columns: minmax(0, 1fr) 42px !important;
+    align-items: stretch !important;
+  }
+
+  .booking-priority-open {
+    min-height: 68px !important;
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    grid-template-rows: 1fr !important;
+    gap: 9px !important;
+    padding: 7px !important;
+  }
+
+  .booking-priority-open > img {
+    width: 44px !important;
+    height: 44px !important;
+    align-self: center !important;
+    border-radius: 9px !important;
+  }
+
+  .booking-priority-order {
+    left: 4px !important;
+    top: 4px !important;
+    font-size: 6px !important;
+  }
+
+  .booking-priority-body {
+    display: grid !important;
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.3fr) !important;
+    grid-template-rows: auto auto !important;
+    align-content: center !important;
+    align-items: center !important;
+    column-gap: 8px !important;
+    row-gap: 3px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .booking-priority-car {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .booking-priority-customer {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    min-width: 0 !important;
+  }
+
+  .booking-priority-time {
+    grid-column: 2 !important;
+    grid-row: 1 / 3 !important;
+    align-self: center !important;
+    min-width: 0 !important;
+    padding-left: 8px !important;
+    border-left: 1px solid rgba(255,255,255,.11);
+  }
+
+  .booking-priority-car strong {
+    font-size: 10.5px !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+  }
+
+  .booking-priority-car small {
+    margin-top: 2px !important;
+    font-size: 7.5px !important;
+    line-height: 1.15 !important;
+  }
+
+  .booking-priority-customer {
+    gap: 3px !important;
+    font-size: 8px !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+  }
+
+  .booking-priority-customer svg {
+    width: 10px !important;
+    height: 10px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .booking-priority-time b {
+    display: block !important;
+    color: #f2f0ff !important;
+    font-size: 9.2px !important;
+    line-height: 1.16 !important;
+    white-space: normal !important;
+  }
+
+  /* v8.9.31 hid the complete booking period on mobile.
+     Show it and use the empty right-side space. */
+  .booking-priority-time small {
+    display: block !important;
+    margin-top: 3px !important;
+    color: rgba(238,240,250,.72) !important;
+    font-size: 7px !important;
+    line-height: 1.23 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .booking-priority-whatsapp {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    margin: 0 5px 0 0 !important;
+    align-self: center !important;
+  }
+
+
+  /* =========================================================
+     3) BOOKING PRIORITY TOP ACTIONS — ICON + TEXT
+     ========================================================= */
+
+  .booking-brief-header {
+    gap: 8px !important;
+  }
+
+  .booking-brief-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 154px !important;
+    min-width: 154px !important;
+    gap: 5px !important;
+  }
+
+  .booking-brief-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 34px !important;
+    padding: 0 6px !important;
+    gap: 4px !important;
+    border-radius: 9px !important;
+    font-size: 7.5px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+  }
+
+  .booking-brief-actions button span {
+    display: inline !important;
+    overflow: visible !important;
+    max-width: none !important;
+  }
+
+  .booking-brief-actions button svg {
+    width: 12px !important;
+    height: 12px !important;
+    flex: 0 0 auto !important;
+  }
+
+
+  /* =========================================================
+     4) DASHBOARD CALENDAR — TRUE 7-COLUMN PHONE FIT
+     ========================================================= */
+
+  .dashboard-calendar-backdrop {
+    padding: 7px !important;
+  }
+
+  .dashboard-calendar-modal {
+    width: calc(100vw - 14px) !important;
+    max-width: calc(100vw - 14px) !important;
+    border-radius: 15px !important;
+  }
+
+  .dashboard-calendar-scroll {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .dashboard-calendar-weekdays,
+  .dashboard-calendar-grid {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-calendar-weekdays span {
+    min-width: 0 !important;
+    padding: 6px 1px !important;
+    font-size: 7px !important;
+  }
+
+  .dashboard-calendar-day {
+    min-width: 0 !important;
+    min-height: 86px !important;
+    padding: 3px 2px !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-calendar-date {
+    width: 18px !important;
+    height: 18px !important;
+    margin-bottom: 3px !important;
+    font-size: 8px !important;
+  }
+
+  .dashboard-calendar-events {
+    min-width: 0 !important;
+    gap: 2px !important;
+  }
+
+  .dashboard-calendar-entry {
+    min-width: 0 !important;
+    padding: 3px 2px !important;
+    border-radius: 5px !important;
+    overflow: hidden !important;
+  }
+
+  .dashboard-calendar-entry b {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    font-size: 5.8px !important;
+    font-weight: 850 !important;
+    line-height: 1.08 !important;
+    white-space: normal !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .dashboard-calendar-entry small {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    margin-top: 1px !important;
+    font-size: 5.2px !important;
+    line-height: 1.08 !important;
+    white-space: normal !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .dashboard-calendar-entry.rented {
+    padding-right: 2px !important;
+    box-shadow: inset 2px 0 0 #0f766e !important;
+  }
+
+  .dashboard-calendar-entry em {
+    position: static !important;
+    display: block !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    margin-top: 2px !important;
+    padding: 1px 2px !important;
+    font-size: 4.3px !important;
+  }
+
+  .dashboard-calendar-more {
+    padding-left: 1px !important;
+    font-size: 5px !important;
+  }
+}
+
+
+/* Extra narrow phones: keep everything readable without horizontal overflow. */
+@media (max-width: 390px) {
+  .booking-brief-actions {
+    width: 142px !important;
+    min-width: 142px !important;
+  }
+
+  .booking-brief-actions button {
+    padding: 0 4px !important;
+    font-size: 7px !important;
+    gap: 3px !important;
+  }
+
+  .booking-priority-body {
+    grid-template-columns: minmax(0, .86fr) minmax(0, 1.14fr) !important;
+    column-gap: 6px !important;
+  }
+
+  .booking-priority-time {
+    padding-left: 6px !important;
+  }
+
+  .dashboard-calendar-weekdays span {
+    font-size: 6.5px !important;
+  }
+
+  .dashboard-calendar-day {
+    min-height: 82px !important;
+    padding: 3px 1px !important;
+  }
+
+  .dashboard-calendar-entry {
+    padding: 3px 1px !important;
+  }
+
+  .dashboard-calendar-entry b {
+    font-size: 5.3px !important;
+  }
+
+  .dashboard-calendar-entry small {
+    font-size: 4.8px !important;
+  }
+}
