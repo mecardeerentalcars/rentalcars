@@ -889,6 +889,19 @@ export default function Home() {
     window.location.reload();
   }
 
+  // MECARDEE_SETTINGS_INPLACE_SYNC_V8_9_53
+  // Settings-only sync: fetch the newest database snapshot without navigating
+  // away from Settings or reloading the browser page.
+  async function settingsSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await refreshData();
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function installApp() {
     if (!installPrompt) {
       showToast("In Chrome, tap ⋮ and choose Install app / Add to Home screen.");
@@ -962,7 +975,7 @@ export default function Home() {
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
+          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} />}
         </div>
       </main>
 
