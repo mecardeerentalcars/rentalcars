@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_GOOGLE_STYLE_HARD_RELOAD_V8_9_74
+
 // MECARDEE_MOBILE_LOGOUT_REFRESH_ENCODING_V8_9_73
 
 // MECARDEE_CUSTOMER_REPORT_DATES_LOGOUT_V8_9_70
@@ -1025,9 +1027,8 @@ export default function Home() {
   }
 
   if (!authReady) {
-    return <main className="mecardee-auth-screen mecardee-auth-screen-silent" aria-busy="true" />;
+    return <main className="mecardee-auth-screen mecardee-auth-screen-bootstrap" aria-busy="true" />;
   }
-
   if (!sessionUser) {
     return (
       <main className="mecardee-auth-screen">
