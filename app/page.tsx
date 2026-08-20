@@ -834,6 +834,7 @@ export default function Home() {
   }
 
   // MECARDEE_REMINDER_NO_ESTIMATED_RENT_V8_9_41
+  // MECARDEE_REMINDER_DAILY_RATE_V8_9_51
   function sendBookingWhatsApp(reservation: Reservation, purpose: "confirmation" | "reminder" = "confirmation") {
     const digits = (reservation.whatsappNumber || reservation.phone).replace(/\D/g, "");
     const phone =
@@ -852,10 +853,11 @@ export default function Home() {
       ? "Please reply to confirm that the pickup details are still correct."
       : "Please reply to confirm the booking details.";
 
-    // IMPORTANT:
-    // Booking REMINDERS must never show Estimated rent / Estimated amount.
-    // Normal booking CONFIRMATIONS keep their existing estimated-rent line.
-    const estimatedRentLine = isReminder ? "" : `\nEstimated rent: ${money(reservation.amount)}`;
+    // Reminder: show the booked PER-DAY rate, but no estimated total.
+    // Confirmation: keep the existing estimated total behaviour.
+    const priceLine = isReminder
+      ? `\nPer day rent: ${money(reservation.rate)}`
+      : `\nEstimated rent: ${money(reservation.amount)}`;
 
     const text =
       `Mecardee Rental - ${label}\n\n` +
@@ -866,7 +868,7 @@ export default function Home() {
       `Pickup: ${reservation.start}\n` +
       `Expected return: ${reservation.returnDate}\n` +
       `Rental days: ${reservation.days}` +
-      estimatedRentLine +
+      priceLine +
       `\n\n${closing}`;
 
     openWhatsAppSafely(phone, text);
