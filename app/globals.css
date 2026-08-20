@@ -6087,3 +6087,44 @@ body { font-size: 15px; line-height: 1.45; }
     height: 17px;
   }
 }
+
+
+/* MECARDEE_MOBILE_LOGOUT_REFRESH_ENCODING_CSS_V8_9_73 */
+
+.top-actions .top-logout-icon {
+  display: inline-grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  border: 1px solid var(--line) !important;
+  background: #f4f7f6 !important;
+  color: #63726e !important;
+}
+
+.top-actions .top-logout-icon:hover,
+.top-actions .top-logout-icon:focus-visible {
+  border-color: #ccd7d3 !important;
+  background: #eaf0ee !important;
+  color: var(--ink) !important;
+}
+
+.mobile-menu-overlay nav .mobile-menu-logout-action {
+  margin-top: 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  color: #d7aaa7;
+}
+
+.mobile-menu-overlay nav .mobile-menu-logout-action:hover,
+.mobile-menu-overlay nav .mobile-menu-logout-action:focus-visible {
+  background: #1f3a34;
+  color: #ffffff;
+}
+
+.mobile-menu-overlay nav .mobile-menu-logout-action .mecardee-logout-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mecardee-auth-screen.mecardee-auth-screen-silent {
+  min-height: 100dvh;
+  background: #f6f8f7;
+}

@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_MOBILE_LOGOUT_REFRESH_ENCODING_V8_9_73
+
 // MECARDEE_CUSTOMER_REPORT_DATES_LOGOUT_V8_9_70
 
 // MECARDEE_CUSTOMER_HISTORY_SUPERADMIN_DELETE_V8_9_65
@@ -975,10 +977,14 @@ export default function Home() {
     setView("dashboard");
   }
 
-  function manualSync() {
+  async function manualSync() {
     if (syncing) return;
     setSyncing(true);
-    window.location.reload();
+    try {
+      await refreshData();
+    } finally {
+      setSyncing(false);
+    }
   }
 
   // MECARDEE_SETTINGS_INPLACE_SYNC_V8_9_53
@@ -1019,7 +1025,7 @@ export default function Home() {
   }
 
   if (!authReady) {
-    return <main className="mecardee-auth-screen"><section className="mecardee-auth-card is-loading"><span className="brand-mark">M</span><p>Checking secure sessionâ€¦</p></section></main>;
+    return <main className="mecardee-auth-screen mecardee-auth-screen-silent" aria-busy="true" />;
   }
 
   if (!sessionUser) {
@@ -1034,7 +1040,7 @@ export default function Home() {
             <label><span>Username</span><input name="username" autoComplete="username" autoCapitalize="none" required autoFocus /></label>
             <label><span>Password</span><input name="password" type="password" autoComplete="current-password" required /></label>
             {authError && <p className="mecardee-auth-error">{authError}</p>}
-            <button className="primary-button" type="submit" disabled={authBusy}>{authBusy ? "Signing inâ€¦" : "Sign in"}</button>
+            <button className="primary-button" type="submit" disabled={authBusy}>{authBusy ? "Signing in..." : "Sign in"}</button>
           </form>
         </section>
       </main>
@@ -1757,7 +1763,7 @@ function CustomerHistoryDialog({ customer, rentals, payments, close, openRentalB
   const outstanding = customerRentals.reduce((sum, rental) => sum + Number(rental.balance || 0), 0);
 
   const historyWhen = (value: string | undefined) => {
-    if (!value) return "â€”";
+    if (!value) return "-";
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return new Intl.DateTimeFormat("en-IN", {
@@ -2159,8 +2165,8 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
       const rows = chosen.map((vehicle) => {
         const carRentals = periodRentals.filter((rental) => vehicleShare(rental, vehicle.id) > 0);
-        const customerNames = [...new Set(carRentals.map((rental) => rental.customer).filter(Boolean))].join(", ") || "â€”";
-        const rentalDates = carRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ") || "â€”";
+        const customerNames = [...new Set(carRentals.map((rental) => rental.customer).filter(Boolean))].join(", ") || "-";
+        const rentalDates = carRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ") || "-";
         const rentalValue = carRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal * vehicleShare(rental, vehicle.id), 0);
         const collected = periodPayments.reduce((sum, payment) => {
           const rental = rentalMap.get(payment.rental);
@@ -2215,7 +2221,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         .map((customerRentals) => {
           const first = customerRentals[0];
           const vehiclesUsed = [...new Set(customerRentals.map((rental) => `${rental.originalVehicle} ${rental.originalPlate}`))].join(", ");
-          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} â†’ ${customerReportDateOnly(rental.endAt)}`).join(", ");
+          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} to ${customerReportDateOnly(rental.endAt)}`).join(", ");
           return [
             first.customer,
             first.phone,
@@ -2251,7 +2257,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   const customerScope = selectedCustomerKeys.length
     ? customerChoices.filter((customer) => selectedCustomerKeys.includes(customer.key)).map((customer) => customer.name).join(", ")
     : "All customers";
-  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` Â· Status: ${status}` : ""}${reportType === "cars" ? ` Â· ${vehicleScope}` : ""}${reportType === "customers" ? ` Â· ${customerScope}` : ""}`;
+  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` - Status: ${status}` : ""}${reportType === "cars" ? ` - ${vehicleScope}` : ""}${reportType === "customers" ? ` - ${customerScope}` : ""}`;
   const exportName = `mecardee-${reportType}-${dateFrom || "all"}-${dateTo || "all"}`;
 
 
@@ -2609,7 +2615,7 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
       <div className="panel-heading user-access-heading">
         <div>
           <h2>User access</h2>
-          <p>Signed in as <strong>{currentUser.username}</strong> Â· {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "owner" ? "Owner" : "Viewer"}</p>
+          <p>Signed in as <strong>{currentUser.username}</strong> - {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "owner" ? "Owner" : "Viewer"}</p>
         </div>
         <button className="secondary-button" type="button" onClick={onLogout}>Log out</button>
       </div>
@@ -2627,7 +2633,7 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
             <label><span>Current password</span><input name="currentPassword" type="password" autoComplete="current-password" required /></label>
             <label><span>New password</span><input name="newPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
             <label><span>Confirm new password</span><input name="confirmPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Savingâ€¦" : "Change password"}</button>
+            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Saving..." : "Change password"}</button>
           </form>
         </article>
 
@@ -2642,7 +2648,7 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
             <label><span>Role</span><select name="newUserRole" defaultValue="owner" required><option value="owner">Owner</option><option value="viewer">Viewer</option></select></label>
             <label><span>Password</span><input name="newUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
             <label><span>Confirm password</span><input name="confirmNewUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Creatingâ€¦" : "Create user"}</button>
+            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Creating..." : "Create user"}</button>
           </form>
         </article>}
       </div>
@@ -2791,7 +2797,7 @@ function MobileQuickCreate({ close, newRental, newBooking }: { close: () => void
 
 function MobileMenu({ view, goTo, close }: { view: View; goTo: (view: View) => void; close: () => void }) {
   const itemButton = (item: (typeof navItems)[number]) => { const Icon = item.icon; return <button className={view === item.view ? "active" : ""} key={item.view} onClick={() => goTo(item.view)}><Icon size={18} />{item.label}<ChevronRight size={16} /></button>; };
-  return <div className="mobile-menu-overlay"><aside><div className="mobile-menu-head"><div className="brand"><span className="brand-mark">M</span><div><strong>Mecardee</strong><small>Rental Manager</small></div></div><button onClick={close}><X size={20} /></button></div><nav><span className="mobile-menu-section-label">WORKSPACE</span>{navItems.slice(0, 8).map(itemButton)}<span className="mobile-menu-section-label insights">INSIGHTS</span>{navItems.slice(8).map(itemButton)}</nav></aside></div>;
+  return <div className="mobile-menu-overlay"><aside><div className="mobile-menu-head"><div className="brand"><span className="brand-mark">M</span><div><strong>Mecardee</strong><small>Rental Manager</small></div></div><button onClick={close}><X size={20} /></button></div><nav><span className="mobile-menu-section-label">WORKSPACE</span>{navItems.slice(0, 8).map(itemButton)}<span className="mobile-menu-section-label insights">INSIGHTS</span>{navItems.slice(8).map(itemButton)}<button className="mobile-menu-logout-action" type="button" onClick={() => { close(); void mecardeeQuickLogout(); }}><svg className="mecardee-logout-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 3h5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-5"/></svg><span>Log out</span><ChevronRight size={16} /></button></nav></aside></div>;
 }
 
 function DialogShell({ title, subtitle, close, wide = false, children }: { title: string; subtitle: string; close: () => void; wide?: boolean; children: React.ReactNode }) {
