@@ -958,7 +958,7 @@ export default function Home() {
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
+          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
         </div>
       </main>
 
@@ -1900,9 +1900,9 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   </>;
 }
 
-function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; vehicles: Vehicle[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
+function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; vehicles: Vehicle[]; bookings: BookingRecord[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
-  const [tab, setTab] = useState<"rentals" | "payments" | "expenses" | "history">("rentals");
+  const [tab, setTab] = useState<"bookings" | "rentals" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1916,6 +1916,8 @@ function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { re
   // MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
   const [rentalVehicleTarget, setRentalVehicleTarget] = useState<Rental | null>(null);
   const [rentalVehicleForm, setRentalVehicleForm] = useState({ vehicleId: "", startingKilometer: 0, startingFuelRangeKm: 0 });
+  // MECARDEE_SETTINGS_BOOKING_EDITOR_V8_9_49
+  const [bookingEditTarget, setBookingEditTarget] = useState<BookingRecord | null>(null);
 
   const formatWhen = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
   const toLocalDateTimeInput = (value: string) => {
@@ -2013,6 +2015,7 @@ function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { re
     }
   };
 
+  const editableBookings = useMemo(() => bookings.filter((booking) => booking.status === "booked").sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()), [bookings]);
   const editableRentals = rentals.filter((rental) => rental.state !== "completed");
 
   const openRentalScheduleEdit = (rental: Rental) => {
@@ -2119,22 +2122,24 @@ function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { re
   const historyRows = data.history;
 
   return <>
-    <PageHeading eyebrow="APP" title="Settings" description="Sync live data, safely correct transactions, and adjust active rental schedules without touching the database directly." />
+    <PageHeading eyebrow="APP" title="Settings" description="Sync live data, edit active bookings, safely correct rentals, and manage transaction corrections without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active rental start/return dates can be corrected here. Completed settlements stay locked. Payments and expenses keep their existing edit/delete history protection.</p></div></article>
+      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active bookings can be edited here, including reserved vehicle and booking period. Active rental corrections stay protected, completed settlements stay locked, and payments/expenses keep their existing edit/delete history protection.</p></div></article>
     </section>
 
     <section className="data-panel transaction-manager">
-      <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Active rental schedules + latest payments and expenses · completed rentals stay protected</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
+      <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Active bookings + rental corrections + latest payments and expenses · completed records stay protected</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
       <div className="transaction-tabs">
         <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Rental dates <span>{editableRentals.length}</span></button>
+        <button className={tab === "bookings" ? "active" : ""} onClick={() => setTab("bookings")}><CalendarDays size={15} />Bookings <span>{editableBookings.length}</span></button>
         <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}><WalletCards size={15} />Payments <span>{paymentRows.length}</span></button>
         <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}><ReceiptIndianRupee size={15} />Expenses <span>{expenseRows.length}</span></button>
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}><History size={15} />Delete history <span>{historyRows.length}</span></button>
       </div>
       {error && <p className="form-error transaction-manager-error">{error}</p>}
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
+        {tab === "bookings" && (editableBookings.length ? editableBookings.map((booking) => <article className="transaction-row settings-booking-row" key={booking.id}><div className="transaction-main"><span className="transaction-kind rental"><CalendarDays size={15} /></span><div><strong>{booking.vehicle} · {booking.plate}</strong><small>{booking.bookingNumber} · {booking.customer}</small><small>{formatWhen(booking.startAt)} → {formatWhen(booking.endAt)} · {booking.days} rental day{booking.days === 1 ? "" : "s"} · {money(booking.rate)}/day</small>{booking.vehicleId !== booking.requestedVehicleId && <small className="settings-booking-original">Original request: {booking.requestedVehicle} · {booking.requestedPlate}</small>}</div></div><div className="transaction-side"><span className="settings-booking-status">Booked</span><div className="transaction-actions"><button onClick={() => { setError(""); setBookingEditTarget(booking); }} disabled={busy}><Pencil size={14} />Edit booking</button></div></div></article>) : <div className="transaction-empty">No active bookings to edit.</div>)}
         {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><CalendarRange size={14} />Date & time</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
@@ -2142,6 +2147,8 @@ function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { re
       </div>}
     </section>
 
+
+    {bookingEditTarget && <BookingEditDialog booking={bookingEditTarget} vehicles={vehicles.filter((vehicle) => !vehicle.isGuest)} guestVehicles={vehicles.filter((vehicle) => vehicle.isGuest)} bookings={bookings} rentals={rentals} close={() => !busy && setBookingEditTarget(null)} done={(message) => { setBookingEditTarget(null); onSync(); window.setTimeout(() => window.alert(message), 60); }} />}
 
     {rentalVehicleTarget && <DialogShell title="Correct active rental vehicle" subtitle={`${rentalVehicleTarget.id} · ${rentalVehicleTarget.customer}`} close={() => !busy && setRentalVehicleTarget(null)}><form className="simple-form rental-vehicle-correction-form" onSubmit={saveRentalVehicleCorrection}>
       <div className="delete-warning correction-warning"><AlertTriangle size={18} /><div><strong>Use this only to correct a mistaken rental start</strong><p>If the customer genuinely changes vehicles later during the rental, use the normal <b>Change Vehicle</b> action from Rental details so both vehicle periods remain in history.</p></div></div>

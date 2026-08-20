@@ -4711,3 +4711,44 @@ body { font-size: 15px; line-height: 1.45; }
   }
 }
 
+
+/* MECARDEE_SETTINGS_BOOKING_EDITOR_CSS_V8_9_49 */
+
+.settings-booking-row .settings-booking-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #f3c58d;
+  background: #fff7eb;
+  color: #a45b0a;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.settings-booking-original {
+  color: #6256c7 !important;
+  font-weight: 750;
+}
+
+@media (max-width: 700px) {
+  .transaction-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .transaction-tabs button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .settings-booking-row .transaction-actions button {
+    width: 100% !important;
+  }
+}
+
