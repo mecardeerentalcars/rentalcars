@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { expenses, vehicles } from "@/db/schema";
@@ -10,6 +12,8 @@ const money = (value: unknown, field: string) => { const n = Number(value); if (
 const numberId = () => `EXP-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
 
 export async function POST(request: Request) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as ExpenseBody;
     const expenseDate = text(body.expenseDate, "Expense date");

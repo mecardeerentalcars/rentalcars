@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, expenses, payments, returnSettlements, vehicles } from "@/db/schema";
@@ -87,6 +89,8 @@ async function paymentLimit(tx: any, bookingId: string, excludingPaymentId?: str
 }
 
 export async function GET() {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     return await withRequestDb(async (db) => {
       await ensureDeleteHistoryTable(db);
@@ -173,6 +177,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as AnyRow;
     const type = parseType(body.type);
@@ -218,6 +224,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as AnyRow;
     const type = parseType(body.type);
@@ -273,6 +281,8 @@ export async function DELETE(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as AnyRow;
     const action = text(body.action, "Action");

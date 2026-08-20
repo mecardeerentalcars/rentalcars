@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
@@ -55,6 +57,8 @@ async function vehicleConflict(tx: any, vehicleId: string, startAt: Date, endAt:
 }
 
 export async function POST(request: Request) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as CreateRentalBody;
     const vehicleRegistration = text(body.vehicleRegistration, "Vehicle registration");

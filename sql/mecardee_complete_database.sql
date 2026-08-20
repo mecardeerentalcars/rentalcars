@@ -326,3 +326,44 @@ WHERE b.advance_paid > 0
 ON CONFLICT (payment_number) DO NOTHING;
 
 COMMIT;
+
+
+-- MECARDEE_USER_ROLES_V8_9_55
+-- Database-backed application users. Only the initial admin is seeded here.
+CREATE TABLE IF NOT EXISTS app_users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username varchar(80) NOT NULL,
+  password_hash text NOT NULL,
+  role varchar(24) NOT NULL DEFAULT 'viewer',
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_users_role_check CHECK (role IN ('superadmin', 'owner', 'viewer'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_users_username_unique
+  ON app_users (lower(username));
+
+CREATE INDEX IF NOT EXISTS app_users_role_idx
+  ON app_users (role);
+
+CREATE TABLE IF NOT EXISTS app_user_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_user_sessions_token_unique
+  ON app_user_sessions (token_hash);
+
+CREATE INDEX IF NOT EXISTS app_user_sessions_user_idx
+  ON app_user_sessions (user_id);
+
+CREATE INDEX IF NOT EXISTS app_user_sessions_expiry_idx
+  ON app_user_sessions (expires_at);
+
+INSERT INTO app_users (username, password_hash, role, active)
+VALUES ('admin', 'scrypt$bef4fd0b040fae2c00a850b355c53b28$32ea620aed10ca98e788473c16706b5f6a0d05b2004e29ef4fd64abb595541ce0cbaf32696c5f7adbe2f03fff3255e473952522c2d9e2d167df5f6da5f790910', 'superadmin', true)
+ON CONFLICT ((lower(username))) DO NOTHING;

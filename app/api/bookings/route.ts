@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
 import { and, eq, gt, lt } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
@@ -39,6 +41,8 @@ const whole = (value: unknown, field: string, minimum = 1) => {
 const numberId = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
 
 export async function POST(request: Request) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = await request.json() as CreateBookingBody;
     const vehicleRegistration = text(body.vehicleRegistration, "Vehicle registration");

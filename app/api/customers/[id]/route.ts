@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, eq, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { customers } from "@/db/schema";
@@ -21,6 +23,8 @@ const requiredText = (value: unknown, field: string) => {
 const optionalText = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     const body = await request.json() as UpdateCustomerBody;

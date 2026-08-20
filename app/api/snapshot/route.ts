@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import { asc, desc, eq } from "drizzle-orm";
@@ -93,6 +95,8 @@ function lastTwelveMonths(reference: Date) {
 }
 
 export async function GET() {
+  const __mecardeeAuth = await requireReadAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     return await withRequestDb(async (db) => {
       const [

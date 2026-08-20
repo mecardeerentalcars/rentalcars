@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, rentalExtensions, rentalSegments, vehicles } from "@/db/schema";
@@ -10,6 +12,8 @@ const wholeNumber = (value: unknown, field: string) => { const number = Number(v
 const optionalText = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
 
 export async function POST(request: Request) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as ExtensionBody;
     const bookingNumber = text(body.bookingNumber, "Booking number");

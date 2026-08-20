@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_BOOKED_VEHICLE_START_GUARD_V8_9_46
 // MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
 import { and, eq, gt, lt, ne } from "drizzle-orm";
@@ -31,6 +33,8 @@ const date = (value: unknown, field: string) => {
 const numberId = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     const body = await request.json() as Record<string, unknown>;

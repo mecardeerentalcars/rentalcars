@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_SETTINGS_SOFT_BOOKING_OVERLAP_V8_9_48
 // MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
 import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
@@ -27,6 +29,8 @@ const whole = (value: unknown, field: string) => {
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export async function PATCH(request: Request) {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = await request.json() as AnyRow;
     const bookingId = text(body.bookingId, "Rental ID");
@@ -217,6 +221,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = await request.json() as AnyRow;
     const bookingId = text(body.bookingId, "Rental ID");

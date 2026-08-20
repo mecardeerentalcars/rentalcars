@@ -1,6 +1,14 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_CUSTOMER_HISTORY_SUPERADMIN_DELETE_V8_9_65
+
+// MECARDEE_REPORTS_MOBILE_FILTER_FIELDS_V8_9_62
+
+// MECARDEE_REPORTS_CUSTOMER_QUICKCREATE_V8_9_59
+
+// MECARDEE_USER_ROLES_V8_9_55
+
 // MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
 
 // MECARDEE_SETTINGS_SOFT_BOOKING_OVERLAP_V8_9_48
@@ -92,6 +100,8 @@ if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addV
 else pdfMakeClient.vfs = pdfFonts;
 
 type View = "dashboard" | "rentals" | "bookings" | "vehicles" | "guest-cars" | "customers" | "payments" | "accounts" | "reports" | "settings";
+type UserRole = "superadmin" | "owner" | "viewer";
+type AuthUser = { id: string; username: string; role: UserRole };
 type DialogType = null | "new-rental" | "new-booking" | "booking-detail" | "booking-start" | "booking-history-detail" | "booking-edit" | "rental-detail" | "pending-payments" | "payment" | "extend" | "change-vehicle" | "return" | "expense" | "vehicle" | "guest-vehicle" | "vehicle-detail" | "customer" | "customer-edit";
 type RentalState = "active" | "today" | "overdue" | "completed";
 
@@ -320,7 +330,7 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
-type ReportType = "rentals" | "payments" | "expenses" | "outstanding" | "cars";
+type ReportType = "rentals" | "payments" | "expenses" | "outstanding" | "cars" | "customers";
 
 const emptyMetrics: Metrics = { totalCars: 0, availableCars: 0, onRentCars: 0, maintenanceCars: 0, roadReadyPercent: 0, activeRentals: 0, returningToday: 0, overdue: 0, outstanding: 0, outstandingRentals: 0, outstandingCustomers: 0, totalCustomers: 0, newCustomersThisMonth: 0, currentlyRentingCustomers: 0, collectedToday: 0, paymentsToday: 0, expensesToday: 0, netToday: 0, collectedMonth: 0, collectedLastMonth: 0, collectionChangePercent: 0, rentalRevenueMonth: 0, expensesMonth: 0, netIncomeMonth: 0, depositsHeld: 0, twelveMonthCollected: 0, monthlyCollected: [] };
 
@@ -498,6 +508,10 @@ async function readApiResponse<T>(response: Response): Promise<T> {
 }
 
 export default function Home() {
+  const [sessionUser, setSessionUser] = useState<AuthUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [view, setView] = useState<View>("dashboard");
   const [dialog, setDialog] = useState<DialogType>(null);
   const [rentalList, setRentalList] = useState<Rental[]>([]);
@@ -525,12 +539,29 @@ export default function Home() {
   const [readNotificationKeys, setReadNotificationKeys] = useState<string[]>([]);
   const [notificationHistory, setNotificationHistory] = useState<NotificationHistoryItem[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileQuickCreateOpen, setMobileQuickCreateOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installBannerVisible, setInstallBannerVisible] = useState(false);
   const notificationRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const payload = await readApiResponse<{ ok: boolean; user?: AuthUser | null }>(response);
+        if (!cancelled && response.ok && payload.user) setSessionUser(payload.user);
+      } catch {
+        // Login screen will be shown.
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -561,7 +592,7 @@ export default function Home() {
     }
   }, [showToast]);
 
-  useEffect(() => { void refreshData(); }, [refreshData]);
+  useEffect(() => { if (!sessionUser) return; void refreshData(); }, [refreshData, sessionUser]);
 
   // MECARDEE_MOBILE_LAST_EDITS_V8_9_23
   useEffect(() => {
@@ -701,6 +732,8 @@ export default function Home() {
   }
 
   function openNewRental(vehicleId?: string) {
+    // VIEWER_GUARD_openNewRental
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     void refreshData({ silent: true });
     setRentalSeedVehicleId(vehicleId ?? null);
     setDialog("new-rental");
@@ -708,6 +741,8 @@ export default function Home() {
   }
 
   function openBookingForVehicle(vehicleId: string, date: string) {
+    // VIEWER_GUARD_openBookingForVehicle
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     void refreshData({ silent: true });
     setBookingSeed({ vehicleId, date });
     setDialog("new-booking");
@@ -740,12 +775,16 @@ export default function Home() {
   }
 
   function editBookingRecord(booking: BookingRecord) {
+    // VIEWER_GUARD_editBookingRecord
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     setSelectedBookingRecord(booking);
     setDialog("booking-edit");
     setSearch("");
   }
 
   function startBookingRecord(booking: BookingRecord) {
+    // VIEWER_GUARD_startBookingRecord
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     const reservation = reservationList.find((item) => item.id === booking.id);
     if (!reservation) return showToast("This booking is no longer waiting to start.");
     if (Date.now() < new Date(booking.startAt).getTime()) return showToast("This booking has not reached its pickup time yet.");
@@ -754,6 +793,8 @@ export default function Home() {
   }
 
   function newBookingFromTab() {
+    // VIEWER_GUARD_newBookingFromTab
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     void refreshData({ silent: true });
     setBookingSeed({ vehicleId: "", date: dateInputValue(new Date()) });
     setDialog("new-booking");
@@ -769,12 +810,16 @@ export default function Home() {
   }
 
   function openCustomerEdit(customer: CustomerRow) {
+    // VIEWER_GUARD_openCustomerEdit
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     setSelectedCustomer(customer);
     setDialog("customer-edit");
     setSearch("");
   }
 
   async function deleteCustomer(customer: CustomerRow) {
+    // VIEWER_GUARD_deleteCustomer
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     const confirmed = window.confirm(`Delete ${customer.name}?\n\nThis will permanently remove the customer and any booking-only reservations linked to them. Customers with rental history cannot be deleted. This cannot be undone.`);
     if (!confirmed) return;
     try {
@@ -799,6 +844,8 @@ export default function Home() {
   }
 
   function openPayment() {
+    // VIEWER_GUARD_openPayment
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
     const rental = [...rentalList].filter((item) => item.balance > 0).sort((a, b) => b.balance - a.balance)[0];
     if (!rental) return showToast("There are no outstanding rental balances.");
     setSelectedRental(rental);
@@ -883,6 +930,44 @@ export default function Home() {
     const link = document.createElement("a"); link.href = url; link.download = `mecardee-payments-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
   }
 
+  async function handleUserLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const username = String(form.get("username") || "").trim().toLowerCase();
+    const password = String(form.get("password") || "");
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; user?: AuthUser; error?: string }>(response);
+      if (!response.ok || !payload.user) throw new Error(payload.error || "Incorrect username or password.");
+      setSessionUser(payload.user);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Incorrect username or password.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+    setSessionUser(null);
+    setRentalList([]);
+    setReservationList([]);
+    setBookingList([]);
+    setVehicleList([]);
+    setGuestVehicleList([]);
+    setCustomerList([]);
+    setPaymentList([]);
+    setExpenseList([]);
+    setReminders([]);
+    setView("dashboard");
+  }
+
   function manualSync() {
     if (syncing) return;
     setSyncing(true);
@@ -926,8 +1011,31 @@ export default function Home() {
     void refreshData();
   }
 
+  if (!authReady) {
+    return <main className="mecardee-auth-screen"><section className="mecardee-auth-card is-loading"><span className="brand-mark">M</span><p>Checking secure sessionâ€¦</p></section></main>;
+  }
+
+  if (!sessionUser) {
+    return (
+      <main className="mecardee-auth-screen">
+        <section className="mecardee-auth-card">
+          <div className="brand-mark mecardee-auth-logo">M</div>
+          <span className="eyebrow">MECARDEE RENTAL</span>
+          <h1>Welcome back</h1>
+          <p>Sign in to continue to Rental Manager.</p>
+          <form className="mecardee-auth-form" onSubmit={handleUserLogin}>
+            <label><span>Username</span><input name="username" autoComplete="username" autoCapitalize="none" required autoFocus /></label>
+            <label><span>Password</span><input name="password" type="password" autoComplete="current-password" required /></label>
+            {authError && <p className="mecardee-auth-error">{authError}</p>}
+            <button className="primary-button" type="submit" disabled={authBusy}>{authBusy ? "Signing inâ€¦" : "Sign in"}</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <div className="app-shell" onKeyDownCapture={(event) => {
+    <div className="app-shell" data-user-role={sessionUser.role} onKeyDownCapture={(event) => {
       if (event.key !== "Enter") return;
       const target = event.target as HTMLElement;
       if (!target.closest("form")) return;
@@ -971,15 +1079,20 @@ export default function Home() {
           {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "guest-cars" && <GuestCarsView vehicles={guestVehicleList} rentals={rentalList} addVehicle={() => setDialog("guest-vehicle")} openVehicle={openVehicle} openRental={openRental} />}
-          {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
+          {view === "customers" && <CustomersView currentUser={sessionUser!} payments={paymentList} rentals={rentalList} customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} />}
+          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
         </div>
       </main>
 
-      <MobileNav view={view} goTo={goTo} openNew={() => openNewRental()} />
+      <MobileNav view={view} goTo={goTo} openNew={() => sessionUser?.role === "viewer" ? showToast("Viewer access is read-only.") : setMobileQuickCreateOpen(true)} />
+      {mobileQuickCreateOpen && <MobileQuickCreate
+        close={() => setMobileQuickCreateOpen(false)}
+        newRental={() => { setMobileQuickCreateOpen(false); openNewRental(); }}
+        newBooking={() => { setMobileQuickCreateOpen(false); newBookingFromTab(); }}
+      />}
       {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
       {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} guestVehicles={guestVehicleList} customers={customerList} bookings={bookingList} rentals={rentalList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
@@ -1446,8 +1559,8 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
       <label className="booking-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, phone, vehicle or booking" /></label>
       <select value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="All">All vehicles</option>{vehicles.map((vehicle) => <option value={vehicle.id} key={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select>
       <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All</option><option>Upcoming</option><option>Today</option><option>Active</option><option>Completed</option><option>Cancelled</option></select>
-      <label><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
-      <label><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+      <label className="mecardee-report-filter-field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+      <label className="mecardee-report-filter-field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
     </section>
 
     {mode === "list" ? <section className="booking-list-panel">
@@ -1590,7 +1703,8 @@ function customerCreateError(message: string | undefined) {
   if (/duplicate|unique|customers_phone_unique|already exists/i.test(detail)) return "This phone number is already added to another customer. Please use the existing customer.";
   return detail || "Could not save customer.";
 }
-function CustomersView({ customers, metrics, openNew, openRentalById, addCustomer, editCustomer, deleteCustomer }: { customers: CustomerRow[]; metrics: Metrics; openNew: () => void; openRentalById: (rentalId: string) => void; addCustomer: () => void; editCustomer: (customer: CustomerRow) => void; deleteCustomer: (customer: CustomerRow) => void }) {
+function CustomersView({ customers, metrics, openNew, openRentalById, addCustomer, editCustomer, deleteCustomer , rentals, payments, currentUser}: { customers: CustomerRow[]; metrics: Metrics; openNew: () => void; openRentalById: (rentalId: string) => void; addCustomer: () => void; editCustomer: (customer: CustomerRow) => void; deleteCustomer: (customer: CustomerRow) => void ; rentals: Rental[]; payments: PaymentRow[]; currentUser: AuthUser}) {
+  const [historyCustomer, setHistoryCustomer] = useState<CustomerRow | null>(null);
   const [search, setSearch] = useState("");
   const [cityFilter, setCityFilter] = useState("");
   const shown = customers.filter((customer) => {
@@ -1598,11 +1712,114 @@ function CustomersView({ customers, metrics, openNew, openRentalById, addCustome
     return (!q || `${customer.name} ${customer.phone}`.toLowerCase().includes(q)) && (!city || customer.city.toLowerCase().includes(city));
   });
   return <>
+  {<>
     <PageHeading eyebrow="CUSTOMER DIRECTORY" title="Customers" description="Rental history, documents and balances—without duplicate records." action={<button className="primary-button" onClick={addCustomer}><UserRoundPlus size={17} />Add customer</button>} />
     <section className="customer-summary"><article><UsersRound size={20} /><div><strong>{metrics.totalCustomers}</strong><span>Total customers</span></div><small><TrendingUp size={13} /> {metrics.newCustomersThisMonth} this month</small></article><article><CalendarDays size={20} /><div><strong>{metrics.currentlyRentingCustomers}</strong><span>Currently renting</span></div><small>{metrics.totalCustomers ? Math.round((metrics.currentlyRentingCustomers / metrics.totalCustomers) * 100) : 0}% of customers</small></article><article><IndianRupee size={20} /><div><strong>{money(metrics.outstanding)}</strong><span>Pending balance</span></div><small className="warn"><AlertTriangle size={13} /> {metrics.outstandingCustomers} customers</small></article></section>
-    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customer.name}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customer.name}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button><button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
-  </>;
+    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customer.name}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-history-action" type="button" onClick={() => setHistoryCustomer(customer)}>View history</button>{currentUser.role === "superadmin" && <button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customer.name}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button>}<button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
+  </>}
+  {historyCustomer && <CustomerHistoryDialog customer={historyCustomer} rentals={rentals} payments={payments} close={() => setHistoryCustomer(null)} openRentalById={openRentalById} />}
+</>;
 }
+
+function CustomerHistoryDialog({ customer, rentals, payments, close, openRentalById }: { customer: CustomerRow; rentals: Rental[]; payments: PaymentRow[]; close: () => void; openRentalById: (id: string) => void }) {
+  const phoneKey = customerPhoneKey(customer.phone);
+  const nameKey = String(customer.name || "").trim().toLowerCase();
+
+  const customerRentals = rentals
+    .filter((rental) => {
+      if (rental.customerId === customer.id) return true;
+      if (phoneKey && customerPhoneKey(rental.phone) === phoneKey) return true;
+      return !phoneKey && String(rental.customer || "").trim().toLowerCase() === nameKey;
+    })
+    .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime());
+
+  const rentalIds = new Set(customerRentals.map((rental) => rental.id));
+
+  const customerPayments = payments
+    .filter((payment) => {
+      if (payment.rental && rentalIds.has(String(payment.rental))) return true;
+      if (phoneKey && customerPhoneKey(String(payment.phone || "")) === phoneKey) return true;
+      return !phoneKey && String(payment.customer || "").trim().toLowerCase() === nameKey;
+    })
+    .sort((a, b) => new Date(String(b.receivedAt || "")).getTime() - new Date(String(a.receivedAt || "")).getTime());
+
+  const totalRentalValue = customerRentals.reduce((sum, rental) => sum + Number(rental.total || 0), 0);
+  const totalCollected = customerPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const outstanding = customerRentals.reduce((sum, rental) => sum + Number(rental.balance || 0), 0);
+
+  const historyWhen = (value: string | undefined) => {
+    if (!value) return "â€”";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return new Intl.DateTimeFormat("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "Asia/Kolkata",
+    }).format(parsed);
+  };
+
+  return <DialogShell title={`${customer.name} history`} subtitle={`${customer.phone || "No phone"} - ${customer.city || "No city"}`} close={close} wide>
+    <div className="customer-history-dialog">
+      <div className="customer-history-summary">
+        <article><small>Rentals</small><strong>{customerRentals.length}</strong></article>
+        <article><small>Rental value</small><strong>{money(totalRentalValue)}</strong></article>
+        <article><small>Collected</small><strong>{money(totalCollected)}</strong></article>
+        <article className={outstanding > 0 ? "due" : ""}><small>Outstanding</small><strong>{money(outstanding)}</strong></article>
+      </div>
+
+      <section className="customer-history-section">
+        <div className="customer-history-section-head">
+          <div><span className="eyebrow">VEHICLE ACTIVITY</span><h3>Rental history</h3></div>
+          <span className="customer-history-count">{customerRentals.length}</span>
+        </div>
+
+        <div className="customer-history-list">
+          {customerRentals.length ? customerRentals.map((rental) => <article className="customer-history-rental" key={rental.id}>
+            <div className="customer-history-rental-main">
+              <div className="customer-history-date"><small>Start</small><strong>{historyWhen(rental.startAt)}</strong></div>
+              <div className="customer-history-vehicle"><strong>{rental.vehicle}</strong><small>{rental.plate} - {rental.id}</small></div>
+              <span className={`customer-history-status ${rental.state}`}>{rental.statusText || rental.state}</span>
+            </div>
+
+            <div className="customer-history-rental-meta">
+              <span><small>Return</small><strong>{historyWhen(rental.endAt)}</strong></span>
+              <span><small>Rental</small><strong>{money(Number(rental.total || 0))}</strong></span>
+              <span><small>Paid</small><strong>{money(Number(rental.paid || 0))}</strong></span>
+              <span><small>Balance</small><strong>{money(Number(rental.balance || 0))}</strong></span>
+            </div>
+
+            <button className="customer-history-open-rental" type="button" onClick={() => { close(); openRentalById(rental.id); }}>View rental</button>
+          </article>) : <div className="customer-history-empty">No rental history for this customer yet.</div>}
+        </div>
+      </section>
+
+      <section className="customer-history-section">
+        <div className="customer-history-section-head">
+          <div><span className="eyebrow">MONEY RECEIVED</span><h3>Payment history</h3></div>
+          <span className="customer-history-count">{customerPayments.length}</span>
+        </div>
+
+        <div className="customer-history-list">
+          {customerPayments.length ? customerPayments.map((payment, index) => <article className="customer-history-payment" key={payment.id || `${payment.rental || "payment"}-${payment.receivedAt || index}`}>
+            <div>
+              <strong>{money(Number(payment.amount || 0))}</strong>
+              <small>{historyWhen(payment.receivedAt || payment.date)}</small>
+            </div>
+            <div>
+              <span>{payment.method || "Payment method not recorded"}</span>
+              <small>{payment.rental || "No rental reference"} - {String(payment.type || "payment").replaceAll("_", " ")}</small>
+            </div>
+          </article>) : <div className="customer-history-empty">No payment history for this customer yet.</div>}
+        </div>
+      </section>
+    </div>
+  </DialogShell>;
+}
+
 
 function PaymentsView({ rentals, payments, metrics, openPayment, exportPayments, sendWhatsApp }: { rentals: Rental[]; payments: PaymentRow[]; metrics: Metrics; openPayment: () => void; exportPayments: () => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
   // Payments is a business accounting view, so Guest Car rental value is excluded here.
@@ -1859,6 +2076,29 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   const [dateTo, setDateTo] = useState(today);
   const [status, setStatus] = useState("all");
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>([]);
+  const [selectedCustomerKeys, setSelectedCustomerKeys] = useState<string[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+
+  const customerChoices = useMemo(() => {
+    const choices = new Map<string, { key: string; name: string; phone: string }>();
+    for (const rental of rentals) {
+      const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
+      const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}`;
+      if (!choices.has(key)) {
+        choices.set(key, { key, name: rental.customer || "Unknown customer", phone: rental.phone || "" });
+      }
+    }
+    return [...choices.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rentals]);
+
+  const toggleCustomer = (customerKey: string) => setSelectedCustomerKeys((current) =>
+    current.includes(customerKey) ? current.filter((key) => key !== customerKey) : [...current, customerKey]
+  );
+
+  const visibleCustomerChoices = customerChoices.filter((customer) => {
+    const term = customerSearch.trim().toLowerCase();
+    return !term || customer.name.toLowerCase().includes(term) || customer.phone.toLowerCase().includes(term);
+  });
 
   const toggleVehicle = (vehicleId: string) => setSelectedVehicleIds((current) => current.includes(vehicleId) ? current.filter((id) => id !== vehicleId) : [...current, vehicleId]);
 
@@ -1890,14 +2130,17 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       return { title: "Expenses report", headers: ["Date", "Category", "Vehicle", "Method", "Amount", "Description"], rows: filtered.map((expense) => [expense.date, expense.category, expense.vehicle, expense.method, expense.amount, expense.description] as (string | number)[]), currencyColumns: [4], total: filtered.reduce((sum, expense) => sum + expense.amount, 0), label: "Expenses" };
     }
     if (reportType === "cars") {
-      // This report is intentionally scoped only to the company's own vehicles.
+      // Company vehicle report. Guest Cars remain excluded from business income.
       const chosen = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)) : vehicles;
       const rentalMap = new Map(rentals.map((rental) => [rental.id, rental]));
       const periodRentals = rentals.filter((rental) => within(rental.startAt));
       const periodPayments = payments.filter((payment) => within(payment.receivedAt));
       const periodExpenses = expenses.filter((expense) => Boolean(expense.vehicleId && within(expense.rawDate)));
+
       const rows = chosen.map((vehicle) => {
         const carRentals = periodRentals.filter((rental) => vehicleShare(rental, vehicle.id) > 0);
+        const customerNames = [...new Set(carRentals.map((rental) => rental.customer).filter(Boolean))].join(", ") || "â€”";
+        const rentalDates = carRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ") || "â€”";
         const rentalValue = carRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal * vehicleShare(rental, vehicle.id), 0);
         const collected = periodPayments.reduce((sum, payment) => {
           const rental = rentalMap.get(payment.rental);
@@ -1905,40 +2148,216 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         }, 0);
         const outstanding = carRentals.reduce((sum, rental) => sum + rental.businessBalance * vehicleShare(rental, vehicle.id), 0);
         const carExpenses = periodExpenses.filter((expense) => expense.vehicleId === vehicle.id).reduce((sum, expense) => sum + expense.amount, 0);
-        return [vehicle.name, vehicle.plate, carRentals.length, rentalValue, collected, outstanding, carExpenses, collected - carExpenses] as (string | number)[];
+
+        return [
+          vehicle.name,
+          vehicle.plate,
+          customerNames,
+          rentalDates,
+          carRentals.length,
+          rentalValue,
+          collected,
+          outstanding,
+          carExpenses,
+          collected - carExpenses,
+        ] as (string | number)[];
       });
-      return { title: "Car-wise report", headers: ["Vehicle", "Registration", "Rentals", "Rental value", "Collected", "Outstanding", "Expenses", "Net collected"], rows, currencyColumns: [3, 4, 5, 6, 7], total: rows.reduce((sum, row) => sum + Number(row[7] ?? 0), 0), label: "Net collected" };
+
+      return {
+        title: "Car-wise report",
+        headers: ["Vehicle", "Registration", "Customer", "Rental date", "Rentals", "Rental value", "Collected", "Outstanding", "Expenses", "Net collected"],
+        rows,
+        currencyColumns: [5, 6, 7, 8, 9],
+        total: rows.reduce((sum, row) => sum + Number(row[9] ?? 0), 0),
+        label: "Net collected",
+      };
     }
+
+    if (reportType === "customers") {
+      const selectedSet = new Set(selectedCustomerKeys);
+      const filteredRentals = rentals.filter((rental) => {
+        if (!within(rental.startAt)) return false;
+        const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
+        const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}`;
+        return !selectedSet.size || selectedSet.has(key);
+      });
+
+      const grouped = new Map<string, Rental[]>();
+      for (const rental of filteredRentals) {
+        const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
+        const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}`;
+        const current = grouped.get(key) || [];
+        current.push(rental);
+        grouped.set(key, current);
+      }
+
+      const rows = [...grouped.values()]
+        .map((customerRentals) => {
+          const first = customerRentals[0];
+          const vehiclesUsed = [...new Set(customerRentals.map((rental) => `${rental.originalVehicle} ${rental.originalPlate}`))].join(", ");
+          const rentalDates = customerRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ");
+          return [
+            first.customer,
+            first.phone,
+            customerRentals.length,
+            vehiclesUsed,
+            rentalDates,
+            customerRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0),
+            customerRentals.reduce((sum, rental) => sum + rental.businessPaid, 0),
+            customerRentals.reduce((sum, rental) => sum + rental.businessBalance, 0),
+          ] as (string | number)[];
+        })
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+
+      return {
+        title: "Customer-wise report",
+        headers: ["Customer", "Phone", "Rentals", "Vehicles", "Rental dates", "Rental value", "Collected", "Outstanding"],
+        rows,
+        currencyColumns: [5, 6, 7],
+        total: rows.reduce((sum, row) => sum + Number(row[5] ?? 0), 0),
+        label: "Rental value",
+      };
+    }
+
     const base = rentals.filter((rental) => within(rental.startAt) && (status === "all" || rental.state === status));
     if (reportType === "outstanding") {
       const filtered = base.filter((rental) => rental.businessBalance > 0);
-      return { title: "Outstanding balances", headers: ["Rental", "Customer", "Phone", "Original vehicle", "Expected return", "Status", "Business balance"], rows: filtered.map((rental) => [rental.id, rental.customer, rental.phone, `${rental.originalVehicle} ${rental.originalPlate}`, rental.returnDate, rental.statusText, rental.businessBalance] as (string | number)[]), currencyColumns: [6], total: filtered.reduce((sum, rental) => sum + rental.businessBalance, 0), label: "Outstanding" };
+      return { title: "Outstanding balances", headers: ["Customer", "Phone", "Original vehicle", "Expected return", "Status", "Business balance"], rows: filtered.map((rental) => [rental.customer, rental.phone, `${rental.originalVehicle} ${rental.originalPlate}`, formatIndiaWhen(rental.endAt), rental.statusText, rental.businessBalance] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, rental) => sum + rental.businessBalance, 0), label: "Outstanding" };
     }
-    return { title: "Rentals report", headers: ["Rental", "Original vehicle", "Customer", "Start", "Return", "Status", "Business total", "Business paid", "Business balance"], rows: base.map((rental) => [rental.id, `${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, rental.start, rental.returnDate, rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance] as (string | number)[]), currencyColumns: [6, 7, 8], total: base.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0), label: "Rental value" };
-  }, [reportType, dateFrom, dateTo, status, selectedVehicleIds, rentals, payments, expenses, vehicles]);
+    return { title: "Rentals report", headers: ["Original vehicle", "Customer", "Start", "Return", "Status", "Business total", "Business paid", "Business balance"], rows: base.map((rental) => [`${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.endAt), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance] as (string | number)[]), currencyColumns: [5, 6, 7], total: base.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0), label: "Rental value" };
+  }, [reportType, dateFrom, dateTo, status, selectedVehicleIds, selectedCustomerKeys, rentals, payments, expenses, vehicles]);
 
   const vehicleScope = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)).map((vehicle) => vehicle.plate).join(", ") : "All cars";
-  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` · Status: ${status}` : ""}${reportType === "cars" ? ` · ${vehicleScope}` : ""}`;
+  const customerScope = selectedCustomerKeys.length
+    ? customerChoices.filter((customer) => selectedCustomerKeys.includes(customer.key)).map((customer) => customer.name).join(", ")
+    : "All customers";
+  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` Â· Status: ${status}` : ""}${reportType === "cars" ? ` Â· ${vehicleScope}` : ""}${reportType === "customers" ? ` Â· ${customerScope}` : ""}`;
   const exportName = `mecardee-${reportType}-${dateFrom || "all"}-${dateTo || "all"}`;
+
+
+  // Browser keeps Status visible. Rentals PDF intentionally omits Status.
+  const pdfStatusIndex = reportType === "rentals" ? report.headers.indexOf("Status") : -1;
+  const pdfHeaders = pdfStatusIndex >= 0 ? report.headers.filter((_, index) => index !== pdfStatusIndex) : report.headers;
+  const pdfRows = pdfStatusIndex >= 0 ? report.rows.map((row) => row.filter((_, index) => index !== pdfStatusIndex)) : report.rows;
+  const pdfCurrencyColumns = pdfStatusIndex >= 0
+    ? report.currencyColumns.map((index) => index > pdfStatusIndex ? index - 1 : index).filter((index) => index !== pdfStatusIndex)
+    : report.currencyColumns;
 
   return <>
     <PageHeading eyebrow="INSIGHTS" title="Reports" description="Live business reports from your rental, payment and expense records." />
     <section className="report-filter-card">
       <div className="report-filter-grid">
-        <label className="field"><span>Report</span><select value={reportType} onChange={(event) => setReportType(event.target.value as ReportType)}><option value="rentals">Rentals</option><option value="payments">Payments</option><option value="expenses">Expenses</option><option value="outstanding">Outstanding balances</option><option value="cars">Car-wise report</option></select></label>
+        <label className="field mecardee-report-filter-field"><span>Report</span><select value={reportType} onChange={(event) => setReportType(event.target.value as ReportType)}><option value="rentals">Rentals</option><option value="payments">Payments</option><option value="expenses">Expenses</option><option value="outstanding">Outstanding balances</option><option value="cars">Car-wise report</option><option value="customers">Customer-wise report</option></select></label>
         <label className="field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
         <label className="field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
-        {(reportType === "rentals" || reportType === "outstanding") && <label className="field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
+        {(reportType === "rentals" || reportType === "outstanding") && <label className="field mecardee-report-filter-field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
       </div>
       {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple company cars. Guest Cars are intentionally excluded from this income report.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => <label key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}</small></span></label>)}</div></div>}
-      <div className="report-actions"><button className="secondary-button" onClick={() => downloadPdfTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={!report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={!report.rows.length}><Download size={16} />Excel</button></div>
+      {reportType === "customers" && <div className="customer-report-filter">
+        <div className="customer-report-filter-head">
+          <div><strong>Customers</strong><small>Search and select one or multiple customers. Leave empty for all customers.</small></div>
+          <button type="button" className="secondary-button" onClick={() => { setSelectedCustomerKeys([]); setCustomerSearch(""); }}>All customers</button>
+        </div>
+        <details className="customer-multi-select">
+          <summary>
+            <span className="customer-multi-summary-icon"><UsersRound size={17} /></span>
+            <span><strong>{selectedCustomerKeys.length ? `${selectedCustomerKeys.length} customer${selectedCustomerKeys.length === 1 ? "" : "s"} selected` : "All customers"}</strong><small>Tap to search or select customers</small></span>
+            <ChevronDown size={17} />
+          </summary>
+          <div className="customer-multi-menu">
+            <label className="customer-multi-search"><Search size={16} /><input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Search customer or phone" /></label>
+            <div className="customer-multi-meta"><span>{visibleCustomerChoices.length} shown</span><button type="button" onClick={() => setSelectedCustomerKeys([])}>Clear selection</button></div>
+            <div className="customer-multi-options">
+              {visibleCustomerChoices.length ? visibleCustomerChoices.map((customer) => <label key={customer.key} className={selectedCustomerKeys.includes(customer.key) ? "selected" : ""}>
+                <input type="checkbox" checked={selectedCustomerKeys.includes(customer.key)} onChange={() => toggleCustomer(customer.key)} />
+                <span><strong>{customer.name}</strong><small>{customer.phone || "No phone"}</small></span>
+                <span className="customer-check">{selectedCustomerKeys.includes(customer.key) ? <Check size={14} /> : null}</span>
+              </label>) : <div className="customer-multi-empty">No customer matches your search.</div>}
+            </div>
+          </div>
+        </details>
+      </div>}
+      <div className="report-actions"><button className="secondary-button" onClick={() => downloadPdfTable(exportName, report.title, subtitle, pdfHeaders, pdfRows, pdfCurrencyColumns, report.label, report.total)} disabled={!report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={!report.rows.length}><Download size={16} />Excel</button></div>
     </section>
     <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Guest Car rental amounts excluded from business totals</small></article></section>
     <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>)}</tr>)}</tbody></table></div></section>
   </>;
 }
 
-function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; vehicles: Vehicle[]; bookings: BookingRecord[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
+function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSync, currentUser, onLogout }: { rentals: Rental[]; vehicles: Vehicle[]; bookings: BookingRecord[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void; currentUser: AuthUser; onLogout: () => void }) {
+
+  const [userAccessBusy, setUserAccessBusy] = useState(false);
+  const [userAccessMessage, setUserAccessMessage] = useState("");
+  const [userAccessError, setUserAccessError] = useState("");
+
+  const changeOwnPassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const currentPassword = String(form.get("currentPassword") || "");
+    const newPassword = String(form.get("newPassword") || "");
+    const confirmPassword = String(form.get("confirmPassword") || "");
+
+    setUserAccessError("");
+    setUserAccessMessage("");
+
+    if (newPassword !== confirmPassword) {
+      setUserAccessError("New passwords do not match.");
+      return;
+    }
+
+    setUserAccessBusy(true);
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not change password.");
+      setUserAccessMessage(payload.message || "Password changed successfully.");
+      event.currentTarget.reset();
+    } catch (changeError) {
+      setUserAccessError(changeError instanceof Error ? changeError.message : "Could not change password.");
+    } finally {
+      setUserAccessBusy(false);
+    }
+  };
+
+  const createUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (currentUser.role !== "superadmin") return;
+
+    const form = new FormData(event.currentTarget);
+    const username = String(form.get("newUsername") || "").trim().toLowerCase();
+    const password = String(form.get("newUserPassword") || "");
+    const confirmPassword = String(form.get("confirmNewUserPassword") || "");
+    const role = String(form.get("newUserRole") || "");
+
+    setUserAccessError("");
+    setUserAccessMessage("");
+
+    if (password !== confirmPassword) {
+      setUserAccessError("User passwords do not match.");
+      return;
+    }
+
+    setUserAccessBusy(true);
+    try {
+      const response = await fetch("/api/auth/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, role }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; user?: AuthUser; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not create user.");
+      setUserAccessMessage(`${payload.user?.username || username} created as ${role === "owner" ? "Owner" : "Viewer"}.`);
+      event.currentTarget.reset();
+    } catch (createError) {
+      setUserAccessError(createError instanceof Error ? createError.message : "Could not create user.");
+    } finally {
+      setUserAccessBusy(false);
+    }
+  };
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
   const [tab, setTab] = useState<"bookings" | "rentals" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
@@ -1979,7 +2398,7 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
     }
   }, []);
 
-  useEffect(() => { void loadTransactions(); }, [loadTransactions]);
+  useEffect(() => { if (currentUser.role === "superadmin") void loadTransactions(); else { setLoading(false); setError(""); } }, [loadTransactions, currentUser.role]);
 
   const openEdit = (type: "payment" | "expense", record: ManagedPaymentTransaction | ManagedExpenseTransaction) => {
     setError("");
@@ -2163,10 +2582,53 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
     <PageHeading eyebrow="APP" title="Settings" description="Sync live data, edit active bookings, safely correct rentals, and manage transaction corrections without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className="settings-card transaction-safety"><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active bookings can be edited here, including reserved vehicle and booking period. Active rental corrections stay protected, completed settlements stay locked, and payments/expenses keep their existing edit/delete history protection.</p></div></article>
+      <article className={`settings-card transaction-safety ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active bookings can be edited here, including reserved vehicle and booking period. Active rental corrections stay protected, completed settlements stay locked, and payments/expenses keep their existing edit/delete history protection.</p></div></article>
     </section>
 
-    <section className="data-panel transaction-manager">
+        <section className="data-panel user-access-manager">
+      <div className="panel-heading user-access-heading">
+        <div>
+          <h2>User access</h2>
+          <p>Signed in as <strong>{currentUser.username}</strong> Â· {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "owner" ? "Owner" : "Viewer"}</p>
+        </div>
+        <button className="secondary-button" type="button" onClick={onLogout}>Log out</button>
+      </div>
+
+      {(userAccessMessage || userAccessError) && <div className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
+
+      <div className="user-access-grid">
+        <article className="user-access-card">
+          <span className="settings-icon"><ShieldCheck size={19} /></span>
+          <div className="user-access-copy">
+            <h3>Change password</h3>
+            <p>Update the password for your own account.</p>
+          </div>
+          <form className="user-access-form" onSubmit={changeOwnPassword}>
+            <label><span>Current password</span><input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+            <label><span>New password</span><input name="newPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+            <label><span>Confirm new password</span><input name="confirmPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Savingâ€¦" : "Change password"}</button>
+          </form>
+        </article>
+
+        {currentUser.role === "superadmin" && <article className="user-access-card">
+          <span className="settings-icon"><UserRoundPlus size={19} /></span>
+          <div className="user-access-copy">
+            <h3>Create new user</h3>
+            <p>Create an Owner or Viewer. Super Admin is reserved for the admin account.</p>
+          </div>
+          <form className="user-access-form" onSubmit={createUser}>
+            <label><span>Username</span><input name="newUsername" minLength={3} maxLength={80} pattern="[a-zA-Z0-9._-]+" autoComplete="off" required /></label>
+            <label><span>Role</span><select name="newUserRole" defaultValue="owner" required><option value="owner">Owner</option><option value="viewer">Viewer</option></select></label>
+            <label><span>Password</span><input name="newUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+            <label><span>Confirm password</span><input name="confirmNewUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Creatingâ€¦" : "Create user"}</button>
+          </form>
+        </article>}
+      </div>
+    </section>
+
+<section className={`data-panel transaction-manager ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}>
       <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Active bookings + rental corrections + latest payments and expenses · completed records stay protected</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
       <div className="transaction-tabs">
         <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Rental dates <span>{editableRentals.length}</span></button>
@@ -2270,6 +2732,41 @@ function Notifications({ reminders, history, readKeys, onClose, markRead, openRe
 function MobileNav({ view, goTo, openNew }: { view: View; goTo: (view: View) => void; openNew: () => void }) {
   const items: { view: View; label: string; icon: LucideIcon }[] = [{ view: "dashboard", label: "Home", icon: LayoutDashboard }, { view: "rentals", label: "Rentals", icon: CalendarRange }, { view: "vehicles", label: "Vehicles", icon: CarFront }, { view: "customers", label: "Customers", icon: UsersRound }];
   return <nav className="bottom-nav" aria-label="Mobile navigation">{items.slice(0,2).map((item) => { const Icon = item.icon; return <button className={view === item.view ? "active" : ""} key={item.view} onClick={() => goTo(item.view)}><Icon size={19} />{item.label}</button>; })}<button className="mobile-create" onClick={openNew} aria-label="New rental"><Plus size={23} /></button>{items.slice(2).map((item) => { const Icon = item.icon; return <button className={view === item.view ? "active" : ""} key={item.view} onClick={() => goTo(item.view)}><Icon size={19} />{item.label}</button>; })}</nav>;
+}
+
+function MobileQuickCreate({ close, newRental, newBooking }: { close: () => void; newRental: () => void; newBooking: () => void }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [close]);
+
+  return <div className="mobile-quick-create-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+    <section className="mobile-quick-create-sheet" role="dialog" aria-modal="true" aria-label="Create new">
+      <div className="mobile-quick-create-handle" />
+      <header>
+        <div><span className="eyebrow">QUICK CREATE</span><h2>What do you want to add?</h2><p>Choose an action to continue.</p></div>
+        <button type="button" className="mobile-quick-create-close" onClick={close} aria-label="Close"><X size={19} /></button>
+      </header>
+      <div className="mobile-quick-create-actions">
+        <button type="button" onClick={newRental}>
+          <span className="quick-create-icon rental"><CarFront size={23} /></span>
+          <span className="quick-create-copy"><strong>New rental</strong><small>Hand over a vehicle and start a rental now</small></span>
+          <ChevronRight size={19} />
+        </button>
+        <button type="button" onClick={newBooking}>
+          <span className="quick-create-icon booking"><CalendarDays size={23} /></span>
+          <span className="quick-create-copy"><strong>New booking</strong><small>Reserve a vehicle for a future date and time</small></span>
+          <ChevronRight size={19} />
+        </button>
+      </div>
+    </section>
+  </div>;
 }
 
 function MobileMenu({ view, goTo, close }: { view: View; goTo: (view: View) => void; close: () => void }) {

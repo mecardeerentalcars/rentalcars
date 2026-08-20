@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { eq, inArray } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments } from "@/db/schema";
@@ -5,6 +7,8 @@ import { bookings, customers, payments } from "@/db/schema";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function DELETE(request: Request) {
+  const __mecardeeAuth = await requireSuperAdminAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = await request.json().catch(() => null) as { id?: unknown } | null;
     const id = typeof body?.id === "string" ? body.id.trim() : "";

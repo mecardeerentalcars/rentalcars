@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { vehicles } from "@/db/schema";
@@ -16,6 +18,8 @@ function imagePath(vehicleId: string) {
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     const form = await request.formData();
@@ -54,6 +58,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireReadAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     const image = await getVehicleImage(id);

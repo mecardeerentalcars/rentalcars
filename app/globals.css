@@ -5050,3 +5050,970 @@ body { font-size: 15px; line-height: 1.45; }
     flex-basis: 14px !important;
   }
 }
+
+
+/* MECARDEE_USER_ROLES_CSS_V8_9_55 */
+.mecardee-auth-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(102, 78, 224, .12), transparent 30%),
+    linear-gradient(145deg, #f7f7fb, #f1f2f8);
+}
+
+.mecardee-auth-card {
+  width: min(100%, 420px);
+  padding: 32px;
+  border: 1px solid #e5e5ef;
+  border-radius: 24px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 24px 70px rgba(27, 25, 63, .12);
+}
+
+.mecardee-auth-card.is-loading {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  color: #67677a;
+}
+
+.mecardee-auth-logo {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+.mecardee-auth-card h1 {
+  margin: 7px 0 7px;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.mecardee-auth-card > p {
+  margin: 0 0 24px;
+  color: #6b6b79;
+}
+
+.mecardee-auth-form,
+.user-access-form {
+  display: grid;
+  gap: 13px;
+}
+
+.mecardee-auth-form label,
+.user-access-form label {
+  display: grid;
+  gap: 6px;
+  color: #31313d;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.mecardee-auth-form input,
+.user-access-form input,
+.user-access-form select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #dedee9;
+  border-radius: 11px;
+  background: #fff;
+  color: #171720;
+  outline: none;
+}
+
+.mecardee-auth-form input:focus,
+.user-access-form input:focus,
+.user-access-form select:focus {
+  border-color: #6b58dc;
+  box-shadow: 0 0 0 3px rgba(107,88,220,.10);
+}
+
+.mecardee-auth-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #ffd4d4;
+  border-radius: 10px;
+  background: #fff4f4;
+  color: #b32626;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.user-access-manager {
+  margin-top: 18px;
+}
+
+.user-access-heading {
+  align-items: center;
+}
+
+.user-access-heading p strong {
+  color: #242433;
+}
+
+.user-access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+
+.user-access-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #e8e7ef;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.user-access-copy {
+  margin: 10px 0 15px;
+}
+
+.user-access-copy h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.user-access-copy p {
+  margin: 0;
+  color: #6e6d7b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.user-access-feedback {
+  margin: 0 16px 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.user-access-feedback.success {
+  background: #eefaf4;
+  color: #17724a;
+}
+
+.user-access-feedback.error {
+  background: #fff2f2;
+  color: #b32626;
+}
+
+.role-hidden-correction {
+  display: none !important;
+}
+
+.app-shell[data-user-role="viewer"] .booking-brief-actions {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .mecardee-auth-screen {
+    padding: 14px;
+  }
+
+  .mecardee-auth-card {
+    padding: 24px 20px;
+    border-radius: 20px;
+  }
+
+  .user-access-grid {
+    grid-template-columns: 1fr;
+    padding: 0 10px 12px;
+  }
+
+  .user-access-card {
+    padding: 15px;
+  }
+}
+
+
+/* MECARDEE_REPORTS_CUSTOMER_QUICKCREATE_CSS_V8_9_59 */
+
+/* Searchable multi-customer report picker */
+.customer-report-filter {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #ececf3;
+}
+
+.customer-report-filter-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.customer-report-filter-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.customer-report-filter-head strong {
+  font-size: 13px;
+}
+
+.customer-report-filter-head small {
+  color: #747483;
+  font-size: 11px;
+}
+
+.customer-multi-select {
+  position: relative;
+  width: min(100%, 560px);
+}
+
+.customer-multi-select > summary {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid #dedee9;
+  border-radius: 13px;
+  background: #fff;
+  cursor: pointer;
+  list-style: none;
+}
+
+.customer-multi-select > summary::-webkit-details-marker {
+  display: none;
+}
+
+.customer-multi-select > summary > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.customer-multi-select > summary strong {
+  color: #232330;
+  font-size: 12px;
+}
+
+.customer-multi-select > summary small {
+  color: #7b7b88;
+  font-size: 10px;
+}
+
+.customer-multi-summary-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #f0edff;
+  color: #5c4ad3;
+}
+
+.customer-multi-select[open] > summary {
+  border-color: #7866e7;
+  box-shadow: 0 0 0 3px rgba(104, 84, 221, .09);
+}
+
+.customer-multi-select[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.customer-multi-menu {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 7px);
+  left: 0;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e3e3ed;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(28, 27, 58, .16);
+}
+
+.customer-multi-search {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid #e2e2ec;
+  border-radius: 10px;
+  color: #777784;
+  background: #fafafd;
+}
+
+.customer-multi-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #24242e;
+  font: inherit;
+}
+
+.customer-multi-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 2px 6px;
+  color: #858592;
+  font-size: 10px;
+}
+
+.customer-multi-meta button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #5f4cdb;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.customer-multi-options {
+  max-height: 250px;
+  overflow-y: auto;
+  display: grid;
+  gap: 5px;
+}
+
+.customer-multi-options > label {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 18px 1fr 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.customer-multi-options > label:hover,
+.customer-multi-options > label.selected {
+  border-color: #ddd8ff;
+  background: #f7f5ff;
+}
+
+.customer-multi-options input {
+  accent-color: #604cdb;
+}
+
+.customer-multi-options label > span:nth-of-type(1) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.customer-multi-options strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.customer-multi-options small {
+  color: #7d7d88;
+  font-size: 10px;
+}
+
+.customer-check {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #604cdb;
+}
+
+.customer-check:empty {
+  background: #eeeeF4;
+}
+
+.customer-multi-empty {
+  padding: 18px 10px;
+  text-align: center;
+  color: #858592;
+  font-size: 11px;
+}
+
+/* Premium mobile quick-create action sheet */
+.mobile-quick-create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 18px 14px calc(18px + env(safe-area-inset-bottom));
+  background: rgba(18, 19, 34, .42);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  animation: mecardeeQuickCreateFade .16s ease-out;
+}
+
+.mobile-quick-create-sheet {
+  width: min(100%, 520px);
+  padding: 10px 14px 14px;
+  border: 1px solid rgba(255,255,255,.9);
+  border-radius: 25px;
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 28px 80px rgba(17, 18, 39, .28);
+  animation: mecardeeQuickCreateUp .2s cubic-bezier(.22,.8,.3,1);
+}
+
+.mobile-quick-create-handle {
+  width: 42px;
+  height: 4px;
+  margin: 1px auto 12px;
+  border-radius: 999px;
+  background: #d8d8e2;
+}
+
+.mobile-quick-create-sheet > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 12px;
+}
+
+.mobile-quick-create-sheet > header h2 {
+  margin: 4px 0 3px;
+  color: #1c1c28;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.mobile-quick-create-sheet > header p {
+  margin: 0;
+  color: #797987;
+  font-size: 11px;
+}
+
+.mobile-quick-create-close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  border: 1px solid #e8e8ef;
+  border-radius: 50%;
+  background: #f8f8fb;
+  color: #5e5e6b;
+}
+
+.mobile-quick-create-actions {
+  display: grid;
+  gap: 9px;
+}
+
+.mobile-quick-create-actions > button {
+  width: 100%;
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 48px 1fr 22px;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid #e8e7f0;
+  border-radius: 17px;
+  background: #fff;
+  color: #252532;
+  text-align: left;
+  box-shadow: 0 5px 18px rgba(28,27,60,.055);
+}
+
+.mobile-quick-create-actions > button:active {
+  transform: scale(.985);
+}
+
+.quick-create-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+}
+
+.quick-create-icon.rental {
+  background: linear-gradient(145deg, #6250dc, #4938be);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(83,65,199,.25);
+}
+
+.quick-create-icon.booking {
+  background: #eef8f5;
+  color: #1d8065;
+}
+
+.quick-create-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.quick-create-copy strong {
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+.quick-create-copy small {
+  color: #777784;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.mobile-quick-create-actions > button > svg {
+  color: #a2a1ad;
+}
+
+@keyframes mecardeeQuickCreateFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mecardeeQuickCreateUp {
+  from { opacity: 0; transform: translateY(22px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 720px) {
+  .customer-report-filter-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .customer-report-filter-head .secondary-button {
+    align-self: flex-start;
+  }
+
+  .customer-multi-select {
+    width: 100%;
+  }
+
+  .customer-multi-menu {
+    position: static;
+    margin-top: 7px;
+    box-shadow: 0 8px 24px rgba(28,27,58,.10);
+  }
+}
+
+
+/* MECARDEE_REPORTS_MOBILE_FILTER_FIELDS_CSS_V8_9_62
+   Robust mobile Reports filter design.
+   No wrapper insertion: fields are styled individually and their immediate
+   parent automatically becomes the soft rounded filter card when supported. */
+@media (max-width: 700px) {
+
+  /* The immediate filter container becomes one clean rounded card.
+     :has() is supported by current Chrome, Safari and modern mobile browsers. */
+  div:has(> .mecardee-report-filter-field),
+  section:has(> .mecardee-report-filter-field) {
+    grid-template-columns: 1fr !important;
+  }
+
+  div:has(> .mecardee-report-filter-field) {
+    gap: 15px !important;
+    padding: 18px 16px !important;
+    margin: 12px 0 16px !important;
+    border: 1px solid #dfe2de !important;
+    border-radius: 20px !important;
+    background: #f6f7f3 !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.94),
+      0 2px 8px rgba(23,27,30,.025) !important;
+  }
+
+  .mecardee-report-filter-field {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 7px !important;
+    margin: 0 !important;
+    color: #69716c !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+    letter-spacing: .01em !important;
+  }
+
+  .mecardee-report-filter-field input,
+  .mecardee-report-filter-field select {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 54px !important;
+    height: 54px !important;
+    margin: 0 !important;
+    padding: 0 14px !important;
+    border: 1px solid #dcdfe0 !important;
+    border-radius: 13px !important;
+    outline: none !important;
+    background: #ffffff !important;
+    color: #20242a !important;
+    font-size: 15px !important;
+    font-weight: 720 !important;
+    line-height: 1 !important;
+    box-shadow: 0 1px 2px rgba(18,22,25,.025) !important;
+  }
+
+  .mecardee-report-filter-field input:focus,
+  .mecardee-report-filter-field select:focus {
+    border-color: #7562df !important;
+    box-shadow: 0 0 0 3px rgba(117,98,223,.09) !important;
+  }
+
+  .mecardee-report-filter-field input[type="date"] {
+    color-scheme: light;
+  }
+
+  /* If Status or another report label is a sibling inside that same
+     filter container, visually match it even when it did not need a marker. */
+  div:has(> .mecardee-report-filter-field) > label {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  div:has(> .mecardee-report-filter-field) > label > input,
+  div:has(> .mecardee-report-filter-field) > label > select {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Car-wise / Customer-wise selectors follow the same reference style. */
+  .car-report-filter,
+  .customer-report-filter {
+    width: 100% !important;
+    margin: 10px 0 14px !important;
+    padding: 16px !important;
+    border: 1px solid #dfe2de !important;
+    border-radius: 20px !important;
+    background: #f6f7f3 !important;
+  }
+
+  .customer-multi-select > summary {
+    min-height: 54px !important;
+    border-color: #dcdfe0 !important;
+    border-radius: 13px !important;
+    background: #ffffff !important;
+  }
+
+  .customer-multi-search,
+  .car-report-options label {
+    border-color: #dcdfe0 !important;
+    border-radius: 12px !important;
+    background: #ffffff !important;
+  }
+}
+
+
+/* MECARDEE_CUSTOMER_HISTORY_SUPERADMIN_DELETE_CSS_V8_9_65 */
+
+.customer-history-action {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #ddd9f5;
+  border-radius: 10px;
+  background: #f8f7ff;
+  color: #5a48c9;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.customer-history-action:hover,
+.customer-history-action:focus-visible {
+  border-color: #7764df;
+  background: #f1efff;
+}
+
+.customer-history-dialog {
+  display: grid;
+  gap: 16px;
+}
+
+.customer-history-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.customer-history-summary article {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+  border: 1px solid #e8e7ef;
+  border-radius: 14px;
+  background: #fafafe;
+}
+
+.customer-history-summary article small {
+  color: #777684;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.customer-history-summary article strong {
+  overflow: hidden;
+  color: #242432;
+  font-size: 16px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+}
+
+.customer-history-summary article.due {
+  border-color: #f1dddd;
+  background: #fff8f8;
+}
+
+.customer-history-summary article.due strong {
+  color: #b53a3a;
+}
+
+.customer-history-section {
+  overflow: hidden;
+  border: 1px solid #e8e7ef;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.customer-history-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 15px;
+  border-bottom: 1px solid #eeeef4;
+  background: #fbfbfd;
+}
+
+.customer-history-section-head h3 {
+  margin: 3px 0 0;
+  font-size: 16px;
+}
+
+.customer-history-count {
+  min-width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eeebff;
+  color: #5b48ce;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.customer-history-list {
+  display: grid;
+}
+
+.customer-history-rental,
+.customer-history-payment {
+  border-bottom: 1px solid #eeeef4;
+}
+
+.customer-history-rental:last-child,
+.customer-history-payment:last-child {
+  border-bottom: 0;
+}
+
+.customer-history-rental {
+  display: grid;
+  gap: 11px;
+  padding: 14px 15px;
+}
+
+.customer-history-rental-main {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.customer-history-date,
+.customer-history-vehicle {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.customer-history-date small,
+.customer-history-rental-meta small {
+  color: #858491;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.customer-history-date strong {
+  color: #30303b;
+  font-size: 11px;
+}
+
+.customer-history-vehicle strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-history-vehicle small {
+  color: #777684;
+  font-size: 10px;
+}
+
+.customer-history-status {
+  justify-self: end;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4858b5;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: capitalize;
+}
+
+.customer-history-status.completed {
+  background: #edf9f2;
+  color: #207151;
+}
+
+.customer-history-status.overdue {
+  background: #fff0f0;
+  color: #b53b3b;
+}
+
+.customer-history-rental-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.customer-history-rental-meta > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: #f7f7fa;
+}
+
+.customer-history-rental-meta strong {
+  overflow: hidden;
+  color: #30303b;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-history-open-rental {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #e0ddf6;
+  border-radius: 9px;
+  background: #f7f5ff;
+  color: #5b49ca;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.customer-history-payment {
+  display: grid;
+  grid-template-columns: 155px minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px 15px;
+}
+
+.customer-history-payment > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.customer-history-payment strong {
+  color: #216a50;
+  font-size: 13px;
+}
+
+.customer-history-payment span {
+  color: #30303b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-history-payment small {
+  overflow: hidden;
+  color: #7e7d8a;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-history-empty {
+  padding: 24px 15px;
+  text-align: center;
+  color: #858491;
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .customer-history-action {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 10px;
+  }
+
+  .customer-history-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customer-history-summary article {
+    padding: 11px;
+  }
+
+  .customer-history-summary article strong {
+    font-size: 14px;
+  }
+
+  .customer-history-rental {
+    padding: 12px;
+  }
+
+  .customer-history-rental-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .customer-history-date {
+    grid-column: 1 / -1;
+    padding-bottom: 7px;
+    border-bottom: 1px solid #f0eff4;
+  }
+
+  .customer-history-rental-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customer-history-payment {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 12px;
+  }
+
+  .customer-history-payment small {
+    white-space: normal;
+  }
+}

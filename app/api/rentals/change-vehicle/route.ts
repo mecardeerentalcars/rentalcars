@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 // MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_V8_9_43
 import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
@@ -13,6 +15,8 @@ const amount = (value: unknown, field: string) => { const n = Number(value); if 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
 export async function POST(request: Request) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = await request.json() as Record<string, unknown>;
     const bookingNumber = text(body.bookingNumber, "Booking number");

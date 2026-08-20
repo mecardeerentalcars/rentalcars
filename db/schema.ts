@@ -1,3 +1,4 @@
+// MECARDEE_USER_ROLES_V8_9_55
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import {
   boolean,
@@ -326,6 +327,42 @@ export const returnSettlements = pgTable(
   },
   (table) => [uniqueIndex("return_settlements_booking_unique").on(table.bookingId)],
 );
+
+export const appUsers = pgTable(
+  "app_users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    username: varchar("username", { length: 80 }).notNull(),
+    passwordHash: text("password_hash").notNull(),
+    role: varchar("role", { length: 24 }).notNull().default("viewer"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("app_users_username_unique").on(table.username),
+    index("app_users_role_idx").on(table.role),
+  ],
+);
+
+export const appUserSessions = pgTable(
+  "app_user_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => appUsers.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("app_user_sessions_token_unique").on(table.tokenHash),
+    index("app_user_sessions_user_idx").on(table.userId),
+    index("app_user_sessions_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+export type AppUser = typeof appUsers.$inferSelect;
+export type AppUserSession = typeof appUserSessions.$inferSelect;
 
 export type Vehicle = typeof vehicles.$inferSelect;
 export type Customer = typeof customers.$inferSelect;

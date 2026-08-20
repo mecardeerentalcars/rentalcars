@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { desc, eq, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb, type AppDb } from "@/db";
 import {
@@ -65,6 +67,8 @@ async function loadTyres(db: AppDb, vehicleId: string) {
 }
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireReadAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     return await withRequestDb(async (db) => {
@@ -207,6 +211,8 @@ const manualVehicleStatus = (value: unknown) => {
 };
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     const body = await request.json() as Record<string, unknown>;

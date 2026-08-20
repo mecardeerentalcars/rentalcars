@@ -1,3 +1,5 @@
+// MECARDEE_ROLE_GUARD_V8_9_55
+import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { maintenanceRecords, vehicles } from "@/db/schema";
@@ -29,6 +31,8 @@ const money = (value: unknown) => {
 };
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const __mecardeeAuth = await requireWriteAccess();
+  if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const { id } = await context.params;
     const body = await request.json() as Record<string, unknown>;
