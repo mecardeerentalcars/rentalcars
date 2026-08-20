@@ -1,6 +1,10 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_CAPITALIZED_USERNAME_GREETING_V8_9_77
+
+// MECARDEE_SESSION_USERNAME_GREETING_V8_9_76
+
 // MECARDEE_GOOGLE_STYLE_HARD_RELOAD_V8_9_74
 
 // MECARDEE_MOBILE_LOGOUT_REFRESH_ENCODING_V8_9_73
@@ -1089,7 +1093,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => openNewRental()} openNewBooking={newBookingFromTab} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
+          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => openNewRental()} openNewBooking={newBookingFromTab} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
           {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
@@ -1162,28 +1166,29 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openNotifications, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
+function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openNotifications, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const [dashboardCalendarOpen, setDashboardCalendarOpen] = useState(false);
   // MECARDEE_DYNAMIC_GREETING_BUTTON_SIZE_V8_9_52
   // Greeting follows the browser/device local time.
-  const [dashboardGreeting, setDashboardGreeting] = useState("Good morning, Admin");
+  const dashboardDisplayName = userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : "User";
+  const [dashboardGreeting, setDashboardGreeting] = useState(() => `Good morning, ${dashboardDisplayName}`);
   useEffect(() => {
     const updateDashboardGreeting = () => {
       const hour = new Date().getHours();
       setDashboardGreeting(
         hour < 12
-          ? "Good morning, Admin"
+          ? `Good morning, ${dashboardDisplayName}`
           : hour < 17
-            ? "Good afternoon, Admin"
-            : "Good evening, Admin"
+            ? `Good afternoon, ${dashboardDisplayName}`
+            : `Good evening, ${dashboardDisplayName}`
       );
     };
 
     updateDashboardGreeting();
     const timer = window.setInterval(updateDashboardGreeting, 60_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [dashboardDisplayName]);
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   // MECARDEE_BOOKING_PRIORITY_DASHBOARD_V8_9_17
   const bookingBriefNow = Date.now();
