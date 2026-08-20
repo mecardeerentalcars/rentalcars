@@ -1,3 +1,4 @@
+// MECARDEE_BOOKED_VEHICLE_START_GUARD_V8_9_46
 // MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
 import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
@@ -102,6 +103,36 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
       const replacementVehicleId = optionalText(body.replacementVehicleId);
       let assignedVehicle = record.vehicle;
+
+      // MECARDEE_BOOKED_VEHICLE_START_GUARD_V8_9_46
+      // Determine physical availability only at the pickup instant. A later
+      // schedule overlap is a soft warning and must NEVER cause a different
+      // vehicle to be silently started.
+      const originalPickupEnd = new Date(record.booking.startAt.getTime() + 1);
+      const [originalBookedPickupConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
+        eq(bookings.vehicleId, record.vehicle.id),
+        ne(bookings.id, record.booking.id),
+        eq(bookings.status, "booked"),
+        lt(bookings.startAt, originalPickupEnd),
+        gt(bookings.endAt, record.booking.startAt),
+      )).limit(1);
+      const [originalActivePickupConflict] = await tx.select({ id: rentalSegments.id }).from(rentalSegments)
+        .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
+        .where(and(
+          eq(rentalSegments.vehicleId, record.vehicle.id),
+          eq(rentalSegments.status, "active"),
+          ne(rentalSegments.bookingId, record.booking.id),
+          lt(rentalSegments.startAt, originalPickupEnd),
+        )).limit(1);
+      const originalUnavailableAtPickup =
+        ["inactive", "maintenance"].includes(record.vehicle.status) ||
+        Boolean(originalBookedPickupConflict) ||
+        Boolean(originalActivePickupConflict);
+
+      if (replacementVehicleId && replacementVehicleId !== record.vehicle.id && !originalUnavailableAtPickup) {
+        throw new RequestError(`Booked vehicle ${record.vehicle.name} (${record.vehicle.registrationNumber}) is available at pickup. Start the rental with the booked vehicle; do not use a replacement.`, 409);
+      }
+
       if (replacementVehicleId) {
         const [replacement] = await tx.select().from(vehicles).where(eq(vehicles.id, replacementVehicleId)).limit(1).for("update");
         if (!replacement) throw new RequestError("Replacement vehicle was not found.", 404);
