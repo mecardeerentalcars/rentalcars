@@ -4976,3 +4976,77 @@ body { font-size: 15px; line-height: 1.45; }
     font-size: 10px !important;
   }
 }
+
+/* MECARDEE_BOOKING_ACTION_BUTTON_POLISH_V8_9_54
+   UI-only polish for New rental / New booking buttons. */
+@media (max-width: 700px) {
+  .booking-brief-actions {
+    width: 184px !important;
+    min-width: 184px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .booking-brief-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
+    padding: 0 8px !important;
+    gap: 5px !important;
+    border-radius: 13px !important;
+    border: 1px solid rgba(255,255,255,.18) !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.085)) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.08),
+      0 5px 14px rgba(10,12,34,.12) !important;
+    font-size: 10px !important;
+    font-weight: 850 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .booking-brief-actions button span {
+    display: inline !important;
+    font-size: 10px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .booking-brief-actions button svg {
+    width: 15px !important;
+    height: 15px !important;
+    min-width: 15px !important;
+    flex: 0 0 15px !important;
+  }
+
+  .booking-brief-actions button:active {
+    transform: translateY(1px) !important;
+  }
+}
+
+/* Keep the same clean look on smaller phones without crowding the header. */
+@media (max-width: 390px) {
+  .booking-brief-actions {
+    width: 176px !important;
+    min-width: 176px !important;
+    gap: 6px !important;
+  }
+
+  .booking-brief-actions button {
+    min-height: 46px !important;
+    padding: 0 7px !important;
+    gap: 4px !important;
+    font-size: 9.5px !important;
+  }
+
+  .booking-brief-actions button span {
+    font-size: 9.5px !important;
+  }
+
+  .booking-brief-actions button svg {
+    width: 14px !important;
+    height: 14px !important;
+    min-width: 14px !important;
+    flex-basis: 14px !important;
+  }
+}
