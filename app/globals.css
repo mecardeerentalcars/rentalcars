@@ -4650,3 +4650,64 @@ body { font-size: 15px; line-height: 1.45; }
   }
 }
 
+
+/* MECARDEE_RENTAL_CORRECTION_UNDO_START_CSS_V8_9_47 */
+
+.rental-correction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.rental-correction-actions button {
+  min-height: 34px;
+}
+
+.rental-correction-warning {
+  color: #a15b09 !important;
+  font-weight: 800;
+}
+
+.rental-vehicle-correction-form .correction-warning {
+  border-color: #f1c27d;
+  background: #fff8eb;
+}
+
+.rental-vehicle-correction-form .correction-warning > svg {
+  color: #d97706;
+}
+
+.rental-vehicle-correction-form .correction-warning strong {
+  color: #8a4d08;
+}
+
+.rental-vehicle-correction-form .correction-warning p {
+  color: #73562f;
+}
+
+@media (max-width: 700px) {
+  .rental-correction-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rental-correction-actions button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rental-correction-actions button.danger {
+    grid-column: 1 / -1;
+  }
+
+  .rental-vehicle-correction-form .field-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .rental-vehicle-correction-form .span-2 {
+    grid-column: 1 !important;
+  }
+}
+

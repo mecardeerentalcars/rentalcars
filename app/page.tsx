@@ -956,7 +956,7 @@ export default function Home() {
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView rentals={rentalList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
+          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void manualSync()} />}
         </div>
       </main>
 
@@ -1898,7 +1898,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   </>;
 }
 
-function SettingsView({ rentals, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
+function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { rentals: Rental[]; vehicles: Vehicle[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void }) {
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
   const [tab, setTab] = useState<"rentals" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
@@ -1911,6 +1911,9 @@ function SettingsView({ rentals, lastSyncedAt, syncing, onSync }: { rentals: Ren
   const [deleteReason, setDeleteReason] = useState("");
   const [rentalEditTarget, setRentalEditTarget] = useState<Rental | null>(null);
   const [rentalScheduleForm, setRentalScheduleForm] = useState({ startAt: "", endAt: "" });
+  // MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
+  const [rentalVehicleTarget, setRentalVehicleTarget] = useState<Rental | null>(null);
+  const [rentalVehicleForm, setRentalVehicleForm] = useState({ vehicleId: "", startingKilometer: 0, startingFuelRangeKm: 0 });
 
   const formatWhen = (value: string) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
   const toLocalDateTimeInput = (value: string) => {
@@ -2045,6 +2048,69 @@ function SettingsView({ rentals, lastSyncedAt, syncing, onSync }: { rentals: Ren
     }
   };
 
+  const openRentalVehicleCorrection = (rental: Rental) => {
+    setError("");
+    setRentalVehicleTarget(rental);
+    setRentalVehicleForm({
+      vehicleId: rental.vehicleId,
+      startingKilometer: rental.startingKilometer,
+      startingFuelRangeKm: rental.startingFuelRangeKm,
+    });
+  };
+
+  const saveRentalVehicleCorrection = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!rentalVehicleTarget) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (!rentalVehicleForm.vehicleId) throw new Error("Choose the correct vehicle.");
+      const response = await fetch("/api/settings/rentals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "correct-vehicle",
+          bookingId: rentalVehicleTarget.databaseId,
+          vehicleId: rentalVehicleForm.vehicleId,
+          startingKilometer: rentalVehicleForm.startingKilometer,
+          startingFuelRangeKm: rentalVehicleForm.startingFuelRangeKm,
+        }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; vehicle?: string; plate?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not correct the rental vehicle.");
+      setRentalVehicleTarget(null);
+      onSync();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not correct the rental vehicle.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undoRentalStart = async (rental: Rental) => {
+    const confirmed = window.confirm(
+      `Undo the rental start for ${rental.id}?\n\nThis will return the record to BOOKED, remove the single active rental segment, release ${rental.vehicle}, and remove only the handover advance payment if one was created. Use this only for a mistaken rental start.`
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/settings/rentals", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: rental.databaseId }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; bookingNumber?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not undo the rental start.");
+      onSync();
+    } catch (undoError) {
+      setError(undoError instanceof Error ? undoError.message : "Could not undo the rental start.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const paymentRows = data.payments;
   const expenseRows = data.expenses;
   const historyRows = data.history;
@@ -2066,12 +2132,24 @@ function SettingsView({ rentals, lastSyncedAt, syncing, onSync }: { rentals: Ren
       </div>
       {error && <p className="form-error transaction-manager-error">{error}</p>}
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
-        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small></div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit date & time</button></div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
+        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><CalendarRange size={14} />Date & time</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
       </div>}
     </section>
+
+
+    {rentalVehicleTarget && <DialogShell title="Correct active rental vehicle" subtitle={`${rentalVehicleTarget.id} · ${rentalVehicleTarget.customer}`} close={() => !busy && setRentalVehicleTarget(null)}><form className="simple-form rental-vehicle-correction-form" onSubmit={saveRentalVehicleCorrection}>
+      <div className="delete-warning correction-warning"><AlertTriangle size={18} /><div><strong>Use this only to correct a mistaken rental start</strong><p>If the customer genuinely changes vehicles later during the rental, use the normal <b>Change Vehicle</b> action from Rental details so both vehicle periods remain in history.</p></div></div>
+      <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Current assignment</strong><small>{rentalVehicleTarget.vehicle} · {rentalVehicleTarget.plate} · Original booking: {rentalVehicleTarget.originalVehicle} · {rentalVehicleTarget.originalPlate}</small></span></div>
+      <div className="field-grid">
+        <label className="field span-2"><span>Correct active vehicle</span><select required value={rentalVehicleForm.vehicleId} onChange={(event) => { const vehicleId = event.target.value; const selected = vehicles.find((vehicle) => vehicle.id === vehicleId); setRentalVehicleForm((current) => ({ ...current, vehicleId, startingKilometer: selected?.odometerKm ?? current.startingKilometer })); }}><optgroup label="Company vehicles">{vehicles.filter((vehicle) => !vehicle.isGuest).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} — {vehicle.plate} · {vehicle.status}</option>)}</optgroup>{vehicles.some((vehicle) => vehicle.isGuest) && <optgroup label="Guest Cars">{vehicles.filter((vehicle) => vehicle.isGuest).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} — {vehicle.plate} · Guest Car</option>)}</optgroup>}</select><small>Choosing another car here corrects the first active segment; it does not create a second segment.</small></label>
+        <label className="field"><span>Starting KM</span><input required min="0" type="number" value={blankZero(rentalVehicleForm.startingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalVehicleForm((current) => ({ ...current, startingKilometer: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Starting fuel range (KM)</span><input required min="0" type="number" value={blankZero(rentalVehicleForm.startingFuelRangeKm)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalVehicleForm((current) => ({ ...current, startingFuelRangeKm: numberFromInput(event.target.value) }))} /></label>
+      </div>
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalVehicleTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy || !rentalVehicleForm.vehicleId}><Check size={15} />{busy ? "Correcting…" : "Save vehicle correction"}</button></div>
+    </form></DialogShell>}
 
     {rentalEditTarget && <DialogShell title="Edit rental date & time" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.customer}`} close={() => !busy && setRentalEditTarget(null)}><form className="simple-form" onSubmit={saveRentalSchedule}>
       <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Schedule-only correction</strong><small>Vehicle, customer, payments, kilometres and settlement data cannot be changed here. Completed rentals are locked.</small></span></div>

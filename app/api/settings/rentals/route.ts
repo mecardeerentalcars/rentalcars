@@ -1,19 +1,122 @@
-import { and, desc, eq, gt, lt, ne, sql } from "drizzle-orm";
+// MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
+import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
-import { bookings, payments, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
+import { bookings, payments, rentalExtensions, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
 import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
 
 type AnyRow = Record<string, unknown>;
 class RequestError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
-const text = (value: unknown, field: string) => { if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`); return value.trim(); };
-const dateTime = (value: unknown, field: string) => { const parsed = new Date(text(value, field)); if (Number.isNaN(parsed.getTime())) throw new RequestError(`${field} is invalid.`); return parsed; };
+
+const text = (value: unknown, field: string) => {
+  if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`);
+  return value.trim();
+};
+const optionalText = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : "";
+const dateTime = (value: unknown, field: string) => {
+  const parsed = new Date(text(value, field));
+  if (Number.isNaN(parsed.getTime())) throw new RequestError(`${field} is invalid.`);
+  return parsed;
+};
+const whole = (value: unknown, field: string) => {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) throw new RequestError(`${field} must be a whole number of zero or greater.`);
+  return number;
+};
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export async function PATCH(request: Request) {
   try {
     const body = await request.json() as AnyRow;
     const bookingId = text(body.bookingId, "Rental ID");
+    const action = optionalText(body.action).toLowerCase();
+
+    if (action === "correct-vehicle") {
+      const targetVehicleId = text(body.vehicleId, "Correct vehicle");
+      const startingKilometer = whole(body.startingKilometer, "Starting kilometer");
+      const startingFuelRangeKm = whole(body.startingFuelRangeKm, "Starting fuel range");
+
+      return await withRequestDb(async (db) => {
+        const result = await db.transaction(async (tx) => {
+          const [booking] = await tx.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1).for("update");
+          if (!booking) throw new RequestError("Rental was not found.", 404);
+          if (booking.status !== "rented") throw new RequestError("Only an active/on-rent rental can have its vehicle corrected.", 409);
+
+          const [settlement] = await tx.select({ id: returnSettlements.id }).from(returnSettlements).where(eq(returnSettlements.bookingId, bookingId)).limit(1);
+          if (settlement) throw new RequestError("This rental already has a Final Settlement and cannot be corrected.", 409);
+
+          const segments = await tx.select().from(rentalSegments).where(eq(rentalSegments.bookingId, bookingId)).orderBy(rentalSegments.sequence);
+          if (segments.length !== 1 || segments[0]?.status !== "active") {
+            throw new RequestError("Vehicle correction is only for a mistaken initial rental start. This rental already has vehicle history; use Change Vehicle instead.", 409);
+          }
+
+          const segment = segments[0];
+          const [currentVehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, segment.vehicleId)).limit(1);
+          const [targetVehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, targetVehicleId)).limit(1);
+          if (!currentVehicle) throw new RequestError("The currently assigned vehicle could not be found.", 409);
+          if (!targetVehicle) throw new RequestError("The selected correction vehicle could not be found.", 404);
+          if (["inactive", "maintenance"].includes(targetVehicle.status)) throw new RequestError("The selected vehicle is inactive or under maintenance.", 409);
+
+          if (targetVehicle.id !== currentVehicle.id) {
+            const [activeConflict] = await tx.select({ id: rentalSegments.id, number: bookings.bookingNumber }).from(rentalSegments)
+              .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
+              .where(and(
+                eq(rentalSegments.vehicleId, targetVehicle.id),
+                eq(rentalSegments.status, "active"),
+                ne(rentalSegments.bookingId, bookingId),
+              )).limit(1);
+            if (activeConflict) throw new RequestError(`${targetVehicle.name} is already on active rental ${activeConflict.number}.`, 409);
+
+            const now = new Date();
+            const nowPlus = new Date(now.getTime() + 1);
+            const [bookingConflict] = await tx.select({ id: bookings.id, number: bookings.bookingNumber }).from(bookings).where(and(
+              eq(bookings.vehicleId, targetVehicle.id),
+              ne(bookings.id, bookingId),
+              eq(bookings.status, "booked"),
+              lt(bookings.startAt, nowPlus),
+              gt(bookings.endAt, now),
+            )).limit(1);
+            if (bookingConflict) throw new RequestError(`${targetVehicle.name} is reserved right now by ${bookingConflict.number}.`, 409);
+          }
+
+          const segmentRate = targetVehicle.id === booking.vehicleId ? booking.dailyRate : targetVehicle.dailyRate;
+          const expectedReturnKilometer = calculateExpectedReturnKilometer(startingKilometer, booking.rentalDays, targetVehicle.allowedKmPerDay);
+
+          await tx.update(rentalSegments).set({
+            vehicleId: targetVehicle.id,
+            startingKilometer,
+            startingFuelRangeKm,
+            dailyRate: segmentRate,
+            allowedKmPerDay: targetVehicle.allowedKmPerDay,
+            extraKmRate: targetVehicle.extraKmRate,
+            updatedAt: new Date(),
+          }).where(eq(rentalSegments.id, segment.id));
+
+          await tx.update(bookings).set({
+            startingKilometer,
+            startingFuelRangeKm,
+            expectedReturnKilometer,
+            updatedAt: new Date(),
+          }).where(eq(bookings.id, bookingId));
+
+          if (targetVehicle.id !== currentVehicle.id) {
+            await tx.update(vehicles).set({ status: "available", updatedAt: new Date() }).where(eq(vehicles.id, currentVehicle.id));
+            await tx.update(vehicles).set({ status: "rented", odometerKm: startingKilometer, updatedAt: new Date() }).where(eq(vehicles.id, targetVehicle.id));
+          } else {
+            await tx.update(vehicles).set({ status: "rented", odometerKm: startingKilometer, updatedAt: new Date() }).where(eq(vehicles.id, targetVehicle.id));
+          }
+
+          return {
+            bookingNumber: booking.bookingNumber,
+            vehicle: targetVehicle.name,
+            plate: targetVehicle.registrationNumber,
+          };
+        });
+
+        return Response.json({ ok: true, ...result });
+      });
+    }
+
     const startAt = dateTime(body.startAt, "Rental start date/time");
     const endAt = dateTime(body.endAt, "Expected return date/time");
     if (endAt <= startAt) throw new RequestError("Expected return must be after the rental start date/time.");
@@ -34,7 +137,6 @@ export async function PATCH(request: Request) {
         if (!vehicle) throw new RequestError("The currently assigned vehicle no longer exists. Schedule edit was blocked.", 409);
         if (activeSegment && endAt.getTime() <= activeSegment.startAt.getTime()) throw new RequestError("Expected return must be after the current vehicle segment started.", 409);
 
-        // Protect every future booking for the vehicle that is actually being used now.
         const [bookingOverlap] = await tx.select({ id: bookings.id, number: bookings.bookingNumber }).from(bookings).where(and(
           eq(bookings.vehicleId, actualVehicleId),
           ne(bookings.id, bookingId),
@@ -93,9 +195,6 @@ export async function PATCH(request: Request) {
 
         await tx.update(bookings).set({ startAt, endAt, rentalDays, baseRentalAmount, expectedReturnKilometer, updatedAt: new Date() }).where(eq(bookings.id, bookingId));
 
-        // A one-vehicle active rental historically used booking.start_at as the handover start.
-        // Keep that existing edit behavior aligned with the new segment table. Never rewrite
-        // completed segment history once a vehicle change has occurred.
         if (segments.length === 1 && activeSegment) {
           await tx.update(rentalSegments).set({ startAt, updatedAt: new Date() }).where(eq(rentalSegments.id, activeSegment.id));
         }
@@ -107,7 +206,65 @@ export async function PATCH(request: Request) {
   } catch (error) {
     if (error instanceof RequestError) return Response.json({ ok: false, error: error.message }, { status: error.status });
     if (error instanceof DatabaseConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });
-    console.error("Could not edit rental schedule", error);
-    return Response.json({ ok: false, error: "Could not update rental schedule." }, { status: 500 });
+    console.error("Could not edit/correct rental", error);
+    return Response.json({ ok: false, error: "Could not update the rental." }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json() as AnyRow;
+    const bookingId = text(body.bookingId, "Rental ID");
+
+    return await withRequestDb(async (db) => {
+      const result = await db.transaction(async (tx) => {
+        const [booking] = await tx.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1).for("update");
+        if (!booking) throw new RequestError("Rental was not found.", 404);
+        if (booking.status !== "rented") throw new RequestError("Only an active/on-rent rental can be returned to Booked.", 409);
+
+        const [settlement] = await tx.select({ id: returnSettlements.id }).from(returnSettlements).where(eq(returnSettlements.bookingId, bookingId)).limit(1);
+        if (settlement) throw new RequestError("This rental already has a Final Settlement and cannot be undone.", 409);
+
+        const segments = await tx.select().from(rentalSegments).where(eq(rentalSegments.bookingId, bookingId)).orderBy(rentalSegments.sequence);
+        if (segments.length !== 1 || segments[0]?.status !== "active") {
+          throw new RequestError("Undo Start is only available before any real vehicle change/history exists. Use normal correction tools for this rental.", 409);
+        }
+
+        const [extension] = await tx.select({ id: rentalExtensions.id }).from(rentalExtensions).where(eq(rentalExtensions.bookingId, bookingId)).limit(1);
+        if (extension) throw new RequestError("This rental already has an extension and cannot safely be returned to Booked.", 409);
+
+        const paymentRows = await tx.select().from(payments).where(eq(payments.bookingId, bookingId));
+        const nonAdvance = paymentRows.find((payment) => payment.paymentType !== "advance");
+        if (nonAdvance) {
+          throw new RequestError("This rental has payment activity beyond the original handover advance. Undo Start was blocked to protect the accounts.", 409);
+        }
+
+        const segment = segments[0];
+        await tx.delete(payments).where(eq(payments.bookingId, bookingId));
+        await tx.delete(rentalSegments).where(eq(rentalSegments.id, segment.id));
+        await tx.update(vehicles).set({ status: "available", updatedAt: new Date() }).where(eq(vehicles.id, segment.vehicleId));
+
+        await tx.update(bookings).set({
+          status: "booked",
+          advancePaid: 0,
+          securityDeposit: 0,
+          startingKilometer: null,
+          startingFuelRangeKm: null,
+          expectedReturnKilometer: null,
+          handedOverAt: null,
+          completedAt: null,
+          updatedAt: new Date(),
+        }).where(eq(bookings.id, bookingId));
+
+        return { bookingNumber: booking.bookingNumber };
+      });
+
+      return Response.json({ ok: true, bookingNumber: result.bookingNumber });
+    });
+  } catch (error) {
+    if (error instanceof RequestError) return Response.json({ ok: false, error: error.message }, { status: error.status });
+    if (error instanceof DatabaseConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });
+    console.error("Could not undo rental start", error);
+    return Response.json({ ok: false, error: "Could not undo the rental start." }, { status: 500 });
   }
 }
