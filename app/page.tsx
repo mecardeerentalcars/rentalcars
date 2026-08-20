@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_CUSTOMER_REPORT_DATES_LOGOUT_V8_9_70
+
 // MECARDEE_CUSTOMER_HISTORY_SUPERADMIN_DELETE_V8_9_65
 
 // MECARDEE_REPORTS_MOBILE_FILTER_FIELDS_V8_9_62
@@ -505,6 +507,11 @@ async function readApiResponse<T>(response: Response): Promise<T> {
     const message = raw.replace(/\s+/g, " ").trim().slice(0, 320);
     throw new Error(message || `Server returned ${response.status} ${response.statusText}.`);
   }
+}
+
+async function mecardeeQuickLogout() {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+  window.location.reload();
 }
 
 export default function Home() {
@@ -1055,6 +1062,7 @@ export default function Home() {
             </div>}
           </div>
           <div className="top-actions">
+          <button className="top-logout-icon" type="button" onClick={() => void mecardeeQuickLogout()} aria-label="Log out" title="Log out"><svg className="mecardee-logout-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 3h5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-5"/></svg></button>
             <button className="icon-button mobile-sync-button" onClick={() => void manualSync()} aria-label="Sync latest data"><RefreshCw size={18} className={syncing ? "spin" : ""} /></button>
             <div className="notification-wrap" ref={notificationRef}>
               <button className="icon-button" onClick={toggleNotificationsPanel} aria-label="Notifications"><Bell size={18} />{reminders.some((reminder) => !seenNotificationKeys.includes(reminder.key)) && <span className="notification-dot" />}</button>
@@ -1128,7 +1136,8 @@ function Sidebar({ view, goTo, metrics, bookings }: { view: View; goTo: (view: V
       {navItems.slice(0, 8).map((item) => { const Icon = item.icon; const badge = item.view === "rentals" && metrics.activeRentals > 0 ? String(metrics.activeRentals) : item.view === "bookings" && upcomingBookings > 0 ? String(upcomingBookings) : null; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span>{badge && <b>{badge}</b>}</button>; })}
       <span className="nav-label lower">INSIGHTS</span>
       {navItems.slice(8).map((item) => { const Icon = item.icon; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span></button>; })}
-    </nav>
+            <button className="nav-item sidebar-logout-action" type="button" onClick={() => void mecardeeQuickLogout()}><svg className="mecardee-logout-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 3h5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-5"/></svg><span>Log out</span></button>
+      </nav>
     <div className="sidebar-health"><div className="health-head"><span className="pulse" /><strong>Fleet health</strong><b>{metrics.roadReadyPercent}%</b></div><div className="health-bar"><span style={{ width: `${metrics.roadReadyPercent}%` }} /></div><small>{metrics.availableCars + metrics.onRentCars} of {metrics.totalCars} vehicles are road-ready</small></div>
   </aside>;
 }
@@ -2068,6 +2077,17 @@ async function downloadPdfTable(
   pdfMakeClient.createPdf(doc).download(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
 }
 
+function customerReportDateOnly(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  }).format(date);
+}
+
 function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[]; vehicles: Vehicle[] }) {
   const today = dateInputValue(new Date());
   const monthStart = `${today.slice(0, 8)}01`;
@@ -2195,7 +2215,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         .map((customerRentals) => {
           const first = customerRentals[0];
           const vehiclesUsed = [...new Set(customerRentals.map((rental) => `${rental.originalVehicle} ${rental.originalPlate}`))].join(", ");
-          const rentalDates = customerRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ");
+          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} â†’ ${customerReportDateOnly(rental.endAt)}`).join(", ");
           return [
             first.customer,
             first.phone,

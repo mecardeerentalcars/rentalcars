@@ -6017,3 +6017,73 @@ body { font-size: 15px; line-height: 1.45; }
     white-space: normal;
   }
 }
+
+
+/* MECARDEE_CUSTOMER_REPORT_DATES_LOGOUT_CSS_V8_9_70 */
+
+.top-actions .top-logout-icon {
+  flex: 0 0 40px !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 10px;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  cursor: pointer;
+}
+
+.top-actions .top-logout-icon:hover,
+.top-actions .top-logout-icon:focus-visible {
+  border-color: rgba(255,255,255,.34);
+  background: rgba(255,255,255,.14);
+}
+
+.mecardee-logout-svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar .sidebar-logout-action {
+  width: 100%;
+  margin-top: 3px;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar .sidebar-logout-action .mecardee-logout-svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.sidebar .sidebar-logout-action:hover,
+.sidebar .sidebar-logout-action:focus-visible {
+  background: rgba(255,255,255,.08);
+}
+
+@media (max-width: 700px) {
+  .top-actions .top-logout-icon {
+    flex-basis: 35px !important;
+    width: 35px !important;
+    min-width: 35px !important;
+    max-width: 35px !important;
+    height: 35px !important;
+    min-height: 35px !important;
+  }
+
+  .top-actions .top-logout-icon .mecardee-logout-svg {
+    width: 17px;
+    height: 17px;
+  }
+}
