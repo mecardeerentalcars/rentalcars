@@ -1023,6 +1023,25 @@ function reminderIcon(type: string): LucideIcon {
 function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openNotifications, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const [dashboardCalendarOpen, setDashboardCalendarOpen] = useState(false);
+  // MECARDEE_DYNAMIC_GREETING_BUTTON_SIZE_V8_9_52
+  // Greeting follows the browser/device local time.
+  const [dashboardGreeting, setDashboardGreeting] = useState("Good morning, Admin");
+  useEffect(() => {
+    const updateDashboardGreeting = () => {
+      const hour = new Date().getHours();
+      setDashboardGreeting(
+        hour < 12
+          ? "Good morning, Admin"
+          : hour < 17
+            ? "Good afternoon, Admin"
+            : "Good evening, Admin"
+      );
+    };
+
+    updateDashboardGreeting();
+    const timer = window.setInterval(updateDashboardGreeting, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date()).toUpperCase();
   // MECARDEE_BOOKING_PRIORITY_DASHBOARD_V8_9_17
   const bookingBriefNow = Date.now();
@@ -1056,7 +1075,7 @@ function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminde
     { label: "Current rental amount", shortLabel: "Rental ₹", value: money(currentRentalAmount), note: `${activeBusinessRentals.length} active rental${activeBusinessRentals.length === 1 ? "" : "s"}`, icon: IndianRupee, tone: "money" },
   ];
   return <>
-    <div className="dashboard-greeting"><PageHeading eyebrow={dateLabel} title="Good morning, Admin" description="Here’s what needs your attention today." action={<button type="button" className="dashboard-calendar-button" onClick={() => setDashboardCalendarOpen(true)} title="Open booking calendar"><CalendarDays size={15} /><span>Calendar</span></button>} /></div>
+    <div className="dashboard-greeting"><PageHeading eyebrow={dateLabel} title={dashboardGreeting} description="Here’s what needs your attention today." action={<button type="button" className="dashboard-calendar-button" onClick={() => setDashboardCalendarOpen(true)} title="Open booking calendar"><CalendarDays size={15} /><span>Calendar</span></button>} /></div>
     {dashboardCalendarOpen && <DashboardBookingCalendar bookings={bookings} rentals={rentals} close={() => setDashboardCalendarOpen(false)} />}
     <section className="ai-brief-card booking-brief-card">
       <div className="ai-glow ai-glow-one" /><div className="ai-glow ai-glow-two" />
