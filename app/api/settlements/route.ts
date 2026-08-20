@@ -1,3 +1,4 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import { and, asc, eq, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, maintenanceRecords, payments, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
@@ -258,6 +259,10 @@ export async function POST(request: Request) {
           : currentSegmentCharge.rentalCharge,
         extraKilometers: calculation.extraKilometers,
         extraKmCharge: calculation.extraKmCharge,
+        returnFuelRangeKm,
+        fuelRangeShortageKm: calculation.fuelRangeShortageKm,
+        fuelPricePerLitre,
+        fuelCharge: calculation.fuelCharge,
         status: "completed",
         updatedAt: new Date(),
       }).where(eq(rentalSegments.id, currentSegment.id));
@@ -304,6 +309,11 @@ export async function POST(request: Request) {
           endAt: segmentEnd.toISOString(),
           startingKilometer: row.segment.startingKilometer,
           endingKilometer: isCurrent ? actualReturnKilometer : row.segment.endingKilometer,
+          startingFuelRangeKm: row.segment.startingFuelRangeKm,
+          returnFuelRangeKm: isCurrent ? returnFuelRangeKm : row.segment.returnFuelRangeKm,
+          fuelRangeShortageKm: isCurrent ? calculation.fuelRangeShortageKm : row.segment.fuelRangeShortageKm,
+          fuelPricePerLitre: isCurrent ? fuelPricePerLitre : row.segment.fuelPricePerLitre,
+          fuelCharge: isCurrent ? calculation.fuelCharge : row.segment.fuelCharge,
           rentalDays,
           rentalCharge,
           extraKmCharge,

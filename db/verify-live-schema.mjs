@@ -1,3 +1,4 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import pg from "pg";
 
 if (!process.env.DATABASE_URL) {
@@ -39,11 +40,22 @@ try {
   );
   if (!requestedVehicleColumn.rowCount) throw new Error("Database verification failed. bookings.requested_vehicle_id is missing.");
 
+  const rentalSegmentFuelColumns = await pool.query(
+    "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'rental_segments' and column_name = any($1::text[])",
+    [["return_fuel_range_km", "fuel_range_shortage_km", "fuel_price_per_litre", "fuel_charge"]],
+  );
+  const rentalSegmentFuelPresent = new Set(rentalSegmentFuelColumns.rows.map((row) => row.column_name));
+  const rentalSegmentFuelMissing = ["return_fuel_range_km", "fuel_range_shortage_km", "fuel_price_per_litre", "fuel_charge"]
+    .filter((column) => !rentalSegmentFuelPresent.has(column));
+  if (rentalSegmentFuelMissing.length) {
+    throw new Error(`Database verification failed. rental_segments fuel columns missing: ${rentalSegmentFuelMissing.join(", ")}`);
+  }
+
   for (const table of tables) {
     const result = await pool.query(`select count(*)::int as count from ${table}`);
     console.log(`${table}: ${result.rows[0].count} rows`);
   }
-  console.log("Mecardee live database verification passed: all 11 tables, vehicles.is_guest and bookings.requested_vehicle_id are available.");
+  console.log("Mecardee live database verification passed: all 11 tables, booking/requested-vehicle fields, and rental-segment fuel fields are available.");
 } finally {
   await pool.end();
 }

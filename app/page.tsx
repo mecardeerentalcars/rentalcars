@@ -1,4 +1,9 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
+
+// MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_V8_9_43
+
+// MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
 
 // MECARDEE_DASHBOARD_CALENDAR_POPUP_V8_9_39
 
@@ -101,6 +106,10 @@ type RentalSegmentRow = {
   startingKilometer: number;
   endingKilometer: number | null;
   startingFuelRangeKm: number;
+  returnFuelRangeKm: number | null;
+  fuelRangeShortageKm: number;
+  fuelPricePerLitre: number;
+  fuelCharge: number;
   dailyRate: number;
   rentalDays: number;
   rentalCharge: number;
@@ -251,6 +260,8 @@ type SettlementSegmentRow = {
   rentalDays: number;
   rentalCharge: number;
   extraKmCharge: number;
+  fuelRangeShortageKm: number;
+  fuelCharge: number;
 };
 
 type SettlementResult = {
@@ -421,6 +432,42 @@ function availableBookingVehicles(
     vehicle.id !== excludeVehicleId &&
     !["inactive", "maintenance"].includes(vehicle.statusKey) &&
     !findVehiclePeriodConflict(vehicle.id, startAt, endAt, bookings, rentals, excludeBookingId)
+  );
+}
+
+function bookingNeedsVehicleChangeOnDate(booking: BookingRecord, dayKey: string, bookings: BookingRecord[], rentals: Rental[]) {
+  if (!["booked", "rented"].includes(booking.status)) return false;
+  const dayStart = new Date(`${dayKey}T00:00:00+05:30`).getTime();
+  const dayEnd = new Date(`${dayKey}T23:59:59.999+05:30`).getTime();
+  const collisionTouchesDay = (startA: string, endA: string, startB: string, endB: string) => {
+    const overlapStart = Math.max(new Date(startA).getTime(), new Date(startB).getTime());
+    const overlapEnd = Math.min(new Date(endA).getTime(), new Date(endB).getTime());
+    return Number.isFinite(overlapStart) && Number.isFinite(overlapEnd) && overlapStart < overlapEnd && overlapStart <= dayEnd && overlapEnd > dayStart;
+  };
+
+  if (booking.status === "booked") {
+    const bookingCollision = bookings.some((other) =>
+      other.id !== booking.id &&
+      other.status === "booked" &&
+      other.vehicleId === booking.vehicleId &&
+      collisionTouchesDay(booking.startAt, booking.endAt, other.startAt, other.endAt)
+    );
+    if (bookingCollision) return true;
+
+    return rentals.some((rental) =>
+      rental.state !== "completed" &&
+      rental.vehicleId === booking.vehicleId &&
+      collisionTouchesDay(booking.startAt, booking.endAt, rental.startAt, rental.endAt)
+    );
+  }
+
+  const activeRental = rentals.find((rental) => rental.databaseId === booking.id && rental.state !== "completed");
+  if (!activeRental) return false;
+  return bookings.some((other) =>
+    other.id !== booking.id &&
+    other.status === "booked" &&
+    other.vehicleId === activeRental.vehicleId &&
+    collisionTouchesDay(activeRental.startAt, activeRental.endAt, other.startAt, other.endAt)
   );
 }
 
@@ -902,7 +949,7 @@ export default function Home() {
           </div>
           {view === "dashboard" && <Dashboard rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => openNewRental()} openNewBooking={newBookingFromTab} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
-          {view === "bookings" && <BookingsView bookings={bookingList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
+          {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "guest-cars" && <GuestCarsView vehicles={guestVehicleList} rentals={rentalList} addVehicle={() => setDialog("guest-vehicle")} openVehicle={openVehicle} openRental={openRental} />}
           {view === "customers" && <CustomersView customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
@@ -1002,7 +1049,7 @@ function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminde
   ];
   return <>
     <div className="dashboard-greeting"><PageHeading eyebrow={dateLabel} title="Good morning, Admin" description="Here’s what needs your attention today." action={<button type="button" className="dashboard-calendar-button" onClick={() => setDashboardCalendarOpen(true)} title="Open booking calendar"><CalendarDays size={15} /><span>Calendar</span></button>} /></div>
-    {dashboardCalendarOpen && <DashboardBookingCalendar bookings={bookings} close={() => setDashboardCalendarOpen(false)} />}
+    {dashboardCalendarOpen && <DashboardBookingCalendar bookings={bookings} rentals={rentals} close={() => setDashboardCalendarOpen(false)} />}
     <section className="ai-brief-card booking-brief-card">
       <div className="ai-glow ai-glow-one" /><div className="ai-glow ai-glow-two" />
       <div className="booking-brief-header">
@@ -1055,7 +1102,7 @@ function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminde
 }
 
 
-function DashboardBookingCalendar({ bookings, close }: { bookings: BookingRecord[]; close: () => void }) {
+function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: BookingRecord[]; rentals: Rental[]; close: () => void }) {
   const [calendarMonth, setCalendarMonth] = useState(() => indiaDateKey(new Date()).slice(0, 7));
   const today = indiaDateKey(new Date());
 
@@ -1120,6 +1167,7 @@ function DashboardBookingCalendar({ bookings, close }: { bookings: BookingRecord
         <span><i className="rented" />Rented</span>
         <span><i className="completed" />Completed</span>
         <span><i className="cancelled" />Cancelled</span>
+        <span><i className="change-required" />Change required</span>
       </div>
 
       <div className="dashboard-calendar-scroll">
@@ -1136,11 +1184,14 @@ function DashboardBookingCalendar({ bookings, close }: { bookings: BookingRecord
             return <div className={`dashboard-calendar-day ${outside ? "outside" : ""} ${key === today ? "today" : ""}`} key={key}>
               <strong className="dashboard-calendar-date">{date.getDate()}</strong>
               <div className="dashboard-calendar-events">
-                {dayBookings.slice(0, 4).map((booking) => <span className={`dashboard-calendar-entry ${statusClass(booking)}`} key={booking.id}>
-                  <b>{booking.vehicle}</b>
-                  <small>{booking.customer}</small>
-                  {booking.status === "rented" && <em>Rented</em>}
-                </span>)}
+                {dayBookings.slice(0, 4).map((booking) => {
+                  const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals);
+                  return <span className={`dashboard-calendar-entry ${statusClass(booking)} ${changeRequired ? "change-required" : ""}`} key={booking.id}>
+                    <b>{booking.vehicle}</b>
+                    <small>{booking.customer}</small>
+                    {changeRequired ? <em>Change</em> : booking.status === "rented" ? <em>Rented</em> : null}
+                  </span>;
+                })}
                 {dayBookings.length > 4 && <span className="dashboard-calendar-more">+{dayBookings.length - 4} more</span>}
               </div>
             </div>;
@@ -1152,7 +1203,7 @@ function DashboardBookingCalendar({ bookings, close }: { bookings: BookingRecord
 }
 
 
-function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVehicle, openReservation, openBooking, sendBookingWhatsApp }: { vehicles: Vehicle[]; rentals: Rental[]; reservations: Reservation[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; sendBookingWhatsApp: (reservation: Reservation) => void }) {
+function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVehicle, openReservation, openBooking, sendBookingWhatsApp }: { vehicles: Vehicle[]; rentals: Rental[]; reservations: Reservation[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const [availabilityDate, setAvailabilityDate] = useState(() => dateInputValue(new Date()));
   const dayStart = new Date(`${availabilityDate}T00:00:00+05:30`).getTime();
   const dayEnd = new Date(`${availabilityDate}T23:59:59+05:30`).getTime();
@@ -1247,7 +1298,7 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
           <div className="fleet-status-actions">
             {rental && <button className="primary-button" onClick={() => openRental(rental)}><CarFront size={15} />View rental</button>}
             {(canBook || Boolean(rental)) && <button className={`primary-button ${rental ? "rental-book-action" : ""}`} onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book now</button>}
-            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation)} aria-label={`WhatsApp booking confirmation to ${reservation.customer}`} title="WhatsApp booking confirmation"><MessageCircle size={17} /></button></>}
+            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation, "reminder")} aria-label={`WhatsApp booking reminder to ${reservation.customer}`} title="WhatsApp booking reminder"><MessageCircle size={17} /></button></>}
             {canBook && blocked && <button className="fleet-secondary-action" onClick={() => openVehicle(vehicle)}>View vehicle</button>}
           </div>
         </div>
@@ -1275,7 +1326,7 @@ function Reminder({ tone, icon: Icon, title, text, action }: { tone: string; ico
 }
 
 
-function BookingsView({ bookings, vehicles, openBooking, editBooking, startBooking, sendWhatsApp, newBooking }: { bookings: BookingRecord[]; vehicles: Vehicle[]; openBooking: (booking: BookingRecord) => void; editBooking: (booking: BookingRecord) => void; startBooking: (booking: BookingRecord) => void; sendWhatsApp: (booking: BookingRecord) => void; newBooking: () => void }) {
+function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, startBooking, sendWhatsApp, newBooking }: { bookings: BookingRecord[]; rentals: Rental[]; vehicles: Vehicle[]; openBooking: (booking: BookingRecord) => void; editBooking: (booking: BookingRecord) => void; startBooking: (booking: BookingRecord) => void; sendWhatsApp: (booking: BookingRecord) => void; newBooking: () => void }) {
   const [mode, setMode] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState("All");
   const [vehicleFilter, setVehicleFilter] = useState("All");
@@ -1381,7 +1432,7 @@ function BookingsView({ bookings, vehicles, openBooking, editBooking, startBooki
         </article>;
       }) : <div className="booking-empty"><CalendarDays size={25} /><strong>No bookings match these filters.</strong><span>Change the filters or create a new booking.</span></div>}
     </section> : <section className="booking-calendar-panel">
-      <div className="booking-calendar-heading"><button onClick={() => moveMonth(-1)} aria-label="Previous month">‹</button><h2>{monthLabel}</h2><div className="booking-calendar-legend" aria-label="Calendar colour legend"><span className="booking-legend-booked"><i />Booking</span><span className="booking-legend-rented"><i />Rented</span></div><button onClick={() => moveMonth(1)} aria-label="Next month">›</button></div>
+      <div className="booking-calendar-heading"><button onClick={() => moveMonth(-1)} aria-label="Previous month">‹</button><h2>{monthLabel}</h2><div className="booking-calendar-legend" aria-label="Calendar colour legend"><span className="booking-legend-booked"><i />Booking</span><span className="booking-legend-rented"><i />Rented</span><span className="booking-legend-change"><i />Change required</span></div><button onClick={() => moveMonth(1)} aria-label="Next month">›</button></div>
       <div className="booking-calendar-weekdays">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((day) => <span key={day}>{day}</span>)}</div>
       <div className="booking-calendar-grid">
         {calendarCells.map(({ date, key }) => {
@@ -1389,7 +1440,7 @@ function BookingsView({ bookings, vehicles, openBooking, editBooking, startBooki
           const outside = date.getMonth() !== monthStart.getMonth();
           return <div className={`booking-calendar-day ${outside ? "outside" : ""} ${key === today ? "today" : ""}`} key={key}>
             <strong>{date.getDate()}</strong>
-            <div>{dayBookings.slice(0, 3).map((booking) => <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"}`} onClick={() => openBooking(booking)} title={`${booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${booking.customer}`}><span>{booking.vehicle}</span><small>{booking.customer}</small>{booking.status === "rented" && <b className="calendar-rented-tag">Rented</b>}</button>)}{dayBookings.length > 3 && <span className="booking-more">+{dayBookings.length - 3} more</span>}</div>
+            <div>{dayBookings.slice(0, 3).map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${booking.customer}`}><span>{booking.vehicle}</span><small>{booking.customer}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}{dayBookings.length > 3 && <span className="booking-more">+{dayBookings.length - 3} more</span>}</div>
           </div>;
         })}
       </div>
@@ -2309,7 +2360,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
     : [];
   const replacementChoices = [...ownAlternatives, ...guestAlternatives];
   const replacementVehicle = replacementChoices.find((item) => item.id === replacementVehicleId) ?? null;
-  const assignedBookingVehicle = requestedConflict ? replacementVehicle : selectedVehicle;
+  const assignedBookingVehicle = replacementVehicle ?? selectedVehicle;
   const conflictToastKey = useRef("");
 
   useEffect(() => {
@@ -2322,7 +2373,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
     const key = `${selectedVehicle?.id ?? ""}|${startDate}|${startTime}|${returnDate}|${returnTime}|${requestedConflict.type}|${requestedConflict.label}`;
     if (conflictToastKey.current !== key) {
       conflictToastKey.current = key;
-      showToast(`${selectedVehicle?.name ?? "Vehicle"} is unavailable for this booking period. Choose another available vehicle or Guest Car.`);
+      showToast(`${selectedVehicle?.name ?? "Vehicle"} has a schedule overlap. You can keep this booking and arrange a vehicle change before the collision, or choose a replacement now.`);
     }
   }, [requestedConflict?.type, requestedConflict?.label, replacementVehicleId, replacementChoices.map((item) => item.id).join("|"), returnDate, returnTime, selectedVehicle?.id, selectedVehicle?.name, showToast, startDate, startTime]);
 
@@ -2354,8 +2405,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
     if (!customerPhone) return setError("Select or add a customer first.");
     if (!selectedVehicle) return setError("Select the requested vehicle.");
     if (requestedEndAt <= requestedStartAt) return setError("Return date must be after the pickup date/time.");
-    if (requestedConflict && !replacementVehicle) return setError("The requested vehicle is unavailable. Select another available own vehicle or Guest Car to continue the booking.");
-    if (!assignedBookingVehicle) return setError("Select an available booking vehicle.");
+    if (!assignedBookingVehicle) return setError("Select a booking vehicle.");
     setSaving(true); setError(null);
     try {
       const response = await fetch("/api/bookings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
@@ -2367,10 +2417,10 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
         rentalDays: days,
         dailyRate: rate,
       }) });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; booking?: { bookingNumber: string; replacementBooked?: boolean } }>(response);
+      const payload = await readApiResponse<{ ok: boolean; error?: string; booking?: { bookingNumber: string; replacementBooked?: boolean; scheduleConflict?: boolean } }>(response);
       if (!response.ok || !payload.booking) throw new Error(payload.error ?? "Could not save booking.");
       const customer = customers.find((item) => item.phone === customerPhone)?.name ?? createdCustomer?.name ?? customerPhone;
-      const replacementNote = assignedBookingVehicle.id !== selectedVehicle.id ? ` · ${assignedBookingVehicle.name}${assignedBookingVehicle.isGuest ? " (Guest Car)" : ""} reserved as replacement` : "";
+      const replacementNote = assignedBookingVehicle.id !== selectedVehicle.id ? ` · ${assignedBookingVehicle.name}${assignedBookingVehicle.isGuest ? " (Guest Car)" : ""} reserved as replacement` : requestedConflict ? " · CHANGE REQUIRED before schedule collision" : "";
       done(`${selectedVehicle.name} booking created for ${customer} · ${payload.booking.bookingNumber}${replacementNote}`);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save booking."); } finally { setSaving(false); }
   }
@@ -2383,12 +2433,12 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
           <button type="button" className="new-customer" onClick={() => setShowCustomerForm((value) => !value)}><UserRoundPlus size={16} />{showCustomerForm ? "Close" : "Add new customer"}</button>
           <label className="field span-2"><span>Requested vehicle</span><select value={vehicleId} disabled={!customerPhone && !initialVehicle} onChange={(e) => { setVehicleId(e.target.value); setReplacementVehicleId(""); const v = bookableVehicles.find((item) => item.id === e.target.value); setRate(v?.rate ?? 0); }}><option value="">Select vehicle</option>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate} · {item.status}</option>)}</select><small>{initialVehicle ? "Opened from this vehicle, so it was prefilled. Select the customer to continue." : customerPhone ? "Choose the vehicle the customer originally requested." : "Select the customer first to choose a vehicle."}</small></label>
         </div></section>
-        {requestedConflict && selectedVehicle && <section className="replacement-conflict-panel"><div className="replacement-conflict-head"><AlertTriangle size={18} /><div><strong>{selectedVehicle.name} is unavailable for this booking period</strong><p>{requestedConflict.type === "booking" ? "Booking" : "Rental"} {requestedConflict.label}{requestedConflict.customer ? ` for ${requestedConflict.customer}` : ""} overlaps the requested period. Continue by reserving another free own vehicle or a Guest Car.</p></div></div><div className="original-booking-context compact"><strong>Original Booking: {selectedVehicle.name} — {days} Days</strong><span>{selectedVehicle.name} remains the original requested vehicle even when another vehicle is reserved for this booking.</span></div><label className="field"><span>Available replacement vehicle</span><select value={replacementVehicleId} onChange={(event) => setReplacementVehicleId(event.target.value)}><option value="">Select another vehicle</option>{ownAlternatives.length > 0 && <optgroup label="Our available vehicles">{ownAlternatives.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}</option>)}</optgroup>}{guestAlternatives.length > 0 && <optgroup label="Guest Cars">{guestAlternatives.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>{replacementChoices.length ? "Own vehicles are listed first, followed by Guest Cars. The selected replacement must be free for the complete booking period." : "No vehicle is free for the complete selected booking period."}</small></label></section>}
+        {requestedConflict && selectedVehicle && <section className="replacement-conflict-panel soft-schedule-conflict"><div className="replacement-conflict-head"><AlertTriangle size={18} /><div><strong>Schedule overlap — vehicle change required</strong><p>{requestedConflict.type === "booking" ? "Booking" : "Rental"} {requestedConflict.label}{requestedConflict.customer ? ` for ${requestedConflict.customer}` : ""} overlaps this period. You may keep {selectedVehicle.name} on this booking. The vehicle only has to be physically available when the rental starts; arrange a Change Vehicle before the collision if needed.</p></div></div><div className="original-booking-context compact"><strong>Keep original booking: {selectedVehicle.name} — {days} Days</strong><span>The existing booking is protected. This new booking will be marked as needing a vehicle change on the overlapping calendar date.</span></div><label className="field"><span>Optional replacement now</span><select value={replacementVehicleId} onChange={(event) => setReplacementVehicleId(event.target.value)}><option value="">Continue with {selectedVehicle.name}</option>{ownAlternatives.length > 0 && <optgroup label="Our available vehicles">{ownAlternatives.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}</option>)}</optgroup>}{guestAlternatives.length > 0 && <optgroup label="Guest Cars">{guestAlternatives.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>{replacementChoices.length ? "Optional: reserve a conflict-free replacement for the complete period now, or continue with the requested vehicle and arrange the change later." : "No complete-period replacement is free now. You can still keep the requested vehicle booking and arrange a change later."}</small></label></section>}
         {showCustomerForm && <section className="form-section"><div className="field-grid"><label className="field"><span>Name</span><input value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={() => setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer ? "Saving…" : "Save customer"}</button></div></section>}
         <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booking period</h3><p>The selected booking vehicle is reserved for this complete period.</p></div></div><div className="field-grid rental-schedule-grid"><label className="field"><span>Start date</span><input type="date" min={dateInputValue(new Date())} value={startDate} onChange={(e)=>{ const next=e.target.value; setStartDate(next); setReturnDate(addDays(next,days)); }} /></label><label className="field"><span>Start time</span><input type="time" value={startTime} onChange={(e)=>{ const next=e.target.value; setStartTime(next); setReturnTime((current)=>current===startTime?next:current); }} /></label><label className="field"><span>Rental days</span><input type="number" min="1" inputMode="numeric" value={daysInput} onChange={(e)=>{ const raw=e.target.value.replace(/\D/g,""); setDaysInput(raw); if(raw) setReturnDate(addDays(startDate,Number(raw))); }} /></label><label className="field"><span>Expected return</span><input type="date" value={returnDate} onChange={(e)=>{ const next=e.target.value; const [sy,sm,sd]=startDate.split("-").map(Number); const [ey,em,ed]=next.split("-").map(Number); const diff=Math.max(1,Math.round((Date.UTC(ey,em-1,ed)-Date.UTC(sy,sm-1,sd))/86_400_000)); setDaysInput(String(diff)); setReturnDate(next); }} /></label><label className="field"><span>Return time</span><input type="time" value={returnTime} onChange={(e)=>setReturnTime(e.target.value)} /></label><label className="field"><span>Daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} booked day{days===1?"":"s"}</strong><span>{money(days*rate)} estimated rental</span></div></section>
         
       </div>
-      <footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || !selectedVehicle || !customerPhone || Boolean(requestedConflict && !replacementVehicle)}>{requestedConflict && !replacementVehicle ? "Choose replacement" : saving ? "Booking..." : "Confirm booking"}<CalendarDays size={16} /></button><button type="button" className="save-draft" onClick={close}>Cancel</button></div></footer>
+      <footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || !selectedVehicle || !customerPhone}>{saving ? "Booking..." : requestedConflict && !replacementVehicle ? "Confirm with warning" : "Confirm booking"}<CalendarDays size={16} /></button><button type="button" className="save-draft" onClick={close}>Cancel</button></div></footer>
     </form>
   </DialogShell>;
 }
@@ -2458,7 +2508,6 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
     event.preventDefault();
     if (!selectedVehicle) return setError("Select a vehicle.");
     if (endAt <= startAt) return setError("Return date must be after the pickup date/time.");
-    if (selectedConflict) return setError(`${selectedVehicle.name} is not available for this complete booking period. Choose another free vehicle.`);
     setSaving(true); setError(null);
     try {
       const response = await fetch(`/api/bookings/${booking.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "edit", vehicleId: selectedVehicle.id, startAt: startAt.toISOString(), endAt: endAt.toISOString(), rentalDays: days, dailyRate: rate }) });
@@ -2471,7 +2520,7 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
   return <DialogShell title="Edit booking" subtitle={`${booking.bookingNumber} · ${booking.customer}`} close={close}>
     <form className="simple-form booking-edit-form" onSubmit={submit}>
       <div className="original-booking-context compact"><strong>Original requested vehicle: {booking.requestedVehicle} — {booking.requestedPlate}</strong><span>Changing the reserved vehicle here does not remove the original booking context.</span></div>
-      <label className="field"><span>Reserved vehicle</span><select required value={vehicleId} onChange={(event) => { const nextId = event.target.value; setVehicleId(nextId); const nextVehicle = allVehicles.find((item) => item.id === nextId); if (nextVehicle) setRate(nextVehicle.rate); }}><optgroup label="Our available vehicles">{ownOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}{item.id === booking.requestedVehicleId ? " · Original request" : ""}</option>)}</optgroup>{guestOptions.length > 0 && <optgroup label="Guest Cars">{guestOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>You can change the vehicle while this booking is still active. Only vehicles free for the full booking period are offered.</small></label>
+      <label className="field"><span>Reserved vehicle</span><select required value={vehicleId} onChange={(event) => { const nextId = event.target.value; setVehicleId(nextId); const nextVehicle = allVehicles.find((item) => item.id === nextId); if (nextVehicle) setRate(nextVehicle.rate); }}><optgroup label="Our available vehicles">{ownOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}{item.id === booking.requestedVehicleId ? " · Original request" : ""}</option>)}</optgroup>{guestOptions.length > 0 && <optgroup label="Guest Cars">{guestOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>You can change the vehicle while this booking is still active. Conflict-free alternatives are offered. The current reserved vehicle may still be saved with a schedule warning.</small></label>
       <div className="field-grid">
         <label className="field"><span>Pickup date</span><input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
         <label className="field"><span>Pickup time</span><input type="time" required value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
@@ -2481,15 +2530,17 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
         <label className="field"><span>Daily rate (₹)</span><input type="number" min="0" required value={blankZero(rate)} onChange={(event) => setRate(numberFromInput(event.target.value))} /></label>
       </div>
       <div className="duration-note"><CalendarRange size={16} /><strong>{days} day{days === 1 ? "" : "s"}</strong><span>{money(days * rate)} estimated rental</span></div>
-      {selectedConflict && <p className="form-error booking-conflict-inline"><strong>Vehicle unavailable.</strong> {selectedVehicle?.name} conflicts with {selectedConflict.type} {selectedConflict.label}{selectedConflict.customer ? ` for ${selectedConflict.customer}` : ""}. Choose another free vehicle.</p>}
+      {selectedConflict && <p className="form-error booking-conflict-inline"><strong>Schedule overlap.</strong> {selectedVehicle?.name} conflicts with {selectedConflict.type} {selectedConflict.label}{selectedConflict.customer ? ` for ${selectedConflict.customer}` : ""}. You can save this booking and arrange a Change Vehicle before the collision.</p>}
       {error && <p className="form-error">{error}</p>}
-      <div className="form-actions"><button type="button" onClick={close} disabled={saving}>Cancel</button><button type="submit" className="primary-button" disabled={saving || !selectedVehicle || Boolean(selectedConflict)}><Check size={16} />{saving ? "Saving…" : "Save booking"}</button></div>
+      <div className="form-actions"><button type="button" onClick={close} disabled={saving}>Cancel</button><button type="submit" className="primary-button" disabled={saving || !selectedVehicle}><Check size={16} />{saving ? "Saving…" : "Save booking"}</button></div>
     </form>
   </DialogShell>;
 }
 
 function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, bookings, rentals, close, done }: { reservation: Reservation; vehicle: Vehicle | null; vehicles: Vehicle[]; guestVehicles: Vehicle[]; bookings: BookingRecord[]; rentals: Rental[]; close: () => void; done: (message: string) => void }) {
-  const requestedConflict = vehicle ? findVehiclePeriodConflict(vehicle.id, reservation.startAt, reservation.endAt, bookings, rentals, reservation.id) : null;
+  const pickupEndAt = new Date(new Date(reservation.startAt).getTime() + 1);
+  const requestedConflict = vehicle ? findVehiclePeriodConflict(vehicle.id, reservation.startAt, pickupEndAt, bookings, rentals, reservation.id) : null;
+  const futureScheduleConflict = vehicle ? findVehiclePeriodConflict(vehicle.id, reservation.startAt, reservation.endAt, bookings, rentals, reservation.id) : null;
   const originalOperationallyBlocked = !vehicle || ["inactive", "maintenance"].includes(vehicle.statusKey);
   const needsReplacement = Boolean(requestedConflict) || originalOperationallyBlocked;
   const ownReplacements = availableReplacementVehicles(vehicles, reservation.startAt, reservation.endAt, bookings, rentals, vehicle?.id, reservation.id);
@@ -2533,6 +2584,7 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
   return <DialogShell title="Start booked rental" subtitle={`${reservation.vehicle} · ${reservation.customer}`} close={close} wide>
     <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}><div className="form-content">
       <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booked schedule</h3><p>The reservation becomes an active rental only after this confirmation.</p></div></div><div className="timeline"><div><i /><span><small>Start</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Return</small><strong>{reservation.returnDate}</strong></span></div></div></section>
+      {!needsReplacement && futureScheduleConflict && <section className="schedule-change-warning"><AlertTriangle size={18} /><div><strong>Start allowed — future vehicle change required</strong><p>{reservation.vehicle} is free at pickup, so this rental can start normally. {futureScheduleConflict.type === "booking" ? "Booking" : "Rental"} {futureScheduleConflict.label}{futureScheduleConflict.customer ? ` for ${futureScheduleConflict.customer}` : ""} overlaps later in this rental period. Use Change Vehicle before that collision if the customer still has this car.</p></div></section>}
       {needsReplacement && <section className="replacement-conflict-panel"><div className="replacement-conflict-head"><AlertTriangle size={18} /><div><strong>Original vehicle unavailable</strong><p>{requestedConflict ? `${reservation.vehicle} conflicts with ${requestedConflict.type} ${requestedConflict.label}${requestedConflict.customer ? ` (${requestedConflict.customer})` : ""}.` : `${reservation.vehicle} is not currently operational.`} Choose another own vehicle or a Guest Car to start this same booking.</p></div></div><div className="original-booking-context compact"><strong>Original Booking: {reservation.requestedVehicle} — {reservation.days} Days</strong><span>The original requested vehicle remains attached to this rental. The selected vehicle is only the current replacement.</span></div><label className="field"><span>Replacement vehicle</span><select required value={replacementVehicleId} onChange={(event) => setReplacementVehicleId(event.target.value)}><option value="">Select replacement</option>{ownReplacements.length > 0 && <optgroup label="Our available vehicles">{ownReplacements.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}</option>)}</optgroup>}{guestReplacements.length > 0 && <optgroup label="Guest Cars">{guestReplacements.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>{replacementChoices.length ? "Own vehicles are shown first, followed by Guest Cars." : "No replacement vehicle is available at the pickup time."}</small></label></section>}
       <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Vehicle handover</h3><p>{assignedVehicle ? `Record the actual odometer and fuel range for ${assignedVehicle.name}${assignedVehicle.isGuest ? " (Guest Car)" : ""}.` : "Select an available replacement vehicle first."}</p></div></div><div className="field-grid three"><label className="field"><span>Starting kilometer</span><input type="number" min="0" value={blankZero(startingKilometer)} onChange={(e)=>setStartingKilometer(numberFromInput(e.target.value))} /></label><label className="field"><span>Starting fuel range (KM)</span><input type="number" min="0" value={blankZero(startingFuelRangeKm)} onChange={(e)=>setStartingFuelRangeKm(numberFromInput(e.target.value))} /></label><label className="field"><span>Expected return KM</span><input readOnly value={`${expectedKm.toLocaleString("en-IN")} km`} /></label></div></section>
       <section className="form-section"><div className="form-section-title"><span><WalletCards size={17} /></span><div><h3>Payment details</h3><p>Confirm the booked rate and record anything received at handover.</p></div></div><div className="field-grid three"><label className="field"><span>Original booking daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label><label className="field"><span>Security deposit (₹)</span><input type="number" min="0" value={blankZero(deposit)} onChange={(e)=>setDeposit(numberFromInput(e.target.value))} /></label><label className="field"><span>Advance paid (₹)</span><input type="number" min="0" max={total} value={blankZero(advance)} onChange={(e)=>setAdvance(numberFromInput(e.target.value))} /></label><label className="field"><span>Discount (₹)</span><input type="number" min="0" max={reservation.days*rate} value={blankZero(discount)} onChange={(e)=>setDiscount(numberFromInput(e.target.value))} /></label><label className="field"><span>Payment method</span><select value={paymentMethod} onChange={(e)=>setPaymentMethod(e.target.value)}><option>UPI</option><option>Cash</option><option>Bank transfer</option><option>Other</option></select></label><label className="field"><span>Original booking total</span><input readOnly value={money(total)} /></label></div>{needsReplacement && assignedVehicle && <div className="replacement-rate-note"><CarFront size={15} /><span>The replacement segment uses {assignedVehicle.name}&apos;s configured rate of {money(assignedVehicle.rate)}/day in the final vehicle-wise settlement.</span></div>}</section>
@@ -2806,6 +2858,8 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
   const [changeDate, setChangeDate] = useState(nowParts.date);
   const [changeTime, setChangeTime] = useState(nowParts.time);
   const [endingKilometer, setEndingKilometer] = useState(currentSegment?.startingKilometer ?? rental.startingKilometer);
+  const [returnFuelRangeKm, setReturnFuelRangeKm] = useState(currentSegment?.startingFuelRangeKm ?? rental.startingFuelRangeKm);
+  const fuelPricePerLitre = 105;
   const [nextVehicleId, setNextVehicleId] = useState("");
   const [nextStartingKilometer, setNextStartingKilometer] = useState(0);
   const [nextStartingFuelRangeKm, setNextStartingFuelRangeKm] = useState(100);
@@ -2818,6 +2872,9 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
   const guestChoices = currentSegment ? availableReplacementVehicles(guestVehicles, changeAt, remainingEnd, bookings, rentals, currentSegment.vehicleId, rental.databaseId) : [];
   const choices = [...ownChoices, ...guestChoices];
   const nextVehicle = choices.find((vehicle) => vehicle.id === nextVehicleId) ?? null;
+  const currentVehicleDetails = currentSegment
+    ? (currentSegment.isGuest ? guestVehicles : vehicles).find((vehicle) => vehicle.id === currentSegment.vehicleId) ?? null
+    : null;
 
   useEffect(() => {
     if (!choices.some((vehicle) => vehicle.id === nextVehicleId)) setNextVehicleId(choices[0]?.id ?? "");
@@ -2839,6 +2896,20 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
       })
     : null;
 
+  const currentAllowedKmPerDay = currentSegment
+    ? (currentVehicleDetails?.allowedKmPerDay ?? rental.allowedKmPerDay)
+    : 0;
+  const currentAllowedKilometers = currentCharge ? currentCharge.rentalDays * currentAllowedKmPerDay : 0;
+  const currentFuelShortageKm = currentSegment ? Math.max(0, currentSegment.startingFuelRangeKm - returnFuelRangeKm) : 0;
+  const currentMileageKmPerLitre = currentVehicleDetails?.mileageKmPerLitre ?? rental.mileageKmPerLitre;
+  const currentFuelLitres = currentFuelShortageKm > 0 && currentMileageKmPerLitre > 0
+    ? currentFuelShortageKm / currentMileageKmPerLitre
+    : 0;
+  const currentFuelCharge = Math.round(currentFuelLitres * fuelPricePerLitre * 100) / 100;
+  const currentSegmentTotal = currentCharge
+    ? Math.round((currentCharge.rentalCharge + currentCharge.extraKmCharge + currentFuelCharge) * 100) / 100
+    : 0;
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true); setError(null);
@@ -2847,14 +2918,15 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
       if (!nextVehicle) throw new Error("Select an available next vehicle.");
       if (!Number.isFinite(changeAt.getTime()) || changeAt.getTime() <= new Date(currentSegment.startAt).getTime()) throw new Error("Vehicle change time must be after the current vehicle started.");
       if (endingKilometer < currentSegment.startingKilometer) throw new Error("Ending kilometer cannot be below the starting kilometer.");
+      if (returnFuelRangeKm < 0) throw new Error("Return fuel range cannot be below zero.");
       const response = await fetch("/api/rentals/change-vehicle", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ bookingNumber: rental.id, changeAt: changeAt.toISOString(), endingKilometer, nextVehicleId: nextVehicle.id, nextStartingKilometer, nextStartingFuelRangeKm }),
+        body: JSON.stringify({ bookingNumber: rental.id, changeAt: changeAt.toISOString(), endingKilometer, returnFuelRangeKm, fuelPricePerLitre, nextVehicleId: nextVehicle.id, nextStartingKilometer, nextStartingFuelRangeKm }),
       });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; change?: { finishedVehicle: string; nextVehicle: string; nextVehicleGuest: boolean } }>(response);
+      const payload = await readApiResponse<{ ok: boolean; error?: string; change?: { finishedVehicle: string; finishedFuelCharge: number; finishedTotal: number; nextVehicle: string; nextVehicleGuest: boolean } }>(response);
       if (!response.ok || !payload.ok || !payload.change) throw new Error(payload.error ?? "Could not change the rental vehicle.");
-      done(`${payload.change.finishedVehicle} segment closed. ${payload.change.nextVehicle}${payload.change.nextVehicleGuest ? " (Guest Car)" : ""} is now active on ${rental.id}.`);
+      done(`${payload.change.finishedVehicle} segment closed at ${money(payload.change.finishedTotal)}. ${payload.change.nextVehicle}${payload.change.nextVehicleGuest ? " (Guest Car)" : ""} is now active on ${rental.id}.`);
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Could not change the rental vehicle."); }
     finally { setSaving(false); }
   }
@@ -2862,7 +2934,7 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
   return <DialogShell title="Change Vehicle" subtitle={`${rental.id} · same customer rental continues`} close={close} wide>
     <form className="simple-form change-vehicle-form" onSubmit={submit}>
       <div className="original-booking-context"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>The current vehicle segment will close, but this rental and the original booking remain open.</span></div>
-      {currentSegment && <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Finish current vehicle</h3><p>{currentSegment.vehicle} · {currentSegment.plate}{currentSegment.isGuest ? " · Guest Car" : ""}</p></div></div><div className="field-grid three"><label className="field"><span>Change date</span><input required type="date" min={dateInputValue(new Date(currentSegment.startAt))} value={changeDate} onChange={(event) => setChangeDate(event.target.value)} /></label><label className="field"><span>Change time</span><input required type="time" value={changeTime} onChange={(event) => setChangeTime(event.target.value)} /></label><label className="field"><span>Ending KM</span><input required type="number" min={currentSegment.startingKilometer} value={blankZero(endingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setEndingKilometer(numberFromInput(event.target.value))} /></label></div>{currentCharge && <div className="segment-charge-preview"><span><small>Usage period</small><strong>{currentCharge.rentalDays} rental day{currentCharge.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Rental charge</small><strong>{money(currentCharge.rentalCharge)}</strong></span><span><small>Extra KM</small><strong>{currentCharge.extraKilometers} km · {money(currentCharge.extraKmCharge)}</strong></span></div>}</section>}
+      {currentSegment && <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Finish current vehicle</h3><p>{currentSegment.vehicle} · {currentSegment.plate}{currentSegment.isGuest ? " · Guest Car" : ""}</p></div></div><div className="field-grid four"><label className="field"><span>Change date</span><input required type="date" min={dateInputValue(new Date(currentSegment.startAt))} value={changeDate} onChange={(event) => setChangeDate(event.target.value)} /></label><label className="field"><span>Change time</span><input required type="time" value={changeTime} onChange={(event) => setChangeTime(event.target.value)} /></label><label className="field"><span>Ending KM</span><input required type="number" min={currentSegment.startingKilometer} value={blankZero(endingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setEndingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Return fuel range (KM)</span><input required type="number" min="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /><small>Defaults to starting range: {currentSegment.startingFuelRangeKm} km</small></label></div>{currentCharge && <div className="segment-charge-preview change-segment-preview-v43"><span><small>Usage period</small><strong>{currentCharge.rentalDays} rental day{currentCharge.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Allowed KM</small><strong>{currentAllowedKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Rental charge</small><strong>{money(currentCharge.rentalCharge)}</strong></span><span><small>Extra KM</small><strong>{currentCharge.extraKilometers} km · {money(currentCharge.extraKmCharge)}</strong></span><span><small>Fuel shortage</small><strong>{currentFuelShortageKm} km · {money(currentFuelCharge)}</strong></span><span className="segment-total-preview"><small>Current segment total</small><strong>{money(currentSegmentTotal)}</strong></span></div>}</section>}
       <section className="form-section"><div className="form-section-title"><span><RotateCcw size={17} /></span><div><h3>Select next vehicle</h3><p>Our available vehicles are listed first, then Guest Cars. A vehicle with a later booking can be used now and changed again before that booking; future bookings stay protected.</p></div></div><label className="field"><span>Next vehicle</span><select required value={nextVehicleId} onChange={(event) => setNextVehicleId(event.target.value)}><option value="">Select vehicle</option>{ownChoices.length > 0 && <optgroup label="Our available vehicles">{ownChoices.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} — {vehicle.plate}</option>)}</optgroup>}{guestChoices.length > 0 && <optgroup label="Guest Cars">{guestChoices.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} — {vehicle.plate} · Guest Car</option>)}</optgroup>}</select>{!choices.length && <small className="red-text">No alternative vehicle is available at this change time.</small>}</label>{nextVehicle && <div className="field-grid three"><label className="field"><span>Starting KM — {nextVehicle.name}</span><input required type="number" min="0" value={blankZero(nextStartingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setNextStartingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Starting fuel range (KM)</span><input required type="number" min="0" value={blankZero(nextStartingFuelRangeKm)} onKeyDown={numericKeyOnly} onChange={(event) => setNextStartingFuelRangeKm(numberFromInput(event.target.value))} /></label><label className="field"><span>Daily rate</span><input readOnly value={money(nextVehicle.rate)} /></label></div>}</section>
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions"><button type="button" onClick={close} disabled={saving}>Cancel</button><button type="submit" className="primary-button" disabled={saving || !currentSegment || !nextVehicle}><RotateCcw size={16} />{saving ? "Changing…" : "Confirm vehicle change"}</button></div>
@@ -2963,6 +3035,10 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
     rentalCharge: singleOriginalSegment ? rentalBaseAmount : (liveCurrentSegmentCharge?.rentalCharge ?? segment.rentalCharge),
     extraKilometers: liveCurrentSegmentCharge?.extraKilometers ?? 0,
     extraKmCharge: calculation.extraKmCharge,
+    returnFuelRangeKm,
+    fuelRangeShortageKm: calculation.fuelRangeShortageKm,
+    fuelPricePerLitre,
+    fuelCharge: calculation.fuelCharge,
   } : segment);
 
   async function confirmSettlement(event: React.FormEvent<HTMLFormElement>) {
@@ -2991,7 +3067,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
 
   if (confirmed) {
     return <DialogShell title="Settlement confirmed" subtitle={`${rental.id} · final customer bill`} close={close} wide>
-      <div className="settlement-success"><span><CheckCircle2 size={25} /></span><h3>Return settlement saved</h3><p>{rental.id} is completed and the final vehicle is {confirmed.vehicleStatus === "available" ? "available for future use" : "marked for maintenance"}.</p>{confirmed.segments && confirmed.segments.length > 1 && <div className="settlement-segment-summary">{confirmed.segments.map((segment) => <article key={`${segment.sequence}-${segment.vehicleId}`}><div><strong>{segment.vehicleName}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.registrationNumber}</small></div><span>{segment.bookingStart} → {segment.bookingEnd}</span><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"} · {money(segment.rentalCharge + segment.extraKmCharge)}</b></article>)}</div>}<div><small>Final amount</small><strong>{money(confirmed.calculation.finalAmount)}</strong></div><button type="button" className="whatsapp-button" onClick={sendConfirmedWhatsApp}><MessageCircle size={17} />Send Details via WhatsApp</button><small>WhatsApp opens with the existing settlement message plus vehicle-wise usage. Review it and press Send yourself.</small><button type="button" className="save-draft" onClick={close}>Close</button></div>
+      <div className="settlement-success"><span><CheckCircle2 size={25} /></span><h3>Return settlement saved</h3><p>{rental.id} is completed and the final vehicle is {confirmed.vehicleStatus === "available" ? "available for future use" : "marked for maintenance"}.</p>{confirmed.segments && confirmed.segments.length > 1 && <div className="settlement-segment-summary">{confirmed.segments.map((segment) => <article key={`${segment.sequence}-${segment.vehicleId}`}><div><strong>{segment.vehicleName}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.registrationNumber}</small></div><span>{segment.bookingStart} → {segment.bookingEnd}</span><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"} · {money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b>{segment.fuelCharge > 0 && <small className="segment-fuel-note">Fuel {segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</small>}</article>)}</div>}<div><small>Final amount</small><strong>{money(confirmed.calculation.finalAmount)}</strong></div><button type="button" className="whatsapp-button" onClick={sendConfirmedWhatsApp}><MessageCircle size={17} />Send Details via WhatsApp</button><small>WhatsApp opens with the existing settlement message plus vehicle-wise usage. Review it and press Send yourself.</small><button type="button" className="save-draft" onClick={close}>Close</button></div>
     </DialogShell>;
   }
 
@@ -3004,10 +3080,10 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
           <div className="field-grid three"><label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(currentSegment?.startAt ?? rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label><label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label><label className="field"><span>Actual Return Kilometer</span><input required min={rental.startingKilometer} type="number" placeholder="0" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Starting Kilometer</span><input readOnly value={`${rental.startingKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${calculation.expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Total Allowed Kilometers</span><input readOnly value={`${calculation.allowedKilometers.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Starting Fuel Range (KM)</span><input readOnly value={rental.startingFuelRangeKm} /></label><label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label><label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" placeholder="0" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label><label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label></div>
           {returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the current vehicle segment started.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {legacyRentalCharge.chargeableRentalDays} chargeable day{legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(legacyRentalCharge.baseRentalAmount)}. A 3-hour cooling period applies at each daily rent boundary. The original booking stays unchanged.</span></div>}{withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}
         </section>
-        {(rental.segments.length > 1 || rental.replacementUsed) && <section className="form-section"><div className="form-section-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle-wise settlement</h3><p>Every vehicle period stays inside this one rental.</p></div></div><div className="settlement-segment-preview">{previewSegments.map((segment) => <article key={segment.id}><div><strong>Vehicle {segment.sequence} — {segment.vehicle}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.plate}</small></div><span><small>Used from</small><b>{segment.start}</b></span><span><small>Used to</small><b>{segment.end}</b></span><span><small>Rental period</small><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</b></span><span><small>Rental charge</small><b>{money(segment.rentalCharge)}</b></span>{segment.extraKmCharge > 0 && <span><small>Extra KM charge</small><b>{money(segment.extraKmCharge)}</b></span>}</article>)}</div></section>}
+        {(rental.segments.length > 1 || rental.replacementUsed) && <section className="form-section"><div className="form-section-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle-wise settlement</h3><p>Every vehicle period stays inside this one rental.</p></div></div><div className="settlement-segment-preview">{previewSegments.map((segment) => <article key={segment.id}><div><strong>Vehicle {segment.sequence} — {segment.vehicle}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.plate}</small></div><span><small>Used from</small><b>{segment.start}</b></span><span><small>Used to</small><b>{segment.end}</b></span><span><small>Rental period</small><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</b></span><span><small>Rental charge</small><b>{money(segment.rentalCharge)}</b></span>{segment.extraKmCharge > 0 && <span><small>Extra KM charge</small><b>{money(segment.extraKmCharge)}</b></span>}{segment.fuelCharge > 0 && <span className="segment-fuel-breakdown"><small>Fuel shortage</small><b>{segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</b></span>}<span className="segment-total-breakdown"><small>Vehicle total</small><b>{money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b></span></article>)}</div></section>}
         <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM and fuel shortage use the current vehicle&apos;s existing rules. Existing charges are preserved.</p></div></div><div className="charge-grid"><label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label><label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label><label><span>Late return charge ({lateRental.extraRentalDays} extra day{lateRental.extraRentalDays === 1 ? "" : "s"})</span><input readOnly value={lateRental.charge} /></label><label><span>Cleaning</span><input min="0" type="number" placeholder="0" value={blankZero(cleaning)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setCleaning(numberFromInput(event.target.value))} /></label><label><span>Damage</span><input min="0" type="number" placeholder="0" value={blankZero(damage)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDamage(numberFromInput(event.target.value))} /></label></div><p className="calculation-note">Rent rule: each 24-hour rental-day boundary gets a 3-hour cooling period. Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
       </div>
-      <aside className="final-bill"><h3>Final bill</h3><div><span>{singleOriginalSegment ? `Rental amount (${legacyRentalCharge.chargeableRentalDays} day${legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"})` : `Combined vehicle rental (${previewSegments.reduce((sum, segment) => sum + segment.rentalDays, 0)} segment-days)`}</span><strong>{money(rentalBaseAmount)}</strong></div>{settlementExistingOtherCharges > 0 && <div><span>Existing / previous-segment charges</span><strong>{money(settlementExistingOtherCharges)}</strong></div>}<div><span>Current vehicle extra kilometer</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div>{lateRental.charge > 0 && <div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div>}<div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong><small>Rounded to nearest whole rupee</small></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div>{!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>}{rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
+      <aside className="final-bill"><h3>Final bill</h3><div><span>{singleOriginalSegment ? `Rental amount (${legacyRentalCharge.chargeableRentalDays} day${legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"})` : `Combined vehicle rental (${previewSegments.reduce((sum, segment) => sum + segment.rentalDays, 0)} segment-days)`}</span><strong>{money(rentalBaseAmount)}</strong></div>{settlementExistingOtherCharges > 0 && <div><span>Previous-segment extra KM / fuel & other charges</span><strong>{money(settlementExistingOtherCharges)}</strong></div>}<div><span>Current vehicle extra kilometer</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div>{lateRental.charge > 0 && <div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div>}<div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong><small>Rounded to nearest whole rupee</small></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div>{!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>}{rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
     </form>
   </DialogShell>;
 }

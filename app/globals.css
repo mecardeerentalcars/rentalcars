@@ -4298,3 +4298,276 @@ body { font-size: 15px; line-height: 1.45; }
     font-size: 4.8px !important;
   }
 }
+
+/* MECARDEE_SOFT_BOOKING_CONFLICTS_CSS_V8_9_42
+   Soft booking conflicts:
+   - Bookings may overlap as a planning warning.
+   - Actual rental handover remains protected.
+   - Collision dates are highlighted as CHANGE REQUIRED.
+*/
+
+.soft-schedule-conflict {
+  border-color: #f3c56a !important;
+  background: linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%) !important;
+}
+
+.soft-schedule-conflict .replacement-conflict-head > svg {
+  color: #d97706 !important;
+}
+
+.soft-schedule-conflict .replacement-conflict-head strong {
+  color: #92400e !important;
+}
+
+.schedule-change-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid #f0b968;
+  border-radius: 13px;
+  background: #fff8e9;
+  color: #7c4308;
+}
+
+.schedule-change-warning > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #d97706;
+}
+
+.schedule-change-warning strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #8a4600;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.schedule-change-warning p {
+  margin: 0;
+  color: #7a5427;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+/* Main Bookings calendar */
+.booking-legend-change i {
+  background: #dc2626 !important;
+  border: 1px solid #dc2626 !important;
+}
+
+.booking-calendar-day button.calendar-change-required {
+  position: relative;
+  padding-right: 42px;
+  border: 1px solid #fb7185 !important;
+  background: linear-gradient(135deg, #fff1f2 0%, #ffedd5 100%) !important;
+  box-shadow: inset 3px 0 0 #dc2626 !important;
+}
+
+.booking-calendar-day button.calendar-change-required span {
+  color: #991b1b !important;
+  font-weight: 900 !important;
+}
+
+.booking-calendar-day button.calendar-change-required small {
+  color: #7f1d1d !important;
+}
+
+.calendar-change-required-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 5.5px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+/* Dashboard quick calendar */
+.dashboard-calendar-legend i.change-required {
+  background: #dc2626 !important;
+}
+
+.dashboard-calendar-entry.change-required {
+  border: 1px solid #fb7185 !important;
+  background: linear-gradient(135deg, #fff1f2, #ffedd5) !important;
+  color: #991b1b !important;
+  box-shadow: inset 3px 0 0 #dc2626 !important;
+}
+
+.dashboard-calendar-entry.change-required b {
+  color: #991b1b !important;
+}
+
+.dashboard-calendar-entry.change-required small {
+  color: #7f1d1d !important;
+}
+
+.dashboard-calendar-entry.change-required em {
+  background: #dc2626 !important;
+  color: #fff !important;
+}
+
+@media (max-width: 700px) {
+  .booking-calendar-legend {
+    flex-wrap: wrap !important;
+  }
+
+  .booking-calendar-day button.calendar-change-required {
+    padding-right: 3px !important;
+    box-shadow: inset 2px 0 0 #dc2626 !important;
+  }
+
+  .calendar-change-required-tag {
+    position: static !important;
+    display: block !important;
+    width: fit-content !important;
+    margin-top: 2px !important;
+    padding: 1px 3px !important;
+    font-size: 4.8px !important;
+  }
+
+  .schedule-change-warning {
+    padding: 11px 12px;
+  }
+
+  .schedule-change-warning strong {
+    font-size: 11px;
+  }
+
+  .schedule-change-warning p {
+    font-size: 9px;
+  }
+
+  .dashboard-calendar-entry.change-required {
+    box-shadow: inset 2px 0 0 #dc2626 !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .calendar-change-required-tag {
+    font-size: 4.5px !important;
+  }
+}
+
+
+/* MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_CSS_V8_9_43
+   Change Vehicle: allowed KM + return fuel + segment amount preview. */
+
+.change-segment-preview-v43 {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+}
+
+.change-segment-preview-v43 .segment-total-preview {
+  border: 1px solid #d9d5ff;
+  background: #f4f1ff;
+}
+
+.change-segment-preview-v43 .segment-total-preview small {
+  color: #6559c7;
+  font-weight: 800;
+}
+
+.change-segment-preview-v43 .segment-total-preview strong {
+  color: #4f46a5;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.change-vehicle-form .field small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.3;
+}
+
+@media (max-width: 900px) {
+  .change-segment-preview-v43 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .change-segment-preview-v43 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .change-segment-preview-v43 > span {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 390px) {
+  .change-segment-preview-v43 {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .change-segment-preview-v43 small {
+    font-size: 7px !important;
+  }
+
+  .change-segment-preview-v43 strong {
+    font-size: 8px !important;
+  }
+}
+
+
+/* MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_CSS_V8_9_45
+   Final settlement: show fuel charge under the exact vehicle segment. */
+
+.settlement-segment-preview .segment-fuel-breakdown {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.settlement-segment-preview .segment-fuel-breakdown small {
+  color: #9a5a14;
+}
+
+.settlement-segment-preview .segment-fuel-breakdown b {
+  color: #9a4d0c;
+}
+
+.settlement-segment-preview .segment-total-breakdown {
+  border-color: #d8d3ff;
+  background: #f5f3ff;
+}
+
+.settlement-segment-preview .segment-total-breakdown small {
+  color: #6559c7;
+  font-weight: 800;
+}
+
+.settlement-segment-preview .segment-total-breakdown b {
+  color: #4f46a5;
+  font-weight: 900;
+}
+
+.settlement-segment-summary .segment-fuel-note {
+  display: block;
+  margin-top: 3px;
+  color: #9a5a14;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+@media (max-width: 700px) {
+  .settlement-segment-preview .segment-fuel-breakdown,
+  .settlement-segment-preview .segment-total-breakdown {
+    min-width: 0;
+  }
+
+  .settlement-segment-summary .segment-fuel-note {
+    font-size: 7px;
+  }
+}
+

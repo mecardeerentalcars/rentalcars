@@ -1,3 +1,4 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import { asc, desc, eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import {
@@ -242,6 +243,10 @@ export async function GET() {
               startingKilometer: item.segment.startingKilometer,
               endingKilometer: item.segment.endingKilometer,
               startingFuelRangeKm: item.segment.startingFuelRangeKm,
+              returnFuelRangeKm: item.segment.returnFuelRangeKm,
+              fuelRangeShortageKm: item.segment.fuelRangeShortageKm,
+              fuelPricePerLitre: item.segment.fuelPricePerLitre,
+              fuelCharge: item.segment.fuelCharge,
               dailyRate: item.segment.dailyRate,
               rentalDays: projected?.rentalDays ?? item.segment.rentalDays,
               rentalCharge: projected?.rentalCharge ?? item.segment.rentalCharge,

@@ -1,3 +1,5 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
+// MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_V8_9_43
 import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, rentalSegments, vehicles } from "@/db/schema";
@@ -7,6 +9,8 @@ class RequestError extends Error { constructor(message: string, readonly status 
 const text = (value: unknown, field: string) => { if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`); return value.trim(); };
 const dateTime = (value: unknown, field: string) => { const d = new Date(text(value, field)); if (Number.isNaN(d.getTime())) throw new RequestError(`${field} is invalid.`); return d; };
 const whole = (value: unknown, field: string) => { const n = Number(value); if (!Number.isInteger(n) || n < 0) throw new RequestError(`${field} must be a whole number of zero or greater.`); return n; };
+const amount = (value: unknown, field: string) => { const n = Number(value); if (!Number.isFinite(n) || n < 0) throw new RequestError(`${field} must be zero or greater.`); return Math.round(n * 100) / 100; };
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
 export async function POST(request: Request) {
   try {
@@ -14,6 +18,8 @@ export async function POST(request: Request) {
     const bookingNumber = text(body.bookingNumber, "Booking number");
     const changeAt = dateTime(body.changeAt, "Change date/time");
     const endingKilometer = whole(body.endingKilometer, "Ending kilometer");
+    const returnFuelRangeKm = whole(body.returnFuelRangeKm ?? 0, "Return fuel range");
+    const fuelPricePerLitre = amount(body.fuelPricePerLitre ?? 105, "Fuel price per litre");
     const nextVehicleId = text(body.nextVehicleId, "Replacement vehicle");
     const nextStartingKilometer = whole(body.nextStartingKilometer, "New vehicle starting kilometer");
     const nextStartingFuelRangeKm = whole(body.nextStartingFuelRangeKm ?? 0, "New vehicle starting fuel range");
@@ -73,6 +79,16 @@ export async function POST(request: Request) {
         extraKmRate: current.segment.extraKmRate,
       });
 
+      const fuelRangeShortageKm = Math.max(0, current.segment.startingFuelRangeKm - returnFuelRangeKm);
+      if (fuelRangeShortageKm > 0 && current.vehicle.mileageKmPerLitre <= 0) {
+        throw new RequestError("Vehicle mileage must be configured before calculating fuel shortage.", 409);
+      }
+      const requiredFuelLitres = fuelRangeShortageKm > 0
+        ? fuelRangeShortageKm / current.vehicle.mileageKmPerLitre
+        : 0;
+      const fuelCharge = roundMoney(requiredFuelLitres * fuelPricePerLitre);
+      const segmentTotal = roundMoney(charge.rentalCharge + charge.extraKmCharge + fuelCharge);
+
       await tx.update(rentalSegments).set({
         endAt: changeAt,
         endingKilometer,
@@ -85,6 +101,16 @@ export async function POST(request: Request) {
       }).where(eq(rentalSegments.id, current.segment.id));
 
       await tx.update(vehicles).set({ status: "available", odometerKm: endingKilometer, updatedAt: new Date() }).where(eq(vehicles.id, current.vehicle.id));
+
+      // Fuel shortage collected while closing this segment is carried into the
+      // existing booking-level other charges, so final settlement includes it
+      // without requiring a database schema change.
+      if (fuelCharge > 0) {
+        await tx.update(bookings).set({
+          otherCharges: roundMoney(booking.otherCharges + fuelCharge),
+          updatedAt: new Date(),
+        }).where(eq(bookings.id, booking.id));
+      }
 
       await tx.insert(rentalSegments).values({
         bookingId: booking.id,
@@ -107,6 +133,10 @@ export async function POST(request: Request) {
         bookingNumber,
         finishedVehicle: current.vehicle.name,
         finishedCharge: charge.rentalCharge,
+        finishedAllowedKilometers: charge.rentalDays * current.segment.allowedKmPerDay,
+        finishedFuelShortageKm: fuelRangeShortageKm,
+        finishedFuelCharge: fuelCharge,
+        finishedTotal: segmentTotal,
         nextVehicle: nextVehicle.name,
         nextVehicleGuest: nextVehicle.isGuest,
       };

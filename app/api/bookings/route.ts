@@ -1,3 +1,4 @@
+// MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
 import { and, eq, gt, lt } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, rentalSegments, vehicles } from "@/db/schema";
@@ -75,7 +76,10 @@ export async function POST(request: Request) {
           eq(rentalSegments.status, "active"),
           lt(rentalSegments.startAt, endAt),
         )).limit(1);
-      if (bookingConflict || rentalConflict) throw new RequestError("Vehicle is already booked or on rent for the selected period.", 409);
+      const scheduleConflict = Boolean(bookingConflict || rentalConflict);
+      if (assignedVehicle.id !== requestedVehicle.id && scheduleConflict) {
+        throw new RequestError("Selected replacement vehicle is already booked or on rent for the selected period.", 409);
+      }
 
       const [customer] = await tx.select().from(customers).where(eq(customers.phone, customerPhone)).limit(1);
       if (!customer) throw new RequestError("Customer was not found.", 404);
@@ -108,6 +112,7 @@ export async function POST(request: Request) {
         requestedVehicleId: requestedVehicle.id,
         vehicleId: assignedVehicle.id,
         replacementBooked: requestedVehicle.id !== assignedVehicle.id,
+        scheduleConflict,
       };
     }));
 

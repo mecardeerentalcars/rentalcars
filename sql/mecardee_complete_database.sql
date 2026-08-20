@@ -1,3 +1,4 @@
+-- MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 -- Mecardee Rental Manager - complete PostgreSQL schema + safe live upgrade
 -- Idempotent: safe to run repeatedly. Existing rows are preserved.
 BEGIN;
@@ -76,6 +77,10 @@ CREATE TABLE IF NOT EXISTS rental_segments (
   starting_kilometer integer NOT NULL,
   ending_kilometer integer,
   starting_fuel_range_km integer NOT NULL DEFAULT 0,
+  return_fuel_range_km integer,
+  fuel_range_shortage_km integer NOT NULL DEFAULT 0,
+  fuel_price_per_litre numeric(12,2) NOT NULL DEFAULT 105,
+  fuel_charge numeric(12,2) NOT NULL DEFAULT 0,
   daily_rate numeric(12,2) NOT NULL,
   rental_days integer NOT NULL DEFAULT 1,
   rental_charge numeric(12,2) NOT NULL DEFAULT 0,
@@ -89,6 +94,10 @@ CREATE TABLE IF NOT EXISTS rental_segments (
 );
 
 ALTER TABLE rental_segments ADD COLUMN IF NOT EXISTS starting_fuel_range_km integer NOT NULL DEFAULT 0;
+ALTER TABLE rental_segments ADD COLUMN IF NOT EXISTS return_fuel_range_km integer;
+ALTER TABLE rental_segments ADD COLUMN IF NOT EXISTS fuel_range_shortage_km integer NOT NULL DEFAULT 0;
+ALTER TABLE rental_segments ADD COLUMN IF NOT EXISTS fuel_price_per_litre numeric(12,2) NOT NULL DEFAULT 105;
+ALTER TABLE rental_segments ADD COLUMN IF NOT EXISTS fuel_charge numeric(12,2) NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS return_settlements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -1,3 +1,4 @@
+// MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
 import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
@@ -77,7 +78,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
             ne(rentalSegments.bookingId, id),
             lt(rentalSegments.startAt, endAt),
           )).limit(1);
-        if (bookingConflict || rentalConflict) throw new RequestError("Vehicle is already booked or on rent for the selected period.", 409);
+        const scheduleConflict = Boolean(bookingConflict || rentalConflict);
 
         await tx.update(bookings).set({
           vehicleId: targetVehicle.id,
@@ -93,6 +94,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           bookingNumber: record.booking.bookingNumber,
           vehicleId: targetVehicle.id,
           requestedVehicleId: record.booking.requestedVehicleId,
+          scheduleConflict,
         };
       }
 
@@ -122,11 +124,15 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         if (activeConflict) throw new RequestError("Replacement vehicle is currently assigned to another rental.", 409);
         assignedVehicle = replacement;
       } else {
-        const [futureBookingConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
+        // Soft scheduling conflicts are allowed at booking time. Handover is a hard
+        // availability check only at the pickup instant. A later booking stays
+        // protected and staff can Change Vehicle before that future collision.
+        const pickupEnd = new Date(record.booking.startAt.getTime() + 1);
+        const [bookedPickupConflict] = await tx.select({ id: bookings.id }).from(bookings).where(and(
           eq(bookings.vehicleId, record.vehicle.id),
           ne(bookings.id, record.booking.id),
           eq(bookings.status, "booked"),
-          lt(bookings.startAt, record.booking.endAt),
+          lt(bookings.startAt, pickupEnd),
           gt(bookings.endAt, record.booking.startAt),
         )).limit(1);
         const [activeConflict] = await tx.select({ id: rentalSegments.id }).from(rentalSegments)
@@ -135,11 +141,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
             eq(rentalSegments.vehicleId, record.vehicle.id),
             eq(rentalSegments.status, "active"),
             ne(rentalSegments.bookingId, record.booking.id),
-            lt(rentalSegments.startAt, record.booking.endAt),
+            lt(rentalSegments.startAt, pickupEnd),
           ))
           .limit(1);
-        if (record.vehicle.status !== "available" || futureBookingConflict || activeConflict) {
-          throw new RequestError("Booked vehicle is unavailable for this booking period. Select an available replacement vehicle or Guest Car to start this booking.", 409);
+        if (["inactive", "maintenance", "rented"].includes(record.vehicle.status) || bookedPickupConflict || activeConflict) {
+          throw new RequestError("Booked vehicle is not physically available at pickup. Select an available replacement vehicle or Guest Car to start this booking.", 409);
         }
       }
 

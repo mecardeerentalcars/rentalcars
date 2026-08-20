@@ -1,3 +1,4 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 export type SettlementCalculationInput = {
   baseRentalAmount: number;
   existingOtherCharges?: number;
@@ -204,6 +205,8 @@ type WhatsAppSettlement = {
     rentalDays: number;
     rentalCharge: number;
     extraKmCharge?: number;
+    fuelRangeShortageKm?: number;
+    fuelCharge?: number;
   }[];
 };
 
@@ -248,6 +251,11 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
       lines.push(`Rental days: ${segment.rentalDays}`);
       lines.push(`Rental charge: ${formatMoney(segment.rentalCharge)}`);
       if ((segment.extraKmCharge ?? 0) > 0) lines.push(`Segment extra KM charge: ${formatMoney(segment.extraKmCharge ?? 0)}`);
+      if ((segment.fuelCharge ?? 0) > 0) {
+        lines.push(`Segment fuel shortage: ${segment.fuelRangeShortageKm ?? 0} km`);
+        lines.push(`Segment fuel charge: ${formatMoney(segment.fuelCharge ?? 0)}`);
+      }
+      lines.push(`Segment total: ${formatMoney(segment.rentalCharge + (segment.extraKmCharge ?? 0) + (segment.fuelCharge ?? 0))}`);
       lines.push("");
     }
   }

@@ -1,3 +1,4 @@
+// MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import {
   boolean,
   date,
@@ -255,6 +256,10 @@ export const rentalSegments = pgTable(
     startingKilometer: integer("starting_kilometer").notNull(),
     endingKilometer: integer("ending_kilometer"),
     startingFuelRangeKm: integer("starting_fuel_range_km").notNull().default(0),
+    returnFuelRangeKm: integer("return_fuel_range_km"),
+    fuelRangeShortageKm: integer("fuel_range_shortage_km").notNull().default(0),
+    fuelPricePerLitre: money("fuel_price_per_litre").notNull().default(105),
+    fuelCharge: money("fuel_charge").notNull().default(0),
     dailyRate: money("daily_rate").notNull(),
     rentalDays: integer("rental_days").notNull().default(1),
     rentalCharge: money("rental_charge").notNull().default(0),
