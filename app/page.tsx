@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
+
 // MECARDEE_SETTINGS_SOFT_BOOKING_OVERLAP_V8_9_48
 
 // MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_V8_9_43
@@ -1026,6 +1028,8 @@ function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminde
   const settledPendingAmount = rentals
     .filter((rental) => rental.state === "completed" && Number(rental.balance) > 0)
     .reduce((sum, rental) => sum + Number(rental.balance), 0);
+  const activeBusinessRentals = rentals.filter((rental) => rental.state !== "completed" && Number(rental.businessFinancialTotal) > 0);
+  const currentRentalAmount = activeBusinessRentals.reduce((sum, rental) => sum + Number(rental.businessFinancialTotal), 0);
   const upcomingBookings = reservations
     .filter((booking) => new Date(booking.endAt).getTime() >= bookingBriefNow)
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
@@ -1047,7 +1051,7 @@ function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminde
     { label: "On rent", shortLabel: "Rent", value: String(metrics.onRentCars), note: "With customers", icon: CalendarDays, tone: "blue" },
     { label: "Returning today", shortLabel: "Return", value: String(metrics.returningToday), note: metrics.returningToday ? "Due today" : "Nothing due today", icon: Clock3, tone: "amber" },
     { label: "Overdue", shortLabel: "Late", value: String(metrics.overdue), note: metrics.overdue ? "Follow up now" : "No overdue rentals", icon: AlertTriangle, tone: "red" },
-    { label: "Current rental balance", shortLabel: "Balance", value: money(metrics.outstanding), note: `Across ${metrics.outstandingRentals} rentals`, icon: IndianRupee, tone: "money" },
+    { label: "Current rental amount", shortLabel: "Rental ₹", value: money(currentRentalAmount), note: `${activeBusinessRentals.length} active rental${activeBusinessRentals.length === 1 ? "" : "s"}`, icon: IndianRupee, tone: "money" },
   ];
   return <>
     <div className="dashboard-greeting"><PageHeading eyebrow={dateLabel} title="Good morning, Admin" description="Here’s what needs your attention today." action={<button type="button" className="dashboard-calendar-button" onClick={() => setDashboardCalendarOpen(true)} title="Open booking calendar"><CalendarDays size={15} /><span>Calendar</span></button>} /></div>
@@ -1089,7 +1093,7 @@ function Dashboard({ rentals, reservations, bookings, vehicles, metrics, reminde
       <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} sendBookingWhatsApp={sendBookingWhatsApp} />
       <aside className="dashboard-side">
         <section className="side-card">
-          <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div><button aria-label="Reminder settings" onClick={() => window.alert("Reminders are generated automatically from live rentals, balances, maintenance and document dates.")}><SlidersHorizontal size={15} /></button></div>
+          <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div><button aria-label="Reminder settings" onClick={() => window.alert("Reminders are generated automatically from bookings, returns, overdue rentals, maintenance and document dates.")}><SlidersHorizontal size={15} /></button></div>
           {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
           <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>
         </section>

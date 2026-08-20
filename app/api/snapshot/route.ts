@@ -1,3 +1,4 @@
+// MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import { asc, desc, eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
@@ -674,7 +675,6 @@ export async function GET() {
       // Main dashboard/payment/accounting totals intentionally exclude Guest Car rental amounts.
       // Customer-facing rental.balance remains the real amount due and is still used by settlement/reminders.
       const businessOutstandingRentals = rentals.filter((rental) => rental.businessBalance > 0);
-      const customerOutstandingRentals = rentals.filter((rental) => rental.balance > 0);
       const outstanding = roundMoney(businessOutstandingRentals.reduce((sum, rental) => sum + rental.businessBalance, 0));
       const availableCars = ownVehicleDtos.filter((vehicle) => vehicle.statusKey === "available").length;
       const maintenanceCars = ownVehicleDtos.filter((vehicle) => vehicle.statusKey === "maintenance").length;
@@ -724,21 +724,35 @@ export async function GET() {
         reminders.push({ key: `today:${rental.id}`, tone: "upcoming", type: "today", title: `${rental.vehicle} returns today`, text: rental.returnDate, rentalId: rental.id });
       }
       for (const reservation of reservations) {
-        const daysUntilBooking = calendarDayDistance(today, dateKey(new Date(reservation.startAt)));
-        if (daysUntilBooking === 2) {
-          reminders.push({
-            key: `booking:${reservation.id}`,
-            tone: "upcoming",
-            type: "booking",
-            title: `${reservation.vehicle} booking in 2 days`,
-            text: `${reservation.customer} · pickup ${reservation.start}`,
-            reservationId: reservation.id,
-          });
-        }
+        const pickupAt = new Date(reservation.startAt);
+        const daysUntilBooking = calendarDayDistance(today, dateKey(pickupAt));
+        if (daysUntilBooking < 0 || daysUntilBooking > 2) continue;
+
+        const pickupTime = new Intl.DateTimeFormat("en-IN", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Kolkata",
+        }).format(pickupAt);
+
+        const pickupPassed = pickupAt.getTime() <= current.getTime();
+        const title = daysUntilBooking === 0
+          ? (pickupPassed ? "Booking pickup due — add rental" : `Booking at ${pickupTime} — add rental`)
+          : daysUntilBooking === 1
+            ? `Booking tomorrow at ${pickupTime}`
+            : `Booking in 2 days at ${pickupTime}`;
+
+        reminders.push({
+          key: `booking:${reservation.id}`,
+          tone: daysUntilBooking === 0 && pickupPassed ? "urgent" : "upcoming",
+          type: "booking",
+          title,
+          text: `${reservation.vehicle} · ${reservation.customer} · ${reservation.bookingNumber}`,
+          reservationId: reservation.id,
+        });
       }
-      for (const rental of [...customerOutstandingRentals].sort((a, b) => b.balance - a.balance).slice(0, 2)) {
-        reminders.push({ key: `payment:${rental.id}`, tone: "normal", type: "payment", title: `Payment pending from ${rental.customer}`, text: `${rental.id} · ₹${rental.balance.toLocaleString("en-IN")} due`, rentalId: rental.id });
-      }
+      // Current active rental amounts are operational values, not reminder "dues".
+      // Payment-pending reminders are intentionally omitted from Dashboard reminders.
       for (const document of documentRows) {
         if (!document.expiryDate) continue;
         const vehicle = vehicleRows.find((row) => row.id === document.vehicleId);

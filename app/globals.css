@@ -4752,3 +4752,188 @@ body { font-size: 15px; line-height: 1.45; }
   }
 }
 
+
+/* MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_CSS_V8_9_51
+   Final mobile correction-manager layout + dashboard reminder/KPI cleanup. */
+
+@media (max-width: 720px) {
+  /* Settings > Correction manager becomes true mobile cards. */
+  .transaction-manager {
+    overflow: visible !important;
+  }
+
+  .transaction-manager .transaction-list {
+    display: grid !important;
+    gap: 10px !important;
+    padding: 0 10px 12px !important;
+  }
+
+  .transaction-manager .transaction-row {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: start !important;
+    justify-content: stretch !important;
+    gap: 11px !important;
+    margin: 0 !important;
+    padding: 13px !important;
+    border: 1px solid #e7e6ef !important;
+    border-radius: 14px !important;
+    background: #fff !important;
+  }
+
+  .transaction-manager .transaction-row:last-child {
+    border-bottom: 1px solid #e7e6ef !important;
+  }
+
+  .transaction-manager .transaction-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 10px !important;
+  }
+
+  .transaction-manager .transaction-main > div {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 3px !important;
+  }
+
+  .transaction-manager .transaction-main strong {
+    min-width: 0 !important;
+    font-size: 13px !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  .transaction-manager .transaction-main small {
+    min-width: 0 !important;
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .transaction-manager .transaction-kind {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+  }
+
+  .transaction-manager .transaction-side {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    justify-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .transaction-manager .transaction-side > strong {
+    justify-self: start !important;
+    font-size: 14px !important;
+  }
+
+  .transaction-manager .rental-schedule-status,
+  .transaction-manager .settings-booking-status,
+  .transaction-manager .history-status {
+    justify-self: start !important;
+  }
+
+  .transaction-manager .transaction-actions,
+  .transaction-manager .rental-correction-actions {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .transaction-manager .transaction-actions button,
+  .transaction-manager .rental-correction-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 40px !important;
+    justify-content: center !important;
+    padding: 8px 7px !important;
+    white-space: normal !important;
+    text-align: center !important;
+  }
+
+  .transaction-manager .transaction-actions button.danger,
+  .transaction-manager .rental-correction-actions button.danger {
+    grid-column: 1 / -1 !important;
+  }
+
+  .transaction-manager .transaction-history-row .transaction-side {
+    display: grid !important;
+    align-items: stretch !important;
+  }
+
+  /* Keep the 5 Settings tabs in clean 2-column mobile layout. */
+  .transaction-manager .transaction-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    overflow: visible !important;
+  }
+
+  .transaction-manager .transaction-tabs button {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Last KPI is Current rental amount and must stay legible. */
+  .stats-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(76px, 1.4fr) !important;
+  }
+
+  .stat-card.money .stat-label-mobile {
+    color: #656477 !important;
+    font-size: 7px !important;
+    line-height: 1.08 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .stat-card.money > strong {
+    color: #171722 !important;
+    font-size: 11px !important;
+    font-weight: 900 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .transaction-manager .transaction-row {
+    padding: 11px !important;
+  }
+
+  .transaction-manager .transaction-actions,
+  .transaction-manager .rental-correction-actions {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(70px, 1.35fr) !important;
+  }
+
+  .stat-card.money .stat-label-mobile {
+    font-size: 6.6px !important;
+  }
+
+  .stat-card.money > strong {
+    font-size: 10.5px !important;
+  }
+}
+
