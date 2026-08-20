@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_SETTINGS_SOFT_BOOKING_OVERLAP_V8_9_48
+
 // MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_V8_9_43
 
 // MECARDEE_SOFT_BOOKING_CONFLICTS_V8_9_42
@@ -2037,9 +2039,10 @@ function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { re
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bookingId: rentalEditTarget.databaseId, startAt: startAt.toISOString(), endAt: endAt.toISOString() }),
       });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; rentalDays?: number; baseRentalAmount?: number }>(response);
+      const payload = await readApiResponse<{ ok: boolean; error?: string; rentalDays?: number; baseRentalAmount?: number; scheduleWarning?: string | null }>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not update rental schedule.");
       setRentalEditTarget(null);
+      if (payload.scheduleWarning) window.setTimeout(() => window.alert(`Rental schedule saved.\n\n${payload.scheduleWarning}`), 50);
       onSync();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not update rental schedule.");
@@ -2154,7 +2157,7 @@ function SettingsView({ rentals, vehicles, lastSyncedAt, syncing, onSync }: { re
     {rentalEditTarget && <DialogShell title="Edit rental date & time" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.customer}`} close={() => !busy && setRentalEditTarget(null)}><form className="simple-form" onSubmit={saveRentalSchedule}>
       <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Schedule-only correction</strong><small>Vehicle, customer, payments, kilometres and settlement data cannot be changed here. Completed rentals are locked.</small></span></div>
       <div className="field-grid"><label className="field"><span>Rental start date / time</span><input required type="datetime-local" value={rentalScheduleForm.startAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startAt: event.target.value }))} /></label><label className="field"><span>Expected return date / time</span><input required type="datetime-local" value={rentalScheduleForm.endAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, endAt: event.target.value }))} /></label></div>
-      <div className="rental-edit-note"><CalendarDays size={16} /><span>Rental days and rental amount will recalculate automatically from the new schedule using the same daily rate and existing discount. The change is blocked if it overlaps another booking/rental or would make existing payments exceed the recalculated bill.</span></div>
+      <div className="rental-edit-note"><CalendarDays size={16} /><span>Rental days and rental amount will recalculate automatically from the new schedule using the same daily rate and existing discount. A future booking overlap is allowed and will be marked as Change required in the calendar. Only an actual active-rental collision or an invalid payment total is blocked.</span></div>
       {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy}><Check size={15} />{busy ? "Saving…" : "Save rental schedule"}</button></div>
     </form></DialogShell>}
 

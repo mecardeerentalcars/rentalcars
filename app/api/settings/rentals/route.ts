@@ -1,3 +1,4 @@
+// MECARDEE_SETTINGS_SOFT_BOOKING_OVERLAP_V8_9_48
 // MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
 import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
@@ -137,6 +138,11 @@ export async function PATCH(request: Request) {
         if (!vehicle) throw new RequestError("The currently assigned vehicle no longer exists. Schedule edit was blocked.", 409);
         if (activeSegment && endAt.getTime() <= activeSegment.startAt.getTime()) throw new RequestError("Expected return must be after the current vehicle segment started.", 409);
 
+        // MECARDEE_SETTINGS_SOFT_BOOKING_OVERLAP_V8_9_48
+        // A FUTURE booking overlap is only a planning warning. This mirrors the
+        // normal booking flow: keep the active rental, keep the future booking,
+        // and let the calendar/dashboard mark the collision as CHANGE REQUIRED.
+        // Only a real active-rental collision is blocked below.
         const [bookingOverlap] = await tx.select({ id: bookings.id, number: bookings.bookingNumber }).from(bookings).where(and(
           eq(bookings.vehicleId, actualVehicleId),
           ne(bookings.id, bookingId),
@@ -144,7 +150,6 @@ export async function PATCH(request: Request) {
           lt(bookings.startAt, endAt),
           gt(bookings.endAt, activeSegment?.startAt ?? startAt),
         )).limit(1);
-        if (bookingOverlap) throw new RequestError(`The corrected schedule overlaps ${bookingOverlap.number} for the currently assigned vehicle. Change the dates/times first.`, 409);
 
         const [rentalOverlap] = await tx.select({ id: rentalSegments.id, number: bookings.bookingNumber }).from(rentalSegments)
           .innerJoin(bookings, eq(rentalSegments.bookingId, bookings.id))
@@ -199,9 +204,9 @@ export async function PATCH(request: Request) {
           await tx.update(rentalSegments).set({ startAt, updatedAt: new Date() }).where(eq(rentalSegments.id, activeSegment.id));
         }
 
-        return { bookingId, bookingNumber: booking.bookingNumber, rentalDays, baseRentalAmount, startAt: startAt.toISOString(), endAt: endAt.toISOString() };
+        return { bookingId, bookingNumber: booking.bookingNumber, rentalDays, baseRentalAmount, startAt: startAt.toISOString(), endAt: endAt.toISOString(), scheduleWarning: bookingOverlap ? `Overlaps ${bookingOverlap.number}. Calendar will show Change required.` : null };
       });
-      return Response.json({ ok: true, rental: result, rentalDays: result.rentalDays, baseRentalAmount: result.baseRentalAmount });
+      return Response.json({ ok: true, rental: result, rentalDays: result.rentalDays, baseRentalAmount: result.baseRentalAmount, scheduleWarning: result.scheduleWarning });
     });
   } catch (error) {
     if (error instanceof RequestError) return Response.json({ ok: false, error: error.message }, { status: error.status });
