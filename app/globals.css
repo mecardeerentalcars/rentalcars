@@ -6295,3 +6295,39 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
     max-width: 45%;
   }
 }
+
+
+/* MECARDEE_REMINDER_CUSTOMER_PLACE_STYLE_CSS_V8_9_80 */
+
+.booking-reminder-copy {
+  display: flex !important;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.booking-reminder-vehicle {
+  font-weight: 500;
+}
+
+.booking-reminder-person {
+  color: var(--ink);
+  font-size: 1.08em;
+  font-weight: 750;
+  letter-spacing: .005em;
+}
+
+.notifications-panel .booking-reminder-person {
+  font-size: 1.1em;
+  font-weight: 760;
+}
+
+@media (max-width: 720px) {
+  .booking-reminder-copy {
+    gap: 4px;
+  }
+
+  .booking-reminder-person {
+    font-size: 1.1em;
+  }
+}

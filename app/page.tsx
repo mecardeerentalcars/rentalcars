@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_REMINDER_CUSTOMER_PLACE_STYLE_V8_9_80
+
 // MECARDEE_LOCATION_REMINDERS_GUEST_OWNER_V8_9_79
 
 // MECARDEE_CAPITALIZED_USERNAME_GREETING_V8_9_77
@@ -1263,7 +1265,7 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
     </section>
     <section className="side-card dashboard-reminders-inline">
           <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div></div>
-          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
+          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} type={reminder.type} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
           <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>
         </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span className="stat-label-full">{stat.label}</span><span className="stat-label-mobile">{stat.shortLabel}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
@@ -1502,8 +1504,19 @@ function RentalCard({ rental, open, sendWhatsApp }: { rental: Rental; open: () =
   </article>;
 }
 
-function Reminder({ tone, icon: Icon, title, text, action }: { tone: string; icon: LucideIcon; title: string; text: string; action?: () => void }) {
-  return <button className={`reminder ${tone}`} onClick={action}><span><Icon size={15} /></span><div><strong>{title}</strong><small>{text}</small></div><ChevronRight size={15} /></button>;
+function ReminderCopy({ type, text }: { type: string; text: string }) {
+  if (type !== "booking") return <small>{text}</small>;
+  const parts = text.split(/\s*\u00b7\s*/).filter(Boolean);
+  const vehicle = parts[0] ?? "";
+  const customer = parts[1] ?? "";
+  const place = parts.slice(2).join(" \u00b7 ");
+  return <small className="booking-reminder-copy">
+    <span className="booking-reminder-vehicle">{vehicle}</span>
+    {(customer || place) && <span className="booking-reminder-person">{customer}{customer && place ? " \u00b7 " : ""}{place}</span>}
+  </small>;
+}
+function Reminder({ tone, icon: Icon, type, title, text, action }: { tone: string; icon: LucideIcon; type: string; title: string; text: string; action?: () => void }) {
+  return <button className={`reminder ${tone}`} onClick={action}><span><Icon size={15} /></span><div><strong>{title}</strong><ReminderCopy type={type} text={text} /></div><ChevronRight size={15} /></button>;
 }
 
 
@@ -2760,7 +2773,7 @@ function Notifications({ reminders, history, readKeys, onClose, markRead, openRe
   return <div className="notifications-panel">
     <div className="notification-head"><div><strong>Notifications</strong><span>{newCount ? `${newCount} new` : reminders.length ? "All seen" : "No new"}</span></div><button onClick={onClose}><X size={16} /></button></div>
     <div className="notification-section-label"><span>Active notifications</span><b>{reminders.length}</b></div>
-    {reminders.length ? reminders.map((reminder) => { const Icon = reminderIcon(reminder.type); const isRead = readKeys.includes(reminder.key); return <button className={isRead ? "notification-is-read" : "notification-is-new"} key={reminder.key} onClick={() => openItem(reminder)}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time className={`notification-status ${isRead ? "read" : "new"}`}>{isRead ? "READ" : "NEW"}</time></div></button>; }) : <div className="notification-empty-state">No active notifications right now.</div>}
+    {reminders.length ? reminders.map((reminder) => { const Icon = reminderIcon(reminder.type); const isRead = readKeys.includes(reminder.key); return <button className={isRead ? "notification-is-read" : "notification-is-new"} key={reminder.key} onClick={() => openItem(reminder)}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><ReminderCopy type={reminder.type} text={reminder.text} /><time className={`notification-status ${isRead ? "read" : "new"}`}>{isRead ? "READ" : "NEW"}</time></div></button>; }) : <div className="notification-empty-state">No active notifications right now.</div>}
     <div className="notification-footer" onClick={onClose}>Close notifications</div>
   </div>;
 }

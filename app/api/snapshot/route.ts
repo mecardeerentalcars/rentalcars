@@ -757,7 +757,7 @@ export async function GET() {
           tone: daysUntilBooking === 0 && pickupPassed ? "urgent" : "upcoming",
           type: "booking",
           title,
-          text: [reservation.vehicle, reservation.customer, reservation.city, reservation.bookingNumber].filter(Boolean).join(" · "),
+          text: [reservation.vehicle, reservation.customer, reservation.city].filter(Boolean).join(" · "),
           reservationId: reservation.id,
         });
       }
