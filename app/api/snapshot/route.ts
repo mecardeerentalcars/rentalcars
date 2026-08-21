@@ -414,6 +414,7 @@ export async function GET() {
             customer: customer.name,
             phone: customer.phone,
             whatsappNumber: customer.whatsappNumber ?? customer.phone,
+            city: customer.city ?? "",
             startAt: booking.startAt.toISOString(),
             endAt: booking.endAt.toISOString(),
             start: formatDateTime(booking.startAt, today),
@@ -448,6 +449,7 @@ export async function GET() {
             customer: customer.name,
             phone: customer.phone,
             whatsappNumber: customer.whatsappNumber ?? customer.phone,
+            city: customer.city ?? "",
             startAt: booking.startAt.toISOString(),
             endAt: booking.endAt.toISOString(),
             start: formatDateTime(booking.startAt, today),
@@ -539,6 +541,8 @@ export async function GET() {
           extraKmRate: vehicle.extraKmRate,
           mileageKmPerLitre: vehicle.mileageKmPerLitre,
           isGuest: vehicle.isGuest,
+          guestOwnerName: vehicle.guestOwnerName ?? "",
+          guestOwnerPlace: vehicle.guestOwnerPlace ?? "",
         };
       });
 
@@ -571,6 +575,8 @@ export async function GET() {
             mileageKmPerLitre: vehicle.mileageKmPerLitre,
             status: vehicle.status,
             isGuest,
+            guestOwnerName: vehicle.guestOwnerName,
+            guestOwnerPlace: vehicle.guestOwnerPlace,
             createdAt: vehicle.createdAt.toISOString(),
             updatedAt: vehicle.updatedAt.toISOString(),
           },
@@ -751,7 +757,7 @@ export async function GET() {
           tone: daysUntilBooking === 0 && pickupPassed ? "urgent" : "upcoming",
           type: "booking",
           title,
-          text: `${reservation.vehicle} · ${reservation.customer} · ${reservation.bookingNumber}`,
+          text: [reservation.vehicle, reservation.customer, reservation.city, reservation.bookingNumber].filter(Boolean).join(" · "),
           reservationId: reservation.id,
         });
       }

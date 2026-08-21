@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_LOCATION_REMINDERS_GUEST_OWNER_V8_9_79
+
 // MECARDEE_CAPITALIZED_USERNAME_GREETING_V8_9_77
 
 // MECARDEE_SESSION_USERNAME_GREETING_V8_9_76
@@ -208,6 +210,7 @@ type Reservation = {
   customer: string;
   phone: string;
   whatsappNumber: string;
+  city: string;
   startAt: string;
   endAt: string;
   start: string;
@@ -233,6 +236,7 @@ type BookingRecord = {
   customer: string;
   phone: string;
   whatsappNumber: string;
+  city: string;
   startAt: string;
   endAt: string;
   start: string;
@@ -267,6 +271,8 @@ type Vehicle = {
   extraKmRate: number;
   mileageKmPerLitre: number;
   isGuest: boolean;
+  guestOwnerName: string;
+  guestOwnerPlace: string;
 };
 
 type SettlementSegmentRow = {
@@ -1244,7 +1250,7 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
             <img src={booking.image} alt="" />
             <span className="booking-priority-body">
               <span className="booking-priority-car"><strong>{booking.vehicle}</strong><small>{booking.plate}</small></span>
-              <span className="booking-priority-customer"><UserRound size={13} />{booking.customer}</span>
+              <span className="booking-priority-customer"><UserRound size={13} />{booking.customer}{booking.city ? <em> - {booking.city}</em> : null}</span>
               <span className="booking-priority-time"><b>{bookingMoment(booking)}</b><small>{booking.start} to {booking.returnDate}</small></span>
             </span>
           </button>
@@ -1255,16 +1261,17 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
         <button type="button" onClick={openPendingPayments}><IndianRupee size={15} /><span>Pending payments</span><strong>{money(settledPendingAmount)}</strong><ArrowRight size={15} /></button>
       </div>
     </section>
+    <section className="side-card dashboard-reminders-inline">
+          <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div></div>
+          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
+          <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>
+        </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span className="stat-label-full">{stat.label}</span><span className="stat-label-mobile">{stat.shortLabel}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
     <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
     <div className="dashboard-layout">
       <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} sendBookingWhatsApp={sendBookingWhatsApp} />
       <aside className="dashboard-side">
-        <section className="side-card">
-          <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div><button aria-label="Reminder settings" onClick={() => window.alert("Reminders are generated automatically from bookings, returns, overdue rentals, maintenance and document dates.")}><SlidersHorizontal size={15} /></button></div>
-          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
-          <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>
-        </section>
+        
         <section className="side-card money-snapshot">
           <div className="side-card-title"><div><h3>Today’s money</h3><span>Live snapshot</span></div><span className="round-icon"><WalletCards size={16} /></span></div>
           <div className="money-line"><span>Collected</span><strong>{money(metrics.collectedToday)}</strong></div><div className="money-line"><span>Expenses</span><strong className="negative">− {money(metrics.expensesToday)}</strong></div><div className="net-line"><span>Net today</span><strong>{money(metrics.netToday)}</strong></div>
@@ -1665,7 +1672,7 @@ function GuestCarsView({ vehicles, rentals, addVehicle, openVehicle, openRental 
   const [textFilter, setTextFilter] = useState("");
   const shown = vehicles.filter((vehicle) => {
     const q = textFilter.trim().toLowerCase();
-    return !q || `${vehicle.name} ${vehicle.make} ${vehicle.plate} ${vehicle.fuel} ${vehicle.transmission}`.toLowerCase().includes(q);
+    return !q || `${vehicle.name} ${vehicle.make} ${vehicle.plate} ${vehicle.fuel} ${vehicle.transmission} ${vehicle.guestOwnerName} ${vehicle.guestOwnerPlace}`.toLowerCase().includes(q);
   });
   const available = vehicles.filter((vehicle) => vehicle.statusKey === "available").length;
   const onRent = vehicles.filter((vehicle) => ["rented", "today", "overdue"].includes(vehicle.statusKey)).length;
@@ -1686,7 +1693,7 @@ function GuestCarsView({ vehicles, rentals, addVehicle, openVehicle, openRental 
     <div className="panel-toolbar vehicle-toolbar"><div><strong>Guest Car list</strong></div><button className="filter-button" onClick={() => setTextFilter(window.prompt("Filter Guest Cars by name, make, plate, fuel or transmission", textFilter) ?? textFilter)}><SlidersHorizontal size={15} />Filter</button></div>
     {shown.length ? <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card guest-vehicle-card" key={vehicle.id}>
       <div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} Guest Car`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><span className="guest-car-badge">Guest Car</span></div>
-      <div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div>
+      <div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="guest-owner-meta"><UserRound size={13} /><span><strong>{vehicle.guestOwnerName || "Owner not recorded"}</strong><small>{vehicle.guestOwnerPlace || "Place not recorded"}</small></span></div>
         <div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div>
         <div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div>
         <div className="document-note"><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>Basic Guest Car details only · no maintenance tracking</small></span></div>
@@ -2742,8 +2749,7 @@ function AccountsView({ expenses, metrics, openExpense }: { expenses: ExpenseRow
 }
 
 function Notifications({ reminders, history, readKeys, onClose, markRead, openRental, openReservation }: { reminders: ReminderRow[]; history: NotificationHistoryItem[]; readKeys: string[]; onClose: () => void; markRead: (reminder: ReminderRow) => void; openRental: (rentalId: string) => void; openReservation: (reservationId: string) => void }) {
-  const activeKeys = new Set(reminders.map((reminder) => reminder.key));
-  const historyOnly = history.filter((item) => !activeKeys.has(item.key)).slice(0, 10);
+  void history;
   const newCount = reminders.filter((reminder) => !readKeys.includes(reminder.key)).length;
   const openItem = (reminder: ReminderRow) => {
     markRead(reminder);
@@ -2755,8 +2761,6 @@ function Notifications({ reminders, history, readKeys, onClose, markRead, openRe
     <div className="notification-head"><div><strong>Notifications</strong><span>{newCount ? `${newCount} new` : reminders.length ? "All seen" : "No new"}</span></div><button onClick={onClose}><X size={16} /></button></div>
     <div className="notification-section-label"><span>Active notifications</span><b>{reminders.length}</b></div>
     {reminders.length ? reminders.map((reminder) => { const Icon = reminderIcon(reminder.type); const isRead = readKeys.includes(reminder.key); return <button className={isRead ? "notification-is-read" : "notification-is-new"} key={reminder.key} onClick={() => openItem(reminder)}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><small>{reminder.text}</small><time className={`notification-status ${isRead ? "read" : "new"}`}>{isRead ? "READ" : "NEW"}</time></div></button>; }) : <div className="notification-empty-state">No active notifications right now.</div>}
-    <div className="notification-section-label history"><span>Recent read</span><b>{historyOnly.length}</b></div>
-    {historyOnly.length ? historyOnly.map((item) => { const Icon = reminderIcon(item.type); return <div className="notification-history-row" key={`history-${item.key}`}><span className={`notice-icon ${item.tone === "urgent" ? "urgent" : item.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{item.title}</strong><small>{item.text}</small><time className="notification-status read">READ</time></div></div>; }) : <div className="notification-empty-state compact">Read notifications will stay here, up to the last 10.</div>}
     <div className="notification-footer" onClick={onClose}>Close notifications</div>
   </div>;
 }
@@ -2834,6 +2838,7 @@ function VehicleDialog({ guest = false, close, done }: { guest?: boolean; close:
   const documentTypes = ["Insurance", "Pollution / PUC", "Registration / RC", "Fitness Certificate", "Permit", "Road Tax"];
   const tyrePositions = [["front-left", "Front left"], ["front-right", "Front right"], ["rear-left", "Rear left"], ["rear-right", "Rear right"], ["spare", "Spare"]] as const;
   const [name, setName] = useState(""); const [make, setMake] = useState(""); const [registrationNumber, setRegistrationNumber] = useState("");
+  const [guestOwnerName, setGuestOwnerName] = useState(""); const [guestOwnerPlace, setGuestOwnerPlace] = useState("");
   const [fuelType, setFuelType] = useState("Petrol"); const [transmission, setTransmission] = useState("Manual"); const [modelYear, setModelYear] = useState(new Date().getFullYear());
   const [dailyRate, setDailyRate] = useState(1500); const [odometerKm, setOdometerKm] = useState(0); const [allowedKmPerDay, setAllowedKmPerDay] = useState(100); const [extraKmRate, setExtraKmRate] = useState(12); const [mileageKmPerLitre, setMileageKmPerLitre] = useState(15); const [operationalStatus, setOperationalStatus] = useState("available");
   const [documents, setDocuments] = useState(() => documentTypes.map((documentType) => ({ documentType, documentNumber: "", expiryDate: "", notes: "" })));
@@ -2856,9 +2861,10 @@ function VehicleDialog({ guest = false, close, done }: { guest?: boolean; close:
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim() || !make.trim() || !registrationNumber.trim()) return setError("Vehicle name, make and registration number are required.");
+    if (guest && (!guestOwnerName.trim() || !guestOwnerPlace.trim())) return setError("Car owner name and owner place are required for a Guest Car.");
     setSaving(true); setError(null);
     try {
-      const response = await fetch("/api/vehicles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.trim(), make: make.trim(), registrationNumber: registrationNumber.trim(), fuelType, transmission, modelYear, dailyRate, odometerKm, allowedKmPerDay, extraKmRate, mileageKmPerLitre, status: operationalStatus, isGuest: guest }) });
+      const response = await fetch("/api/vehicles", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.trim(), make: make.trim(), registrationNumber: registrationNumber.trim(), fuelType, transmission, modelYear, dailyRate, odometerKm, allowedKmPerDay, extraKmRate, mileageKmPerLitre, status: operationalStatus, isGuest: guest, guestOwnerName: guest ? guestOwnerName.trim() : undefined, guestOwnerPlace: guest ? guestOwnerPlace.trim() : undefined }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string; vehicle?: { id: string } }>(response);
       if (!response.ok || !payload.ok || !payload.vehicle?.id) throw new Error(payload.error ?? `Could not save ${guest ? "Guest Car" : "vehicle"}.`);
       const vehicleId = payload.vehicle.id;
@@ -2878,7 +2884,7 @@ function VehicleDialog({ guest = false, close, done }: { guest?: boolean; close:
   return <DialogShell title={guest ? "Add Guest Car" : "Add vehicle"} subtitle={guest ? "Basic vehicle details and photo · no maintenance tracking" : "Vehicle, documents, service, tyres and photo"} close={close} wide>
     <form className="simple-form" onSubmit={submit}>
       <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>{guest ? "Guest Car details" : "Vehicle details"}</h3><p>{guest ? "Temporary/external vehicle information." : "Main fleet information."}</p></div></div><div className="field-grid">
-        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Maruti Swift" /></label><label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(e) => setMake(e.target.value)} placeholder="Maruti Suzuki" /></label><label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label><label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(e) => setModelYear(Number(e.target.value))} /></label><label className="field"><span>Fuel type</span><select value={fuelType} onChange={(e) => setFuelType(e.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label><label className="field"><span>Transmission</span><select value={transmission} onChange={(e) => setTransmission(e.target.value)}><option>Manual</option><option>Automatic</option></select></label><label className="field"><span>Operational status</span><select value={operationalStatus} onChange={(e) => setOperationalStatus(e.target.value)}><option value="available">Active</option><option value="inactive">Inactive</option>{!guest && <option value="maintenance">Maintenance</option>}</select><small>{guest ? "Guest Cars can be Active or Inactive. Rental status is automatic." : "Bookings and on-rent status are controlled automatically."}</small></label><label className="field"><span>Daily rental rate (₹)</span><input required min="1" type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} /></label><label className="field"><span>Current odometer (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(odometerKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(e) => setOdometerKm(numberFromInput(e.target.value))} /></label><label className="field"><span>Allowed KM / day</span><input required min="1" type="number" value={allowedKmPerDay} onChange={(e) => setAllowedKmPerDay(Number(e.target.value))} /></label><label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(e) => setExtraKmRate(Number(e.target.value))} /></label><label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(e) => setMileageKmPerLitre(Number(e.target.value))} /></label><label className="field"><span>Vehicle image</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={processingImage} onChange={(e) => void chooseImage(e.target.files?.[0] ?? null)} /><small>{processingImage ? "Compressing image…" : "Automatically resized/compressed for fast mobile upload"}</small></label>{imagePreview && <div className="field"><span>Preview</span><img src={imagePreview} alt="Vehicle preview" style={{ width:"100%",height:120,objectFit:"cover",borderRadius:14,border:"1px solid #e5e7eb" }} /></div>}
+        <label className="field"><span>Vehicle name</span><input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Maruti Swift" /></label><label className="field"><span>Make / manufacturer</span><input required value={make} onChange={(e) => setMake(e.target.value)} placeholder="Maruti Suzuki" /></label><label className="field"><span>Registration number</span><input required value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())} placeholder="KL 35 AB 1234" /></label>{guest && <><label className="field"><span>Car owner name</span><input required value={guestOwnerName} onChange={(e) => setGuestOwnerName(e.target.value)} placeholder="Owner name" /></label><label className="field"><span>Owner place</span><input required value={guestOwnerPlace} onChange={(e) => setGuestOwnerPlace(e.target.value)} placeholder="City / place" /></label></>}<label className="field"><span>Model year</span><input required min="1980" max="2100" type="number" value={modelYear} onChange={(e) => setModelYear(Number(e.target.value))} /></label><label className="field"><span>Fuel type</span><select value={fuelType} onChange={(e) => setFuelType(e.target.value)}><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option><option>CNG</option></select></label><label className="field"><span>Transmission</span><select value={transmission} onChange={(e) => setTransmission(e.target.value)}><option>Manual</option><option>Automatic</option></select></label><label className="field"><span>Operational status</span><select value={operationalStatus} onChange={(e) => setOperationalStatus(e.target.value)}><option value="available">Active</option><option value="inactive">Inactive</option>{!guest && <option value="maintenance">Maintenance</option>}</select><small>{guest ? "Guest Cars can be Active or Inactive. Rental status is automatic." : "Bookings and on-rent status are controlled automatically."}</small></label><label className="field"><span>Daily rental rate (₹)</span><input required min="1" type="number" value={dailyRate} onChange={(e) => setDailyRate(Number(e.target.value))} /></label><label className="field"><span>Current odometer (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(odometerKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(e) => setOdometerKm(numberFromInput(e.target.value))} /></label><label className="field"><span>Allowed KM / day</span><input required min="1" type="number" value={allowedKmPerDay} onChange={(e) => setAllowedKmPerDay(Number(e.target.value))} /></label><label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={extraKmRate} onChange={(e) => setExtraKmRate(Number(e.target.value))} /></label><label className="field"><span>Mileage (KM/L)</span><input required min="0.1" step="0.1" type="number" value={mileageKmPerLitre} onChange={(e) => setMileageKmPerLitre(Number(e.target.value))} /></label><label className="field"><span>Vehicle image</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={processingImage} onChange={(e) => void chooseImage(e.target.files?.[0] ?? null)} /><small>{processingImage ? "Compressing image…" : "Automatically resized/compressed for fast mobile upload"}</small></label>{imagePreview && <div className="field"><span>Preview</span><img src={imagePreview} alt="Vehicle preview" style={{ width:"100%",height:120,objectFit:"cover",borderRadius:14,border:"1px solid #e5e7eb" }} /></div>}
       </div></section>
 
       {!guest && <><details><summary><strong>Documents</strong> — Insurance, pollution, RC, fitness, permit and tax</summary><div className="field-grid" style={{marginTop:12}}>{documents.map((doc,index)=><div key={doc.documentType} className="field" style={{border:"1px solid #e5e7eb",borderRadius:12,padding:10}}><strong>{doc.documentType}</strong><input placeholder="Document number" value={doc.documentNumber} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,documentNumber:e.target.value}:d))}/><input type="date" value={doc.expiryDate} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,expiryDate:e.target.value}:d))}/><input placeholder="Notes" value={doc.notes} onChange={(e)=>setDocuments(x=>x.map((d,i)=>i===index?{...d,notes:e.target.value}:d))}/></div>)}</div></details>

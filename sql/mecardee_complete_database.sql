@@ -21,11 +21,15 @@ CREATE TABLE IF NOT EXISTS vehicles (
   mileage_km_per_litre numeric(6,2) NOT NULL DEFAULT 1,
   status varchar(24) NOT NULL DEFAULT 'available',
   is_guest boolean NOT NULL DEFAULT false,
+  guest_owner_name varchar(160),
+  guest_owner_place varchar(120),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_guest boolean NOT NULL DEFAULT false;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS guest_owner_name varchar(160);
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS guest_owner_place varchar(120);
 
 CREATE TABLE IF NOT EXISTS customers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

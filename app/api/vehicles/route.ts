@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { vehicles } from "@/db/schema";
 
-type VehicleBody = { name?: unknown; make?: unknown; registrationNumber?: unknown; imageUrl?: unknown; fuelType?: unknown; transmission?: unknown; modelYear?: unknown; dailyRate?: unknown; odometerKm?: unknown; allowedKmPerDay?: unknown; extraKmRate?: unknown; mileageKmPerLitre?: unknown; status?: unknown; isGuest?: unknown };
+type VehicleBody = { name?: unknown; make?: unknown; registrationNumber?: unknown; imageUrl?: unknown; fuelType?: unknown; transmission?: unknown; modelYear?: unknown; dailyRate?: unknown; odometerKm?: unknown; allowedKmPerDay?: unknown; extraKmRate?: unknown; mileageKmPerLitre?: unknown; status?: unknown; isGuest?: unknown; guestOwnerName?: unknown; guestOwnerPlace?: unknown };
 class RequestError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
 const text = (value: unknown, field: string) => { if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`); return value.trim(); };
 const optionalText = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null);
@@ -27,6 +27,8 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as VehicleBody;
     const isGuest = body.isGuest === true;
+    const guestOwnerName = isGuest ? text(body.guestOwnerName, "Car owner name") : null;
+    const guestOwnerPlace = isGuest ? text(body.guestOwnerPlace, "Owner place") : null;
     const name = text(body.name, isGuest ? "Guest Car name" : "Vehicle name");
     const make = text(body.make, "Make");
     const registrationNumber = text(body.registrationNumber, "Registration number").toUpperCase();
@@ -66,6 +68,8 @@ export async function POST(request: Request) {
           mileageKmPerLitre,
           status,
           isGuest,
+          guestOwnerName,
+          guestOwnerPlace,
         })
         .returning({ id: vehicles.id, name: vehicles.name, registrationNumber: vehicles.registrationNumber, isGuest: vehicles.isGuest });
 

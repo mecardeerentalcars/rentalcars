@@ -1,3 +1,4 @@
+// MECARDEE_GUEST_OWNER_FIELDS_V8_9_79
 // MECARDEE_USER_ROLES_V8_9_55
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import {
@@ -40,6 +41,8 @@ export const vehicles = pgTable(
       .default(1),
     status: varchar("status", { length: 24 }).notNull().default("available"),
     isGuest: boolean("is_guest").notNull().default(false),
+    guestOwnerName: varchar("guest_owner_name", { length: 160 }),
+    guestOwnerPlace: varchar("guest_owner_place", { length: 120 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

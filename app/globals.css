@@ -6222,3 +6222,76 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
     font-size: 20px;
   }
 }
+
+
+/* MECARDEE_REMINDERS_LOCATION_GUEST_OWNER_CSS_V8_9_79 */
+
+.dashboard-reminders-inline {
+  margin: 14px 0;
+}
+
+.dashboard-reminders-inline .side-card-title {
+  padding-bottom: 7px;
+}
+
+.dashboard-reminders-inline .side-card-title > div {
+  width: 100%;
+}
+
+.booking-priority-customer em {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(232, 234, 246, .72);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guest-owner-meta {
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(225, 224, 234, .88);
+  border-radius: 11px;
+  background: #fafafb;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #56635f;
+}
+
+.guest-owner-meta > span,
+.guest-owner-meta strong,
+.guest-owner-meta small {
+  display: block;
+  min-width: 0;
+}
+
+.guest-owner-meta strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.guest-owner-meta small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+@media (max-width: 720px) {
+  .dashboard-reminders-inline {
+    margin: 10px 0 11px;
+    padding: 15px;
+  }
+
+  .dashboard-reminders-inline .reminder {
+    min-height: 58px;
+  }
+
+  .booking-priority-customer {
+    overflow: hidden;
+  }
+
+  .booking-priority-customer em {
+    max-width: 45%;
+  }
+}

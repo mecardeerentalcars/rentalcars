@@ -117,6 +117,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
           mileageKmPerLitre: vehicle.mileageKmPerLitre,
           status: vehicle.status,
           isGuest: vehicle.isGuest,
+          guestOwnerName: vehicle.guestOwnerName,
+          guestOwnerPlace: vehicle.guestOwnerPlace,
           createdAt: vehicle.createdAt.toISOString(),
           updatedAt: vehicle.updatedAt.toISOString(),
         },
@@ -229,6 +231,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       allowedKmPerDay: updateWhole(body.allowedKmPerDay, "Allowed KM per day", 1),
       extraKmRate: updateNumber(body.extraKmRate, "Extra KM rate"),
       mileageKmPerLitre: updateNumber(body.mileageKmPerLitre, "Mileage", 0.1),
+      guestOwnerName: typeof body.guestOwnerName === "string" ? (body.guestOwnerName.trim() || null) : undefined,
+      guestOwnerPlace: typeof body.guestOwnerPlace === "string" ? (body.guestOwnerPlace.trim() || null) : undefined,
       updatedAt: new Date(),
     };
 
