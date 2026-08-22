@@ -1,3 +1,4 @@
+-- MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 -- MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 -- Mecardee Rental Manager - complete PostgreSQL schema + safe live upgrade
 -- Idempotent: safe to run repeatedly. Existing rows are preserved.
@@ -172,6 +173,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   expense_date date NOT NULL,
   category varchar(80) NOT NULL,
   vehicle_id uuid REFERENCES vehicles(id) ON DELETE SET NULL,
+  booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL,
   amount numeric(12,2) NOT NULL,
   description text,
   method varchar(40) NOT NULL,
@@ -245,6 +247,15 @@ CREATE INDEX IF NOT EXISTS rental_extensions_booking_idx ON rental_extensions(bo
 CREATE UNIQUE INDEX IF NOT EXISTS expenses_expense_number_unique ON expenses(expense_number);
 CREATE INDEX IF NOT EXISTS expenses_expense_date_idx ON expenses(expense_date);
 CREATE INDEX IF NOT EXISTS expenses_vehicle_idx ON expenses(vehicle_id);
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS booking_id uuid;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'expenses_booking_id_fkey') THEN
+    ALTER TABLE expenses ADD CONSTRAINT expenses_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS expenses_booking_idx ON expenses(booking_id);
 CREATE UNIQUE INDEX IF NOT EXISTS vehicle_documents_vehicle_type_unique ON vehicle_documents(vehicle_id, document_type);
 CREATE INDEX IF NOT EXISTS vehicle_documents_expiry_idx ON vehicle_documents(expiry_date);
 CREATE INDEX IF NOT EXISTS maintenance_records_vehicle_idx ON maintenance_records(vehicle_id);

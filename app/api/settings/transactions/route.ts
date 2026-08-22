@@ -1,3 +1,4 @@
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
 import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
@@ -148,6 +149,7 @@ export async function GET() {
         vehicle: vehicle?.name ?? "",
         plate: vehicle?.registrationNumber ?? "",
         vehicleId: expense.vehicleId,
+        bookingId: expense.bookingId,
         amount: expense.amount,
         description: expense.description,
         method: expense.method,
@@ -342,12 +344,18 @@ export async function POST(request: Request) {
             const [vehicle] = await tx.select({ id: vehicles.id }).from(vehicles).where(eq(vehicles.id, vehicleId)).limit(1);
             if (!vehicle) vehicleId = null;
           }
+          let bookingId: string | null = snapshot.bookingId ? String(snapshot.bookingId) : null;
+          if (bookingId) {
+            const [booking] = await tx.select({ id: bookings.id }).from(bookings).where(eq(bookings.id, bookingId)).limit(1);
+            if (!booking) bookingId = null;
+          }
           await tx.insert(expenses).values({
             id: String(snapshot.id),
             expenseNumber: String(snapshot.expenseNumber),
             expenseDate: String(snapshot.expenseDate),
             category: String(snapshot.category),
             vehicleId,
+            bookingId,
             amount: Number(snapshot.amount),
             description: snapshot.description ? String(snapshot.description) : null,
             method: String(snapshot.method),

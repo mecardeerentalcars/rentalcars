@@ -1,3 +1,4 @@
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
 import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, eq, gt, lt, ne } from "drizzle-orm";
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
     const startingKilometer = wholeNumber(body.startingKilometer, "Starting kilometer");
     const startingFuelRangeKm = wholeNumber(body.startingFuelRangeKm, "Starting fuel range");
     const paymentMethod = advancePaid > 0 ? text(body.paymentMethod, "Payment method") : "Not recorded";
-    const receivedBy = typeof body.receivedBy === "string" && body.receivedBy.trim() ? body.receivedBy.trim().slice(0, 120) : "Admin";
+    const receivedBy = __mecardeeAuth.user.username;
     const mode = body.mode === "draft" ? "draft" : "rented";
 
     if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");

@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
+
 // MECARDEE_BOOKING_QUICK_SCHEDULE_HANDOVER_WHATSAPP_V8_9_54
 
 // MECARDEE_REMINDER_CUSTOMER_PLACE_STYLE_V8_9_80
@@ -317,7 +319,7 @@ type PaymentRow = {
 };
 
 type ExpenseRow = {
-  id: string; rawDate: string; date: string; category: string; vehicle: string; vehicleId: string | null; description: string; method: string; amount: number; createdBy: string;
+  id: string; rawDate: string; date: string; category: string; vehicle: string; vehicleId: string | null; bookingId: string | null; description: string; method: string; amount: number; createdBy: string;
 };
 
 type ManagedPaymentTransaction = {
@@ -325,7 +327,7 @@ type ManagedPaymentTransaction = {
 };
 
 type ManagedExpenseTransaction = {
-  id: string; number: string; expenseDate: string; category: string; vehicle: string; plate: string; vehicleId: string | null; amount: number; description: string | null; method: string; createdBy: string; createdAt: string;
+  id: string; number: string; expenseDate: string; category: string; vehicle: string; plate: string; vehicleId: string | null; bookingId: string | null; amount: number; description: string | null; method: string; createdBy: string; createdAt: string;
 };
 
 type DeletedTransactionHistory = {
@@ -361,7 +363,7 @@ const navItems: { label: string; view: View; icon: LucideIcon; badge?: string }[
   { label: "Vehicles", view: "vehicles", icon: CarFront },
   { label: "Guest Cars", view: "guest-cars", icon: RotateCcw },
   { label: "Customers", view: "customers", icon: UsersRound },
-  { label: "Payments", view: "payments", icon: WalletCards },
+  { label: "Expenses & Payments", view: "payments", icon: WalletCards },
   { label: "Accounts", view: "accounts", icon: BarChart3 },
   { label: "Reports", view: "reports", icon: FileText },
   { label: "Settings", view: "settings", icon: Settings2 },
@@ -548,6 +550,7 @@ export default function Home() {
   const [customerList, setCustomerList] = useState<CustomerRow[]>([]);
   const [paymentList, setPaymentList] = useState<PaymentRow[]>([]);
   const [expenseList, setExpenseList] = useState<ExpenseRow[]>([]);
+  const [expenseSeedRentalId, setExpenseSeedRentalId] = useState<string | null>(null);
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [metrics, setMetrics] = useState<Metrics>(emptyMetrics);
   const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
@@ -879,6 +882,11 @@ export default function Home() {
 
   // MECARDEE_IPHONE_WHATSAPP_FIX_V8_9_27
   // MECARDEE_IPHONE_WHATSAPP_NO_POPUP_V8_9_29
+  function openExpense(rentalId?: string | null) {
+    if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
+    setExpenseSeedRentalId(rentalId ?? null);
+    setDialog("expense");
+  }
   function openWhatsAppSafely(phone: string, text: string) {
     const encodedText = encodeURIComponent(text);
     const webUrl = `https://wa.me/${phone}?text=${encodedText}`;
@@ -1109,8 +1117,8 @@ export default function Home() {
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
           {view === "guest-cars" && <GuestCarsView vehicles={guestVehicleList} rentals={rentalList} addVehicle={() => setDialog("guest-vehicle")} openVehicle={openVehicle} openRental={openRental} />}
           {view === "customers" && <CustomersView currentUser={sessionUser!} payments={paymentList} rentals={rentalList} customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
-          {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
-          {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} openExpense={() => setDialog("expense")} />}
+          {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
+          {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
           {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
         </div>
@@ -1130,7 +1138,7 @@ export default function Home() {
       {dialog === "booking-history-detail" && selectedBookingRecord && <BookingHistoryDialog booking={selectedBookingRecord} close={() => { setDialog(null); setSelectedBookingRecord(null); }} sendWhatsApp={() => sendBookingRecordWhatsApp(selectedBookingRecord)} />}
       {dialog === "booking-edit" && selectedBookingRecord && <BookingEditDialog booking={selectedBookingRecord} vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} close={() => { setDialog(null); setSelectedBookingRecord(null); }} done={(message) => { setDialog(null); setSelectedBookingRecord(null); showToast(message); void refreshData(); }} />}
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} customers={customerList} seedVehicleId={rentalSeedVehicleId} close={() => { setRentalSeedVehicleId(null); setDialog(null); }} done={(message) => { setRentalSeedVehicleId(null); setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
-      {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} />}
+      {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} addExpense={() => openExpense(selectedRental.databaseId)} />}
       {dialog === "pending-payments" && <PendingPaymentsDialog rentals={rentalList} close={() => setDialog(null)} receive={(rental) => { setSelectedRental(rental); setDialog("payment"); }} />}
       {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
@@ -1141,7 +1149,7 @@ export default function Home() {
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "guest-vehicle" && <VehicleDialog guest close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded startEditing={vehicleEditOnOpen} initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></DialogShell>}
-      {dialog === "expense" && <ExpenseDialog vehicles={vehicleList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
+      {dialog === "expense" && <ExpenseDialog vehicles={[...vehicleList, ...guestVehicleList]} rentals={rentalList} seedRentalId={expenseSeedRentalId} currentUser={sessionUser} close={() => { setExpenseSeedRentalId(null); setDialog(null); }} done={(message) => { setExpenseSeedRentalId(null); setDialog(null); showToast(message); void refreshData(); }} />}
       {toast && <div className="toast"><CheckCircle2 size={18} /><span>{toast}</span></div>}
     </div>
   );
@@ -1864,17 +1872,16 @@ function CustomerHistoryDialog({ customer, rentals, payments, close, openRentalB
 }
 
 
-function PaymentsView({ rentals, payments, metrics, openPayment, exportPayments, sendWhatsApp }: { rentals: Rental[]; payments: PaymentRow[]; metrics: Metrics; openPayment: () => void; exportPayments: () => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
+function PaymentsView({ rentals, payments, metrics, openPayment, openExpense, exportPayments, sendWhatsApp }: { rentals: Rental[]; payments: PaymentRow[]; metrics: Metrics; openPayment: () => void; openExpense: () => void; exportPayments: () => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
   // Payments is a business accounting view, so Guest Car rental value is excluded here.
   // Customer-facing reminders still use the rental's real full balance.
   const outstanding = [...rentals].filter((rental) => rental.businessBalance > 0).sort((a, b) => b.businessBalance - a.businessBalance);
   return <>
-    <PageHeading eyebrow="COLLECTIONS" title="Payments" description="Every receipt and outstanding balance, clearly tracked." action={<button className="primary-button" onClick={openPayment}><Plus size={17} />Receive payment</button>} />
-    <section className="payment-summary"><article className="featured"><span>Collected this month</span><strong>{money(metrics.collectedMonth)}</strong><small><TrendingUp size={14} /> {metrics.collectionChangePercent >= 0 ? "+" : ""}{metrics.collectionChangePercent}% vs last month</small></article><article><span>Collected today</span><strong>{money(metrics.collectedToday)}</strong><small>{metrics.paymentsToday} payments</small></article><article><span>Outstanding</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">Across {metrics.outstandingRentals} rentals</small></article><article><span>Security deposits held</span><strong>{money(metrics.depositsHeld)}</strong><small>{metrics.activeRentals} active rentals</small></article></section>
+    <PageHeading eyebrow="MONEY" title="Expenses & Payments" description="Record business expenses, customer collections and outstanding balances from one place." action={<div className="payments-page-actions"><button className="secondary-button expense-action-button" onClick={openExpense}><ReceiptIndianRupee size={17} />Add expense</button><button className="primary-button" onClick={openPayment}><Plus size={17} />Receive payment</button></div>} />
+    <section className="payment-summary"><article className="featured"><span>Collected this month</span><strong>{money(metrics.collectedMonth)}</strong><small><TrendingUp size={14} /> {metrics.collectionChangePercent >= 0 ? "+" : ""}{metrics.collectionChangePercent}% vs last month</small></article><article><span>Collected today</span><strong>{money(metrics.collectedToday)}</strong><small>{metrics.paymentsToday} payments</small></article><article><span>Outstanding</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">Across {metrics.outstandingRentals} rentals</small></article><article><span>Expenses this month</span><strong>{money(metrics.expensesMonth)}</strong><small>Business expenses recorded</small></article></section>
     <div className="payments-layout"><section className="data-panel"><div className="panel-heading"><div><h2>Recent payments</h2><p>Latest customer collections</p></div><button onClick={exportPayments}><Download size={15} />Export</button></div><div className="payments-table"><div className="payments-head"><span>Customer</span><span>Rental</span><span>Date</span><span>Method</span><span>Amount</span></div>{payments.map((payment) => <article key={payment.id}><span><i>{payment.customer.split(" ").map((part) => part[0]).join("")}</i><span><strong>{payment.customer}</strong><small>{payment.id}</small></span></span><span><strong>{payment.rental}</strong><small>Received by {payment.receivedBy}</small></span><span>{payment.date}</span><span><b>{payment.method}</b></span><strong className="green-text">+ {money(payment.amount)}</strong></article>)}</div></section><aside className="outstanding-card"><div className="panel-heading"><div><h2>Outstanding</h2><p>Follow up with {metrics.outstandingCustomers} customers</p></div></div>{outstanding.slice(0,3).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.vehicle} · {rental.statusText}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${rental.customer}`}><Send size={14} /></button></article>)}<button className="full-link" onClick={() => window.alert(outstanding.length ? outstanding.map((rental) => `${rental.customer} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n") : "No outstanding balances.")}>View outstanding report <ChevronRight size={15} /></button></aside></div>
   </>;
 }
-
 
 function safeReportText(value: string | number) {
   return String(value).replace(/₹/g, "INR ").replace(/[–—→·]/g, "-").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
@@ -2132,6 +2139,30 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<string[]>([]);
   const [selectedCustomerKeys, setSelectedCustomerKeys] = useState<string[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [paidByFilter, setPaidByFilter] = useState("all");
+  const [reportUsers, setReportUsers] = useState<{ username: string; role: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/auth/users", { cache: "no-store" });
+        const payload = await readApiResponse<{ ok: boolean; users?: { username: string; role: string }[] }>(response);
+        if (!cancelled && response.ok) setReportUsers(payload.users ?? []);
+      } catch {
+        if (!cancelled) setReportUsers([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const paidByChoices = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const user of reportUsers) names.set(user.username.toLowerCase(), user.username);
+    for (const payment of payments) if (payment.receivedBy) names.set(payment.receivedBy.toLowerCase(), payment.receivedBy);
+    for (const expense of expenses) if (expense.createdBy) names.set(expense.createdBy.toLowerCase(), expense.createdBy);
+    return [...names.values()].sort((a, b) => a.localeCompare(b));
+  }, [reportUsers, payments, expenses]);
 
   const customerChoices = useMemo(() => {
     const choices = new Map<string, { key: string; name: string; phone: string }>();
@@ -2176,12 +2207,24 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
     if (reportType === "payments") {
       // snapshot payment rows already exclude the Guest Car financial portion.
-      const filtered = payments.filter((payment) => within(payment.receivedAt));
-      return { title: "Payments report", headers: ["Payment", "Customer", "Rental", "Date", "Method", "Amount", "Received by"], rows: filtered.map((payment) => [payment.id, payment.customer, payment.rental, payment.date, payment.method, payment.amount, payment.receivedBy] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
+      const filtered = payments.filter((payment) => within(payment.receivedAt) && (paidByFilter === "all" || payment.receivedBy.toLowerCase() === paidByFilter.toLowerCase()));
+      return { title: "Payments report", headers: ["Payment", "Customer", "Rental", "Date", "Method", "Amount", "Paid by"], rows: filtered.map((payment) => [payment.id, payment.customer, payment.rental, payment.date, payment.method, payment.amount, payment.receivedBy] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
     }
     if (reportType === "expenses") {
+      const rentalById = new Map(rentals.map((rental) => [rental.databaseId, rental]));
       const filtered = expenses.filter((expense) => within(expense.rawDate));
-      return { title: "Expenses report", headers: ["Date", "Category", "Vehicle", "Method", "Amount", "Description"], rows: filtered.map((expense) => [expense.date, expense.category, expense.vehicle, expense.method, expense.amount, expense.description] as (string | number)[]), currencyColumns: [4], total: filtered.reduce((sum, expense) => sum + expense.amount, 0), label: "Expenses" };
+      return {
+        title: "Expenses report",
+        headers: ["Date", "Category", "Vehicle", "Associated rental", "Paid by", "Method", "Amount", "Description"],
+        rows: filtered.map((expense) => {
+          const linkedRental = expense.bookingId ? rentalById.get(expense.bookingId) : null;
+          const associatedRental = linkedRental ? `${linkedRental.id} · ${linkedRental.vehicle} · ${linkedRental.customer}` : "—";
+          return [expense.date, expense.category, expense.vehicle, associatedRental, expense.createdBy, expense.method, expense.amount, expense.description] as (string | number)[];
+        }),
+        currencyColumns: [6],
+        total: filtered.reduce((sum, expense) => sum + expense.amount, 0),
+        label: "Expenses",
+      };
     }
     if (reportType === "cars") {
       // Company vehicle report. Guest Cars remain excluded from business income.
@@ -2193,8 +2236,8 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
       const rows = chosen.map((vehicle) => {
         const carRentals = periodRentals.filter((rental) => vehicleShare(rental, vehicle.id) > 0);
-        const customerNames = [...new Set(carRentals.map((rental) => rental.customer).filter(Boolean))].join(", ") || "-";
-        const rentalDates = carRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ") || "-";
+        const customerNames = [...new Set(carRentals.map((rental) => rental.customer).filter(Boolean))].join(", ") || "—";
+        const rentalDates = carRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ") || "—";
         const rentalValue = carRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal * vehicleShare(rental, vehicle.id), 0);
         const collected = periodPayments.reduce((sum, payment) => {
           const rental = rentalMap.get(payment.rental);
@@ -2249,7 +2292,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         .map((customerRentals) => {
           const first = customerRentals[0];
           const vehiclesUsed = [...new Set(customerRentals.map((rental) => `${rental.originalVehicle} ${rental.originalPlate}`))].join(", ");
-          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} to ${customerReportDateOnly(rental.endAt)}`).join(", ");
+          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.endAt)}`).join(", ");
           return [
             first.customer,
             first.phone,
@@ -2278,14 +2321,27 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const filtered = base.filter((rental) => rental.businessBalance > 0);
       return { title: "Outstanding balances", headers: ["Customer", "Phone", "Original vehicle", "Expected return", "Status", "Business balance"], rows: filtered.map((rental) => [rental.customer, rental.phone, `${rental.originalVehicle} ${rental.originalPlate}`, formatIndiaWhen(rental.endAt), rental.statusText, rental.businessBalance] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, rental) => sum + rental.businessBalance, 0), label: "Outstanding" };
     }
-    return { title: "Rentals report", headers: ["Original vehicle", "Customer", "Start", "Return", "Status", "Business total", "Business paid", "Business balance"], rows: base.map((rental) => [`${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.endAt), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance] as (string | number)[]), currencyColumns: [5, 6, 7], total: base.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0), label: "Rental value" };
-  }, [reportType, dateFrom, dateTo, status, selectedVehicleIds, selectedCustomerKeys, rentals, payments, expenses, vehicles]);
+    return {
+      title: "Rentals report",
+      headers: ["Original vehicle", "Customer", "Start", "Return", "Status", "Business total", "Business paid", "Business balance", "Expenses", "Paid by", "Expense category"],
+      rows: base.map((rental) => {
+        const linkedExpenses = expenses.filter((expense) => expense.bookingId === rental.databaseId);
+        const expenseTotal = linkedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+        const expenseUsers = [...new Set(linkedExpenses.map((expense) => expense.createdBy).filter(Boolean))].join(", ") || "—";
+        const expenseCategories = [...new Set(linkedExpenses.map((expense) => expense.category).filter(Boolean))].join(", ") || "—";
+        return [`${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.endAt), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance, expenseTotal, expenseUsers, expenseCategories] as (string | number)[];
+      }),
+      currencyColumns: [5, 6, 7, 8],
+      total: base.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0),
+      label: "Rental value",
+    };
+  }, [reportType, dateFrom, dateTo, status, selectedVehicleIds, selectedCustomerKeys, paidByFilter, rentals, payments, expenses, vehicles]);
 
   const vehicleScope = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)).map((vehicle) => vehicle.plate).join(", ") : "All cars";
   const customerScope = selectedCustomerKeys.length
     ? customerChoices.filter((customer) => selectedCustomerKeys.includes(customer.key)).map((customer) => customer.name).join(", ")
     : "All customers";
-  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` - Status: ${status}` : ""}${reportType === "cars" ? ` - ${vehicleScope}` : ""}${reportType === "customers" ? ` - ${customerScope}` : ""}`;
+  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` · Status: ${status}` : ""}${reportType === "payments" ? ` · Paid by: ${paidByFilter === "all" ? "All users" : paidByFilter}` : ""}${reportType === "cars" ? ` · ${vehicleScope}` : ""}${reportType === "customers" ? ` · ${customerScope}` : ""}`;
   const exportName = `mecardee-${reportType}-${dateFrom || "all"}-${dateTo || "all"}`;
 
 
@@ -2305,6 +2361,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         <label className="field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
         <label className="field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         {(reportType === "rentals" || reportType === "outstanding") && <label className="field mecardee-report-filter-field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
+        {reportType === "payments" && <label className="field mecardee-report-filter-field"><span>Paid by</span><select value={paidByFilter} onChange={(event) => setPaidByFilter(event.target.value)}><option value="all">All users</option>{paidByChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>}
       </div>
       {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple company cars. Guest Cars are intentionally excluded from this income report.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => <label key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}</small></span></label>)}</div></div>}
       {reportType === "customers" && <div className="customer-report-filter">
@@ -2750,16 +2807,16 @@ function expenseIcon(category: string): LucideIcon {
   return FileText;
 }
 
-function AccountsView({ expenses, metrics, openExpense }: { expenses: ExpenseRow[]; metrics: Metrics; openExpense: () => void }) {
+function AccountsView({ expenses, metrics }: { expenses: ExpenseRow[]; metrics: Metrics }) {
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const chart = metrics.monthlyCollected.length ? metrics.monthlyCollected : Array.from({ length: 12 }, (_, index) => ({ key: String(index), label: "—", amount: 0 }));
   const max = Math.max(1, ...chart.map((item) => item.amount));
   const year = metrics.monthlyCollected.at(-1)?.key.slice(0, 4) ?? new Date().getFullYear();
   const shownExpenses = showAllExpenses ? expenses : expenses.slice(0, 12);
   return <>
-    <PageHeading eyebrow="MONEY & ACCOUNTS" title="Business overview" description="Simple income and expenses—only what you need to run the day." action={<button className="primary-button" onClick={openExpense}><Plus size={17} />Add expense</button>} />
+    <PageHeading eyebrow="MONEY & ACCOUNTS" title="Business overview" description="Simple income and expenses—only what you need to understand the business." />
     <section className="accounts-summary"><article><span>Rental revenue</span><strong>{money(metrics.rentalRevenueMonth)}</strong><small className="green-text"><TrendingUp size={13} /> Current month</small></article><article><span>Amount collected</span><strong>{money(metrics.collectedMonth)}</strong><small>{metrics.rentalRevenueMonth ? Math.round((metrics.collectedMonth / metrics.rentalRevenueMonth) * 1000) / 10 : 0}% collection rate</small></article><article><span>Pending amount</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">{metrics.outstandingRentals} open balances</small></article><article><span>Total expenses</span><strong>{money(metrics.expensesMonth)}</strong><small>Recorded this month</small></article><article className="net"><span>Approx. net income</span><strong>{money(metrics.netIncomeMonth)}</strong><small>Collected income less recorded expenses</small></article></section>
-    <div className="accounts-layout"><section className="data-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p>Income collected over the last 12 months</p></div><button>{year} <ChevronDown size={14} /></button></div><div className="chart-total"><span>Total collected</span><strong>{money(metrics.twelveMonthCollected)}</strong></div><div className="bar-chart">{chart.map((item, index) => <div key={item.key}><span style={{ height: `${Math.max(4, Math.round((item.amount / max) * 100))}%` }} className={index === chart.length - 1 ? "current" : ""} /><small>{item.label}</small></div>)}</div></section><section className="data-panel expense-panel"><div className="panel-heading"><div><h2>{showAllExpenses ? "All expenses" : "Recent expenses"}</h2><p>{showAllExpenses ? `${expenses.length} recorded expenses` : `${money(metrics.expensesMonth)} recorded this month`}</p></div><button onClick={openExpense}><Plus size={15} />Add</button></div><div className="expense-list">{shownExpenses.map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="expense-icon"><Icon size={16} /></span><div><strong>{expense.category}</strong><small>{expense.description || "No description"}{expense.vehicle ? ` · ${expense.vehicle}` : ""}</small></div><span><strong>− {money(expense.amount)}</strong><small>{expense.date} · {expense.method}</small></span></article>; })}</div>{expenses.length > 12 && <button className="full-link" onClick={() => setShowAllExpenses((value) => !value)}>{showAllExpenses ? "Show recent expenses" : `View all ${expenses.length} expenses`} <ChevronRight size={15} /></button>}</section></div>
+    <div className="accounts-layout"><section className="data-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p>Income collected over the last 12 months</p></div><button>{year} <ChevronDown size={14} /></button></div><div className="chart-total"><span>Total collected</span><strong>{money(metrics.twelveMonthCollected)}</strong></div><div className="bar-chart">{chart.map((item, index) => <div key={item.key}><span style={{ height: `${Math.max(4, Math.round((item.amount / max) * 100))}%` }} className={index === chart.length - 1 ? "current" : ""} /><small>{item.label}</small></div>)}</div></section><section className="data-panel expense-panel"><div className="panel-heading"><div><h2>{showAllExpenses ? "All expenses" : "Recent expenses"}</h2><p>{showAllExpenses ? `${expenses.length} recorded expenses` : `${money(metrics.expensesMonth)} recorded this month`}</p></div></div><div className="expense-list">{shownExpenses.map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="expense-icon"><Icon size={16} /></span><div><strong>{expense.category}</strong><small>{expense.description || "No description"}{expense.vehicle && expense.vehicle !== "—" ? ` · ${expense.vehicle}` : ""}</small></div><span><strong>− {money(expense.amount)}</strong><small>{expense.date} · {expense.method} · {expense.createdBy}</small></span></article>; })}</div>{expenses.length > 12 && <button className="full-link" onClick={() => setShowAllExpenses((value) => !value)}>{showAllExpenses ? "Show recent expenses" : `View all ${expenses.length} expenses`} <ChevronRight size={15} /></button>}</section></div>
   </>;
 }
 
@@ -3479,7 +3536,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
   </DialogShell>;
 }
 
-function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp }: { rental: Rental; close: () => void; switchDialog: (dialog: DialogType) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
+function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp, addExpense }: { rental: Rental; close: () => void; switchDialog: (dialog: DialogType) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; addExpense: () => void }) {
   const collectedPercent = rental.total > 0 ? Math.min(100, Math.round((rental.paid / rental.total) * 100)) : 100;
   const completed = rental.state === "completed";
   const showOriginalContext = rental.replacementUsed || rental.segments.length > 1 || rental.vehicleId !== rental.originalVehicleId;
@@ -3490,7 +3547,7 @@ function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp }: { ren
     <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Settlement completed — return details are locked" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Rental days</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>Current expected return KM</small><strong>{calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
       {(rental.segments.length > 1 || rental.replacementUsed) && <section className="detail-section"><div className="detail-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle usage</h3><p>All vehicles used within this same customer rental</p></div></div><div className="rental-segment-list">{rental.segments.map((segment) => <article key={segment.id} className={`rental-segment-card ${segment.status === "active" ? "active" : ""}`}><div className="segment-vehicle"><img src={segment.image} alt="" /><span><strong>{segment.vehicle}</strong><small>{segment.plate}{segment.isGuest ? " · Guest Car" : ""}</small></span><b>#{segment.sequence}</b></div><div className="segment-facts"><span><small>Used from</small><strong>{segment.start}</strong></span><span><small>Used to</small><strong>{segment.end}</strong></span><span><small>Start KM</small><strong>{segment.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>End KM</small><strong>{segment.endingKilometer === null ? "Current" : segment.endingKilometer.toLocaleString("en-IN")}</strong></span><span><small>Rental period</small><strong>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Vehicle charge</small><strong>{money(segment.rentalCharge + segment.extraKmCharge)}</strong></span></div></article>)}</div></section>}
       </div><aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>{completed ? "Final settlement — payment only" : "Updated live"}</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside></div>
-    {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} />Extend rental</button><button onClick={() => switchDialog("change-vehicle")}><RotateCcw size={16} />Change Vehicle</button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} />Return vehicle</button></footer>}
+    {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} />Extend rental</button><button onClick={() => switchDialog("change-vehicle")}><RotateCcw size={16} />Change Vehicle</button><button onClick={addExpense}><ReceiptIndianRupee size={16} />Add expense</button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} />Return vehicle</button></footer>}
   </DialogShell>;
 }
 
@@ -3817,9 +3874,12 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   </DialogShell>;
 }
 
-function ExpenseDialog({ vehicles, close, done }: { vehicles: Vehicle[]; close: () => void; done: (message: string) => void }) {
+function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, done }: { vehicles: Vehicle[]; rentals: Rental[]; seedRentalId: string | null; currentUser: AuthUser; close: () => void; done: (message: string) => void }) {
+  const seededRental = rentals.find((rental) => rental.databaseId === seedRentalId) ?? null;
   const [expenseDate, setExpenseDate] = useState(() => dateInputValue(new Date()));
   const [category, setCategory] = useState("Vehicle service");
+  const [association, setAssociation] = useState<"rental" | "vehicle" | "general">(seededRental ? "rental" : "general");
+  const [rentalId, setRentalId] = useState(seededRental?.databaseId ?? "");
   const [vehicleRegistration, setVehicleRegistration] = useState("");
   const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState("");
@@ -3827,15 +3887,36 @@ function ExpenseDialog({ vehicles, close, done }: { vehicles: Vehicle[]; close: 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const rentalChoices = useMemo(() => [...rentals].sort((a, b) => {
+    const aActive = a.state === "completed" ? 1 : 0;
+    const bActive = b.state === "completed" ? 1 : 0;
+    return aActive - bActive || new Date(b.startAt).getTime() - new Date(a.startAt).getTime();
+  }), [rentals]);
+  const linkedRental = association === "rental" ? rentals.find((rental) => rental.databaseId === rentalId) ?? null : null;
+  const linkedVehicleRegistration = linkedRental?.plate ?? "";
+
+  function changeAssociation(next: "rental" | "vehicle" | "general") {
+    setAssociation(next);
+    setError(null);
+    if (next !== "rental") setRentalId("");
+    if (next !== "vehicle") setVehicleRegistration("");
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (association === "rental" && !linkedRental) return setError("Select the rental this expense belongs to.");
+    if (association === "vehicle" && !vehicleRegistration) return setError("Select a vehicle for this direct vehicle expense.");
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expenseDate, category, vehicleRegistration: vehicleRegistration || null, amount, description, method }) });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; expense?: { expenseNumber: string } }>(response);
+      const response = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expenseDate, category, bookingId: linkedRental?.databaseId ?? null, vehicleRegistration: association === "rental" ? linkedVehicleRegistration : association === "vehicle" ? vehicleRegistration : null, amount, description, method }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; expense?: { expenseNumber: string; paidBy?: string } }>(response);
       if (!response.ok || !payload.expense) throw new Error(payload.error ?? "Could not save expense.");
-      done(`${money(amount)} expense ${payload.expense.expenseNumber} recorded`);
+      done(`${money(amount)} expense ${payload.expense.expenseNumber} recorded · paid by ${payload.expense.paidBy ?? currentUser.username}`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not save expense.");
     } finally {
@@ -3843,5 +3924,16 @@ function ExpenseDialog({ vehicles, close, done }: { vehicles: Vehicle[]; close: 
     }
   }
 
-  return <DialogShell title="Add an expense" subtitle="Record a simple business or vehicle expense" close={close}><form className="simple-form" onSubmit={submit}><div className="field-grid"><label className="field"><span>Date</span><input required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} /></label><label className="field"><span>Category</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option>Vehicle service</option><option>Repair</option><option>Insurance</option><option>Fuel</option><option>Cleaning</option><option>Office expense</option><option>Other</option></select></label><label className="field"><span>Vehicle (optional)</span><select value={vehicleRegistration} onChange={(event) => setVehicleRegistration(event.target.value)}><option value="">Not vehicle-specific</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.name} · {vehicle.plate}</option>)}</select></label><label className="field"><span>Amount (₹)</span><input required min="0.01" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(amount)} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label></div><label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What was this expense for?" /></label><label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option></select></label>{error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0}><Check size={16} />{saving ? "Saving…" : "Save expense"}</button></div></form></DialogShell>;
+  return <DialogShell title="Add expense" subtitle="Link it to a rental, a vehicle, or record a general business expense" close={close}><form className="simple-form expense-smart-form" onSubmit={submit}>
+    <div className="expense-paid-by"><UserRound size={15} /><span><small>Paid by</small><strong>{currentUser.username}</strong></span><em>Logged-in account</em></div>
+    <div className="field-grid"><label className="field"><span>Date</span><input required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} /></label><label className="field"><span>Category</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option>Vehicle service</option><option>Repair</option><option>Insurance</option><option>Fuel</option><option>Cleaning</option><option>Parking / toll</option><option>Office expense</option><option>Other</option></select></label></div>
+    <label className="field"><span>Expense for</span><select value={association} onChange={(event) => changeAssociation(event.target.value as "rental" | "vehicle" | "general")}><option value="rental">Associated rental</option><option value="vehicle">Vehicle directly</option><option value="general">General business</option></select><small>Rental-linked expenses are for reporting only and never reduce the customer rental balance.</small></label>
+    {association === "rental" && <><label className="field"><span>Associated rental</span><select required value={rentalId} onChange={(event) => setRentalId(event.target.value)}><option value="">Select rental</option>{rentalChoices.map((rental) => <option key={rental.databaseId} value={rental.databaseId}>{rental.id} · {rental.customer} · {rental.vehicle} ({rental.plate}){rental.state === "completed" ? " · Completed" : " · Active"}</option>)}</select></label>{linkedRental && <div className="expense-linked-rental"><CarFront size={16} /><span><strong>{linkedRental.vehicle} · {linkedRental.plate}</strong><small>{linkedRental.customer} · {linkedRental.id}</small></span><b>Vehicle selected automatically</b></div>}</>}
+    {association === "vehicle" && <label className="field"><span>Vehicle</span><select required value={vehicleRegistration} onChange={(event) => { setVehicleRegistration(event.target.value); setRentalId(""); }}><option value="">Select vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.name} · {vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</option>)}</select><small>No rental will be associated with a direct vehicle expense.</small></label>}
+    {association === "general" && <div className="expense-general-note"><ReceiptIndianRupee size={16} /><span><strong>General business expense</strong><small>No rental or vehicle will be linked.</small></span></div>}
+    <div className="field-grid"><label className="field"><span>Amount (₹)</span><input required min="0.01" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(amount)} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label></div>
+    <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What was this expense for?" /></label>
+    {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0}><Check size={16} />{saving ? "Saving…" : "Save expense"}</button></div>
+  </form></DialogShell>;
 }
+

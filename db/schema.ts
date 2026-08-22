@@ -1,3 +1,4 @@
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_GUEST_OWNER_FIELDS_V8_9_79
 // MECARDEE_USER_ROLES_V8_9_55
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
@@ -161,6 +162,7 @@ export const expenses = pgTable(
     expenseDate: date("expense_date", { mode: "string" }).notNull(),
     category: varchar("category", { length: 80 }).notNull(),
     vehicleId: uuid("vehicle_id").references(() => vehicles.id, { onDelete: "set null" }),
+    bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "set null" }),
     amount: money("amount").notNull(),
     description: text("description"),
     method: varchar("method", { length: 40 }).notNull(),
@@ -171,6 +173,7 @@ export const expenses = pgTable(
     uniqueIndex("expenses_expense_number_unique").on(table.expenseNumber),
     index("expenses_expense_date_idx").on(table.expenseDate),
     index("expenses_vehicle_idx").on(table.vehicleId),
+    index("expenses_booking_idx").on(table.bookingId),
   ],
 );
 

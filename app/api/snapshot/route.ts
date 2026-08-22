@@ -1,3 +1,4 @@
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
 import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
@@ -673,6 +674,7 @@ export async function GET() {
         category: expense.category,
         vehicle: vehicle?.name ?? "—",
         vehicleId: vehicle?.id ?? null,
+        bookingId: expense.bookingId ?? null,
         description: expense.description ?? "—",
         method: expense.method,
         amount: expense.amount,

@@ -6487,3 +6487,101 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   }
 }
 
+
+
+/* MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_CSS_V8_9_81 */
+.payments-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.payments-page-actions button {
+  min-height: 42px;
+}
+.expense-action-button {
+  border-color: #ded9ff !important;
+  background: #f6f4ff !important;
+  color: #5748cb !important;
+}
+.expense-paid-by,
+.expense-linked-rental,
+.expense-general-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #e6e5ee;
+  border-radius: 12px;
+  background: #fafafb;
+}
+.expense-paid-by > span,
+.expense-linked-rental > span,
+.expense-general-note > span {
+  min-width: 0;
+  flex: 1;
+}
+.expense-paid-by small,
+.expense-linked-rental small,
+.expense-general-note small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+.expense-paid-by strong,
+.expense-linked-rental strong,
+.expense-general-note strong {
+  display: block;
+  color: var(--ink);
+  font-size: 12px;
+}
+.expense-paid-by em,
+.expense-linked-rental b {
+  flex: 0 0 auto;
+  color: #6657d9;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+}
+.expense-smart-form .field > small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+@media (max-width: 720px) {
+  .payments-page-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .payments-page-actions button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+    justify-content: center;
+  }
+  .expense-paid-by,
+  .expense-linked-rental,
+  .expense-general-note {
+    align-items: flex-start;
+  }
+  .expense-paid-by em,
+  .expense-linked-rental b {
+    max-width: 42%;
+    text-align: right;
+    white-space: normal;
+  }
+}
+@media (max-width: 390px) {
+  .payments-page-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+  .payments-page-actions button {
+    font-size: 10px;
+  }
+}

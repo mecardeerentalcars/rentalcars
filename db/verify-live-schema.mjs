@@ -1,3 +1,4 @@
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import pg from "pg";
 
@@ -39,6 +40,10 @@ try {
     "select 1 from information_schema.columns where table_schema = 'public' and table_name = 'bookings' and column_name = 'requested_vehicle_id'",
   );
   if (!requestedVehicleColumn.rowCount) throw new Error("Database verification failed. bookings.requested_vehicle_id is missing.");
+  const expenseBookingColumn = await pool.query(
+    "select 1 from information_schema.columns where table_schema = 'public' and table_name = 'expenses' and column_name = 'booking_id'",
+  );
+  if (!expenseBookingColumn.rowCount) throw new Error("Database verification failed. expenses.booking_id is missing.");
 
   const rentalSegmentFuelColumns = await pool.query(
     "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'rental_segments' and column_name = any($1::text[])",
@@ -55,7 +60,7 @@ try {
     const result = await pool.query(`select count(*)::int as count from ${table}`);
     console.log(`${table}: ${result.rows[0].count} rows`);
   }
-  console.log("Mecardee live database verification passed: all 11 tables, booking/requested-vehicle fields, and rental-segment fuel fields are available.");
+  console.log("Mecardee live database verification passed: all 11 tables, booking/requested-vehicle fields, rental-linked expenses, and rental-segment fuel fields are available.");
 } finally {
   await pool.end();
 }

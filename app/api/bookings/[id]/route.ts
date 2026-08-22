@@ -1,3 +1,4 @@
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
 import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_BOOKED_VEHICLE_START_GUARD_V8_9_46
@@ -234,7 +235,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           method: text(body.paymentMethod ?? "UPI", "Payment method"),
           paymentType: "advance",
           notes: `Advance for ${record.booking.bookingNumber}`,
-          receivedBy: typeof body.receivedBy === "string" && body.receivedBy.trim() ? body.receivedBy.trim() : "Admin",
+          receivedBy: __mecardeeAuth.user.username,
           receivedAt: new Date(),
         });
       }

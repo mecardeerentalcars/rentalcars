@@ -1,8 +1,25 @@
-import { sql } from "drizzle-orm";
+// MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
+import { asc, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { withRequestDb } from "@/db";
 import { appUsers } from "@/db/schema";
-import { hashPassword, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { hashPassword, requireReadAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+
+export async function GET() {
+  const auth = await requireReadAccess();
+  if (!auth.ok) return auth.response;
+
+  try {
+    return withRequestDb(async (db) => {
+      const rows = await db.select({ id: appUsers.id, username: appUsers.username, role: appUsers.role, active: appUsers.active }).from(appUsers).orderBy(asc(appUsers.username));
+      const users = rows.filter((row) => row.active && ["superadmin", "owner"].includes(row.role)).map(({ id, username, role }) => ({ id, username, role }));
+      return NextResponse.json({ ok: true, users });
+    });
+  } catch (error) {
+    console.error("User list failed", error);
+    return NextResponse.json({ ok: false, error: "Could not load users." }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   const auth = await requireSuperAdminAccess();
