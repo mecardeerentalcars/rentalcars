@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_BOOKING_QUICK_SCHEDULE_HANDOVER_WHATSAPP_V8_9_54
+
 // MECARDEE_REMINDER_CUSTOMER_PLACE_STYLE_V8_9_80
 
 // MECARDEE_LOCATION_REMINDERS_GUEST_OWNER_V8_9_79
@@ -1123,7 +1125,7 @@ export default function Home() {
       {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
       {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} guestVehicles={guestVehicleList} customers={customerList} bookings={bookingList} rentals={rentalList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
-      {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} canStart={Date.now() >= new Date(selectedReservation.startAt).getTime()} close={() => setDialog(null)} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
+      {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} canStart={Date.now() >= new Date(selectedReservation.startAt).getTime()} close={() => setDialog(null)} edit={() => { const bookingRecord = bookingList.find((item) => item.id === selectedReservation.id); if (!bookingRecord) { showToast("Could not load booking details."); return; } setSelectedBookingRecord(bookingRecord); setDialog("booking-edit"); }} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "booking-start" && selectedReservation && <StartBookingDialog reservation={selectedReservation} vehicle={[...vehicleList, ...guestVehicleList].find((item) => item.id === selectedReservation.vehicleId) ?? null} vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} close={() => setDialog("booking-detail")} done={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "booking-history-detail" && selectedBookingRecord && <BookingHistoryDialog booking={selectedBookingRecord} close={() => { setDialog(null); setSelectedBookingRecord(null); }} sendWhatsApp={() => sendBookingRecordWhatsApp(selectedBookingRecord)} />}
       {dialog === "booking-edit" && selectedBookingRecord && <BookingEditDialog booking={selectedBookingRecord} vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} close={() => { setDialog(null); setSelectedBookingRecord(null); }} done={(message) => { setDialog(null); setSelectedBookingRecord(null); showToast(message); void refreshData(); }} />}
@@ -3117,7 +3119,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
   </DialogShell>;
 }
 
-function BookingDetailDialog({ reservation, canStart, close, start, cancelled }: { reservation: Reservation; canStart: boolean; close: () => void; start: () => void; cancelled: (message: string) => void }) {
+function BookingDetailDialog({ reservation, canStart, close, edit, start, cancelled }: { reservation: Reservation; canStart: boolean; close: () => void; edit: () => void; start: () => void; cancelled: (message: string) => void }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3137,7 +3139,7 @@ function BookingDetailDialog({ reservation, canStart, close, start, cancelled }:
     <section className="detail-section"><div className="timeline"><div><i /><span><small>Booked from</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Expected return</small><strong>{reservation.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Booked days</small><strong>{reservation.days}</strong></div><div><small>Daily rate</small><strong>{money(reservation.rate)}</strong></div><div><small>Estimated rent</small><strong>{money(reservation.amount)}</strong></div></div></section>
     {error && <p className="form-error">{error}</p>}
     {confirmCancel && <div className="booking-cancel-warning"><AlertTriangle size={18} /><div><strong>Cancel this booking?</strong><p>No rental/payment data will be deleted. The booking is marked Cancelled and the dates become available again.</p></div><button disabled={saving} onClick={() => void cancelBooking()}>{saving ? "Cancelling…" : "Yes, cancel"}</button><button disabled={saving} onClick={() => setConfirmCancel(false)}>Keep booking</button></div>}
-    <footer className="detail-actions"><button className="return-button" onClick={start} disabled={!canStart} title={canStart ? "Start this rental" : "Vehicle must be Available before the booking can start"}><CarFront size={16} />{canStart ? "Start rental" : "Waiting for availability"}</button><button className="danger-action" onClick={() => setConfirmCancel(true)} disabled={confirmCancel}><X size={16} />Cancel booking</button></footer>
+    <footer className="detail-actions booking-detail-schedule-actions"><button className="booking-date-time-action" onClick={edit} disabled={saving}><CalendarRange size={16} />Change date & time</button><button className="return-button" onClick={start} disabled={!canStart} title={canStart ? "Start this rental" : "Change the booking time if needed while waiting for pickup"}><CarFront size={16} />{canStart ? "Start rental" : "Waiting for availability"}</button><button className="danger-action" onClick={() => setConfirmCancel(true)} disabled={confirmCancel}><X size={16} />Cancel booking</button></footer>
   </DialogShell>;
 }
 
@@ -3197,7 +3199,7 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
       <label className="field"><span>Reserved vehicle</span><select required value={vehicleId} onChange={(event) => { const nextId = event.target.value; setVehicleId(nextId); const nextVehicle = allVehicles.find((item) => item.id === nextId); if (nextVehicle) setRate(nextVehicle.rate); }}><optgroup label="Our available vehicles">{ownOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}{item.id === booking.requestedVehicleId ? " · Original request" : ""}</option>)}</optgroup>{guestOptions.length > 0 && <optgroup label="Guest Cars">{guestOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>You can change the vehicle while this booking is still active. Conflict-free alternatives are offered. The current reserved vehicle may still be saved with a schedule warning.</small></label>
       <div className="field-grid">
         <label className="field"><span>Pickup date</span><input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-        <label className="field"><span>Pickup time</span><input type="time" required value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
+        <label className="field"><span>Pickup time</span><input type="time" required value={startTime} onChange={(event) => { const nextTime = event.target.value; setStartTime(nextTime); setReturnTime(nextTime); }} /><small>Return time follows the pickup time automatically.</small></label>
         <label className="field"><span>Return date</span><input type="date" required value={returnDate} onChange={(event) => setReturnDate(event.target.value)} /></label>
         <label className="field"><span>Return time</span><input type="time" required value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label>
         <label className="field"><span>Rental days</span><input type="number" min="1" required value={days} onChange={(event) => setDays(Math.max(1, Number(event.target.value) || 1))} /></label>
@@ -3235,6 +3237,7 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startedHandover, setStartedHandover] = useState<{ vehicle: string; plate: string; startingKilometer: number; startingFuelRangeKm: number; expectedKm: number; allowedKmPerDay: number; statusMessage: string } | null>(null);
 
   useEffect(() => {
     if (!needsReplacement) { if (replacementVehicleId) setReplacementVehicleId(""); return; }
@@ -3248,6 +3251,52 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
   const expectedKm = assignedVehicle ? calculateExpectedReturnKilometer(startingKilometer, reservation.days, assignedVehicle.allowedKmPerDay) : startingKilometer;
   const total = Math.max(0, reservation.days * rate - discount);
 
+  function finishStartedRental() {
+    if (!startedHandover) return;
+    done(startedHandover.statusMessage);
+  }
+
+  function sendRentalStartedWhatsApp() {
+    if (!startedHandover) return;
+    const digits = (reservation.whatsappNumber || reservation.phone).replace(/\D/g, "");
+    const phone =
+      digits.length === 10
+        ? `91${digits}`
+        : digits.startsWith("0") && digits.length === 11
+          ? `91${digits.slice(1)}`
+          : digits;
+
+    const text =
+      `Mecardee Rental - Rental started\n\n` +
+      `Hello ${reservation.customer},\n` +
+      `Your vehicle rental has been started.\n\n` +
+      `Vehicle: ${startedHandover.vehicle} (${startedHandover.plate})\n` +
+      `Booking: ${reservation.bookingNumber}\n` +
+      `Pickup: ${reservation.start}\n` +
+      `Expected return: ${reservation.returnDate}\n` +
+      `Rental days: ${reservation.days}\n` +
+      `Starting KM: ${startedHandover.startingKilometer.toLocaleString("en-IN")} km\n` +
+      `Starting fuel range: ${startedHandover.startingFuelRangeKm.toLocaleString("en-IN")} km\n` +
+      `Allowed KM/day: ${startedHandover.allowedKmPerDay.toLocaleString("en-IN")} km\n` +
+      `Expected return KM: ${startedHandover.expectedKm.toLocaleString("en-IN")} km\n\n` +
+      `Please keep these vehicle handover details for reference.`;
+
+    // This dialog is a top-level component, while the app's existing
+    // openWhatsAppSafely helper lives inside the main page component. Use the
+    // same safe web-link behaviour locally instead of referencing that
+    // out-of-scope helper.
+    const encodedText = encodeURIComponent(text);
+    const webUrl = `https://wa.me/${phone}?text=${encodedText}`;
+    const isIOS =
+      /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      window.location.href = webUrl;
+      return;
+    }
+    window.open(webUrl, "_blank", "noopener,noreferrer");
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); setError(null);
     try {
@@ -3255,19 +3304,20 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
       const response = await fetch(`/api/bookings/${reservation.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", replacementVehicleId: needsReplacement && replacementVehicleId ? replacementVehicleId : undefined, startingKilometer, startingFuelRangeKm, dailyRate: rate, securityDeposit: deposit, advancePaid: advance, bookingDiscount: discount, paymentMethod, receivedBy: CURRENT_USER_NAME }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not start rental.");
-      done(`${reservation.bookingNumber} started as an active rental for ${reservation.customer}${assignedVehicle.id !== reservation.vehicleId ? ` using ${assignedVehicle.name} as replacement` : ""}`);
+      const statusMessage = `${reservation.bookingNumber} started as an active rental for ${reservation.customer}${assignedVehicle.id !== reservation.vehicleId ? ` using ${assignedVehicle.name} as replacement` : ""}`;
+      setStartedHandover({ vehicle: assignedVehicle.name, plate: assignedVehicle.plate, startingKilometer, startingFuelRangeKm, expectedKm, allowedKmPerDay: assignedVehicle.allowedKmPerDay, statusMessage });
     } catch (e) { setError(e instanceof Error ? e.message : "Could not start rental."); } finally { setSaving(false); }
   }
 
-  return <DialogShell title="Start booked rental" subtitle={`${reservation.vehicle} · ${reservation.customer}`} close={close} wide>
-    <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}><div className="form-content">
+  return <DialogShell title={startedHandover ? "Rental started" : "Start booked rental"} subtitle={`${reservation.vehicle} · ${reservation.customer}`} close={startedHandover ? finishStartedRental : close} wide>
+    {startedHandover ? <div className="rental-started-whatsapp-success"><div className="rental-started-success-icon"><CheckCircle2 size={25} /></div><div className="rental-started-success-copy"><h3>Rental confirmed</h3><p>{startedHandover.vehicle} · {startedHandover.plate} is now on rent. Send the handover details to {reservation.customer} if required.</p></div><div className="rental-started-handover-grid"><span><small>Starting KM</small><strong>{startedHandover.startingKilometer.toLocaleString("en-IN")} km</strong></span><span><small>Fuel range</small><strong>{startedHandover.startingFuelRangeKm.toLocaleString("en-IN")} km</strong></span><span><small>Allowed / day</small><strong>{startedHandover.allowedKmPerDay.toLocaleString("en-IN")} km</strong></span><span><small>Expected return KM</small><strong>{startedHandover.expectedKm.toLocaleString("en-IN")} km</strong></span></div><div className="rental-started-success-actions"><button type="button" className="rental-started-whatsapp" onClick={sendRentalStartedWhatsApp}><MessageCircle size={19} />WhatsApp handover</button><button type="button" className="primary-button" onClick={finishStartedRental}><Check size={17} />Done</button></div></div> : <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}><div className="form-content">
       <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booked schedule</h3><p>The reservation becomes an active rental only after this confirmation.</p></div></div><div className="timeline"><div><i /><span><small>Start</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Return</small><strong>{reservation.returnDate}</strong></span></div></div></section>
       <section className={`booking-start-vehicle-lock ${needsReplacement ? "replacement-needed" : "booked-vehicle-ready"}`}><CarFront size={18} /><div><small>{needsReplacement ? "Booked vehicle unavailable at pickup" : "Starting vehicle locked to booking"}</small><strong>{needsReplacement ? "Choose a replacement below" : `${reservation.vehicle} — ${reservation.plate}`}</strong><span>{needsReplacement ? "No replacement is selected automatically. Choose the actual vehicle you will hand over." : "This rental will start with the exact vehicle reserved on this booking. A later schedule collision does not change the starting vehicle."}</span></div></section>
       {!needsReplacement && futureScheduleConflict && <section className="schedule-change-warning"><AlertTriangle size={18} /><div><strong>Start allowed — future vehicle change required</strong><p>{reservation.vehicle} is free at pickup, so this rental can start normally. {futureScheduleConflict.type === "booking" ? "Booking" : "Rental"} {futureScheduleConflict.label}{futureScheduleConflict.customer ? ` for ${futureScheduleConflict.customer}` : ""} overlaps later in this rental period. Use Change Vehicle before that collision if the customer still has this car.</p></div></section>}
       {needsReplacement && <section className="replacement-conflict-panel"><div className="replacement-conflict-head"><AlertTriangle size={18} /><div><strong>Original vehicle unavailable</strong><p>{requestedConflict ? `${reservation.vehicle} conflicts with ${requestedConflict.type} ${requestedConflict.label}${requestedConflict.customer ? ` (${requestedConflict.customer})` : ""}.` : `${reservation.vehicle} is not currently operational.`} Choose another own vehicle or a Guest Car to start this same booking.</p></div></div><div className="original-booking-context compact"><strong>Original Booking: {reservation.requestedVehicle} — {reservation.days} Days</strong><span>The original requested vehicle remains attached to this rental. The selected vehicle is only the current replacement.</span></div><label className="field"><span>Replacement vehicle</span><select required value={replacementVehicleId} onChange={(event) => setReplacementVehicleId(event.target.value)}><option value="">Select replacement</option>{ownReplacements.length > 0 && <optgroup label="Our available vehicles">{ownReplacements.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}</option>)}</optgroup>}{guestReplacements.length > 0 && <optgroup label="Guest Cars">{guestReplacements.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>{replacementChoices.length ? "Own vehicles are shown first, followed by Guest Cars." : "No replacement vehicle is available at the pickup time."}</small></label></section>}
       <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Vehicle handover</h3><p>{assignedVehicle ? `Record the actual odometer and fuel range for ${assignedVehicle.name}${assignedVehicle.isGuest ? " (Guest Car)" : ""}.` : "Select an available replacement vehicle first."}</p></div></div><div className="field-grid three"><label className="field"><span>Starting kilometer</span><input type="number" min="0" value={blankZero(startingKilometer)} onChange={(e)=>setStartingKilometer(numberFromInput(e.target.value))} /></label><label className="field"><span>Starting fuel range (KM)</span><input type="number" min="0" value={blankZero(startingFuelRangeKm)} onChange={(e)=>setStartingFuelRangeKm(numberFromInput(e.target.value))} /></label><label className="field"><span>Expected return KM</span><input readOnly value={`${expectedKm.toLocaleString("en-IN")} km`} /></label></div></section>
       <section className="form-section"><div className="form-section-title"><span><WalletCards size={17} /></span><div><h3>Payment details</h3><p>Confirm the booked rate and record anything received at handover.</p></div></div><div className="field-grid three"><label className="field"><span>Original booking daily rate (₹)</span><input type="number" min="0" value={blankZero(rate)} onChange={(e)=>setRate(numberFromInput(e.target.value))} /></label><label className="field"><span>Security deposit (₹)</span><input type="number" min="0" value={blankZero(deposit)} onChange={(e)=>setDeposit(numberFromInput(e.target.value))} /></label><label className="field"><span>Advance paid (₹)</span><input type="number" min="0" max={total} value={blankZero(advance)} onChange={(e)=>setAdvance(numberFromInput(e.target.value))} /></label><label className="field"><span>Discount (₹)</span><input type="number" min="0" max={reservation.days*rate} value={blankZero(discount)} onChange={(e)=>setDiscount(numberFromInput(e.target.value))} /></label><label className="field"><span>Payment method</span><select value={paymentMethod} onChange={(e)=>setPaymentMethod(e.target.value)}><option>UPI</option><option>Cash</option><option>Bank transfer</option><option>Other</option></select></label><label className="field"><span>Original booking total</span><input readOnly value={money(total)} /></label></div>{needsReplacement && assignedVehicle && <div className="replacement-rate-note"><CarFront size={15} /><span>The replacement segment uses {assignedVehicle.name}&apos;s configured rate of {money(assignedVehicle.rate)}/day in the final vehicle-wise settlement.</span></div>}</section>
-    </div><footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button className="confirm-rental" type="submit" disabled={saving || !assignedVehicle}>{saving ? "Starting…" : "Start rental"}<ArrowRight size={16} /></button><button className="save-draft" type="button" onClick={close}>Back</button></div></footer></form>
+    </div><footer className="rental-submit-footer">{error && <p className="form-error">{error}</p>}<div className="rental-submit-actions"><button className="confirm-rental" type="submit" disabled={saving || !assignedVehicle}>{saving ? "Starting…" : "Start rental"}<ArrowRight size={16} /></button><button className="save-draft" type="button" onClick={close}>Back</button></div></footer></form>}
   </DialogShell>;
 }
 

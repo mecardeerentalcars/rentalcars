@@ -6331,3 +6331,159 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
     font-size: 1.1em;
   }
 }
+
+/* MECARDEE_BOOKING_QUICK_SCHEDULE_HANDOVER_WHATSAPP_CSS_V8_9_54 */
+
+/* Booking detail: schedule correction comes before Start rental / Waiting. */
+.booking-detail-schedule-actions .booking-date-time-action {
+  border: 1px solid #d9d5ff;
+  background: #f7f5ff;
+  color: #5548c7;
+}
+
+.booking-detail-schedule-actions .booking-date-time-action:hover {
+  background: #f0edff;
+}
+
+.booking-detail-schedule-actions .booking-date-time-action svg {
+  color: #6558d9;
+}
+
+/* Post-start rental handover success / WhatsApp prompt. */
+.rental-started-whatsapp-success {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.rental-started-success-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #e9fbf1;
+  color: #15965b;
+}
+
+.rental-started-success-copy h3 {
+  margin: 0 0 5px;
+  color: #171b21;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.rental-started-success-copy p {
+  margin: 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rental-started-handover-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.rental-started-handover-grid > span {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #e8e8ef;
+  border-radius: 12px;
+  background: #f8f9fb;
+}
+
+.rental-started-handover-grid small {
+  display: block;
+  margin-bottom: 4px;
+  color: #7b8190;
+  font-size: 8px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.rental-started-handover-grid strong {
+  display: block;
+  color: #20242c;
+  font-size: 12px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.rental-started-success-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 4px;
+}
+
+.rental-started-success-actions button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-weight: 850;
+}
+
+.rental-started-whatsapp {
+  border: 1px solid #bcebd0;
+  background: #18b966;
+  color: #fff;
+}
+
+.rental-started-whatsapp:hover {
+  background: #12a95b;
+}
+
+@media (max-width: 700px) {
+  .booking-detail-schedule-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .booking-detail-schedule-actions > button {
+    width: 100% !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+  }
+
+  .rental-started-whatsapp-success {
+    padding: 15px;
+    gap: 13px;
+  }
+
+  .rental-started-handover-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rental-started-success-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .rental-started-success-actions button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 390px) {
+  .rental-started-handover-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+
+  .rental-started-handover-grid > span {
+    padding: 9px;
+  }
+
+  .rental-started-handover-grid strong {
+    font-size: 11px;
+  }
+}
+
