@@ -580,6 +580,7 @@ export default function Home() {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installBannerVisible, setInstallBannerVisible] = useState(false);
+  const [installInstruction, setInstallInstruction] = useState("Install Mecardee for faster app-like access.");
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -804,21 +805,53 @@ export default function Home() {
     };
   }, []);
 
+  // MECARDEE_CROSS_BROWSER_INSTALL_PROMPT_V8_9_85
   useEffect(() => {
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-    const isAndroid = /Android/i.test(navigator.userAgent);
+    let cancelled = false;
+    let fallbackTimer: number | null = null;
+
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+
+    const ua = navigator.userAgent;
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPad|iPhone|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isMac = /Macintosh|Mac OS X/i.test(ua) && !isIOS;
+    const isSafari = /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Edg|OPR|Opera|SamsungBrowser|Firefox|FxiOS/i.test(ua);
+    const isFirefox = /Firefox|FxiOS/i.test(ua);
+    const isSamsung = /SamsungBrowser/i.test(ua);
+    const isOpera = /OPR|Opera/i.test(ua);
     const dismissedThisSession = () => sessionStorage.getItem("mecardee-install-dismissed-session") === "1";
 
-    // v8 used a permanent localStorage dismissal. Clear that old flag once so Android users
-    // who dismissed the early version are eligible to see the improved prompt again.
-    localStorage.removeItem("mecardee-install-dismissed");
+    const manualInstruction = () => {
+      if (isIOS) return "Tap Share, then choose Add to Home Screen.";
+      if (isMac && isSafari) return "In Safari, choose File → Add to Dock.";
+      if (isAndroid && isSamsung) return "Open the browser menu → Add page to → Home screen / Install.";
+      if (isAndroid && isFirefox) return "Open the browser menu → Install / Add to Home screen.";
+      if (isAndroid && isOpera) return "Open the browser menu → Add to Home screen / Install app.";
+      if (isAndroid) return "Open the browser menu → Install app / Add to Home screen.";
+      if (isFirefox) return "Desktop Firefox has no built-in PWA install. Open this site in Chrome, Edge, Opera, or Safari on macOS.";
+      return "Use the install icon in the address bar or browser menu → Install Mecardee.";
+    };
+
+    if (standalone) {
+      setInstallBannerVisible(false);
+      setInstallPrompt(null);
+      return;
+    }
+
+    setInstallInstruction(manualInstruction());
 
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
       const promptEvent = event as BeforeInstallPromptEvent;
       setInstallPrompt(promptEvent);
-      if (!isStandalone && !dismissedThisSession()) setInstallBannerVisible(true);
+      setInstallInstruction("Install Mecardee on this device for faster app-like access.");
+      if (!dismissedThisSession()) setInstallBannerVisible(true);
     };
+
     const onInstalled = () => {
       setInstallBannerVisible(false);
       setInstallPrompt(null);
@@ -828,14 +861,40 @@ export default function Home() {
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
     window.addEventListener("appinstalled", onInstalled);
 
-    // Chrome can delay beforeinstallprompt until its engagement checks are satisfied.
-    // Still show our own small website banner on Android so the install option is discoverable.
-    const fallbackTimer = window.setTimeout(() => {
-      if (isAndroid && !isStandalone && !dismissedThisSession()) setInstallBannerVisible(true);
-    }, 4500);
+    const checkInstalledThenOffer = async () => {
+      let alreadyInstalled = false;
+
+      try {
+        const relatedNavigator = navigator as Navigator & {
+          getInstalledRelatedApps?: () => Promise<Array<{ platform?: string; url?: string; id?: string }>>;
+        };
+        if (typeof relatedNavigator.getInstalledRelatedApps === "function") {
+          const related = await relatedNavigator.getInstalledRelatedApps();
+          alreadyInstalled = related.length > 0;
+        }
+      } catch {
+        // Not every browser implements installed-PWA detection.
+      }
+
+      if (cancelled) return;
+      if (alreadyInstalled) {
+        setInstallBannerVisible(false);
+        setInstallPrompt(null);
+        return;
+      }
+
+      // Show our own discoverable install message in every browser. Chromium browsers
+      // can open the native prompt; Safari/Firefox/etc. receive the correct manual step.
+      fallbackTimer = window.setTimeout(() => {
+        if (!cancelled && !dismissedThisSession()) setInstallBannerVisible(true);
+      }, 3000);
+    };
+
+    void checkInstalledThenOffer();
 
     return () => {
-      window.clearTimeout(fallbackTimer);
+      cancelled = true;
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
       window.removeEventListener("appinstalled", onInstalled);
     };
@@ -1178,7 +1237,7 @@ export default function Home() {
 
   async function installApp() {
     if (!installPrompt) {
-      showToast("In Chrome, tap ⋮ and choose Install app / Add to Home screen.");
+      showToast(installInstruction);
       return;
     }
     await installPrompt.prompt();
@@ -1282,7 +1341,7 @@ export default function Home() {
         newRental={() => { setMobileQuickCreateOpen(false); openNewRental(); }}
         newBooking={() => { setMobileQuickCreateOpen(false); newBookingFromTab(); }}
       />}
-      {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
+      {installBannerVisible && <InstallAppPrompt ready={Boolean(installPrompt)} instruction={installInstruction} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
       {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
       {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} guestVehicles={guestVehicleList} customers={customerList} bookings={bookingList} rentals={rentalList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} canStart={Date.now() >= new Date(selectedReservation.startAt).getTime()} close={() => setDialog(null)} edit={() => { const bookingRecord = bookingList.find((item) => item.id === selectedReservation.id); if (!bookingRecord) { showToast("Could not load booking details."); return; } setSelectedBookingRecord(bookingRecord); setDialog("booking-edit"); }} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
@@ -2946,8 +3005,8 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
   </>;
 }
 
-function InstallAppPrompt({ ready, onInstall, onClose }: { ready: boolean; onInstall: () => void; onClose: () => void }) {
-  return <aside className="install-app-prompt" role="dialog" aria-label="Install Mecardee app"><span className="brand-mark">M</span><div><strong>Install Mecardee</strong><small>{ready ? "Add Mecardee to your Android home screen for faster access." : "Install Mecardee from Chrome for an app-like experience."}</small></div><button className="install-now" onClick={onInstall}>Install</button><button className="install-close" onClick={onClose} aria-label="Dismiss install prompt"><X size={16} /></button></aside>;
+function InstallAppPrompt({ ready, instruction, onInstall, onClose }: { ready: boolean; instruction: string; onInstall: () => void; onClose: () => void }) {
+  return <aside className="install-app-prompt" role="dialog" aria-label="Install Mecardee app"><span className="brand-mark">M</span><div><strong>Install Mecardee</strong><small>{ready ? "Install Mecardee on this device for faster app-like access." : instruction}</small></div><button className="install-now" onClick={onInstall}>Install</button><button className="install-close" onClick={onClose} aria-label="Dismiss install prompt"><X size={16} /></button></aside>;
 }
 
 function expenseIcon(category: string): LucideIcon {
