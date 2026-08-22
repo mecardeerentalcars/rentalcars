@@ -6585,3 +6585,14 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
     font-size: 10px;
   }
 }
+
+
+/* MECARDEE_LOCKED_RENTAL_EXPENSE_UI_CSS_V8_9_82 */
+.expense-rental-lock-card{display:grid;gap:12px;padding:14px;border:1px solid #ddd9fb;border-radius:15px;background:linear-gradient(180deg,#faf9ff 0%,#f7f6ff 100%)}
+.expense-rental-lock-title{display:flex;align-items:center;gap:10px;min-width:0}.expense-rental-lock-title>div{flex:1;min-width:0}
+.expense-rental-lock-title small,.expense-rental-lock-grid small{display:block;color:#777b88;font-size:8px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.expense-rental-lock-title strong{display:block;margin-top:2px;color:#171b21;font-size:14px;font-weight:900}
+.expense-rental-lock-title>span{flex:0 0 auto;padding:5px 9px;border-radius:999px;background:#e9e5ff;color:#5b4dcb;font-size:8px;font-weight:900;text-transform:uppercase}
+.expense-rental-lock-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.expense-rental-lock-grid>div{min-width:0;padding:9px 10px;border:1px solid #e9e7f4;border-radius:10px;background:#fff}
+.expense-rental-lock-grid strong{display:block;margin-top:3px;color:#222630;font-size:11px;font-weight:850;line-height:1.25;overflow-wrap:anywhere}.expense-rental-lock-card>p{margin:0;color:#686d78;font-size:9px;line-height:1.4}
+@media(max-width:720px){.expense-rental-lock-card{padding:12px}.expense-rental-lock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.expense-rental-lock-grid strong{font-size:10px}}

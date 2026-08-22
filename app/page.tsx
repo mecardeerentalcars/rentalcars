@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_LOCKED_RENTAL_EXPENSE_UI_V8_9_82
+
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 
 // MECARDEE_BOOKING_QUICK_SCHEDULE_HANDOVER_WHATSAPP_V8_9_54
@@ -168,6 +170,7 @@ type Rental = {
   replacementUsed: boolean;
   segments: RentalSegmentRow[];
   customer: string;
+  city: string;
   phone: string;
   whatsappNumber: string;
   licence: string;
@@ -3876,6 +3879,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
 
 function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, done }: { vehicles: Vehicle[]; rentals: Rental[]; seedRentalId: string | null; currentUser: AuthUser; close: () => void; done: (message: string) => void }) {
   const seededRental = rentals.find((rental) => rental.databaseId === seedRentalId) ?? null;
+  const rentalLocked = Boolean(seedRentalId && seededRental);
   const [expenseDate, setExpenseDate] = useState(() => dateInputValue(new Date()));
   const [category, setCategory] = useState("Vehicle service");
   const [association, setAssociation] = useState<"rental" | "vehicle" | "general">(seededRental ? "rental" : "general");
@@ -3894,8 +3898,15 @@ function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, do
   }), [rentals]);
   const linkedRental = association === "rental" ? rentals.find((rental) => rental.databaseId === rentalId) ?? null : null;
   const linkedVehicleRegistration = linkedRental?.plate ?? "";
+  const rentalChoiceLabel = (rental: Rental) => [
+    rental.customer,
+    rental.city && rental.city !== "—" ? rental.city : null,
+    rental.vehicle,
+    customerReportDateOnly(rental.startAt),
+  ].filter(Boolean).join(" · ");
 
   function changeAssociation(next: "rental" | "vehicle" | "general") {
+    if (rentalLocked) return;
     setAssociation(next);
     setError(null);
     if (next !== "rental") setRentalId("");
@@ -3924,13 +3935,30 @@ function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, do
     }
   }
 
-  return <DialogShell title="Add expense" subtitle="Link it to a rental, a vehicle, or record a general business expense" close={close}><form className="simple-form expense-smart-form" onSubmit={submit}>
+  const subtitle = rentalLocked && seededRental
+    ? `${seededRental.customer}${seededRental.city && seededRental.city !== "—" ? ` · ${seededRental.city}` : ""} · ${seededRental.vehicle}`
+    : "Link it to a rental, a vehicle, or record a general business expense";
+
+  return <DialogShell title="Add expense" subtitle={subtitle} close={close}><form className={`simple-form expense-smart-form ${rentalLocked ? "expense-rental-locked" : ""}`} onSubmit={submit}>
     <div className="expense-paid-by"><UserRound size={15} /><span><small>Paid by</small><strong>{currentUser.username}</strong></span><em>Logged-in account</em></div>
     <div className="field-grid"><label className="field"><span>Date</span><input required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} /></label><label className="field"><span>Category</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option>Vehicle service</option><option>Repair</option><option>Insurance</option><option>Fuel</option><option>Cleaning</option><option>Parking / toll</option><option>Office expense</option><option>Other</option></select></label></div>
-    <label className="field"><span>Expense for</span><select value={association} onChange={(event) => changeAssociation(event.target.value as "rental" | "vehicle" | "general")}><option value="rental">Associated rental</option><option value="vehicle">Vehicle directly</option><option value="general">General business</option></select><small>Rental-linked expenses are for reporting only and never reduce the customer rental balance.</small></label>
-    {association === "rental" && <><label className="field"><span>Associated rental</span><select required value={rentalId} onChange={(event) => setRentalId(event.target.value)}><option value="">Select rental</option>{rentalChoices.map((rental) => <option key={rental.databaseId} value={rental.databaseId}>{rental.id} · {rental.customer} · {rental.vehicle} ({rental.plate}){rental.state === "completed" ? " · Completed" : " · Active"}</option>)}</select></label>{linkedRental && <div className="expense-linked-rental"><CarFront size={16} /><span><strong>{linkedRental.vehicle} · {linkedRental.plate}</strong><small>{linkedRental.customer} · {linkedRental.id}</small></span><b>Vehicle selected automatically</b></div>}</>}
-    {association === "vehicle" && <label className="field"><span>Vehicle</span><select required value={vehicleRegistration} onChange={(event) => { setVehicleRegistration(event.target.value); setRentalId(""); }}><option value="">Select vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.name} · {vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</option>)}</select><small>No rental will be associated with a direct vehicle expense.</small></label>}
-    {association === "general" && <div className="expense-general-note"><ReceiptIndianRupee size={16} /><span><strong>General business expense</strong><small>No rental or vehicle will be linked.</small></span></div>}
+
+    {rentalLocked && linkedRental ? <section className="expense-rental-lock-card">
+      <div className="expense-rental-lock-title"><CarFront size={17} /><div><small>Expense linked to this rental</small><strong>{linkedRental.customer}</strong></div><span>Locked</span></div>
+      <div className="expense-rental-lock-grid">
+        <div><small>Customer</small><strong>{linkedRental.customer}</strong></div>
+        <div><small>Place</small><strong>{linkedRental.city && linkedRental.city !== "—" ? linkedRental.city : "—"}</strong></div>
+        <div><small>Car</small><strong>{linkedRental.vehicle}</strong></div>
+        <div><small>Starting date</small><strong>{customerReportDateOnly(linkedRental.startAt)}</strong></div>
+      </div>
+      <p>This expense stays attached to this rental and cannot be changed to another rental, vehicle, or general expense from this screen.</p>
+    </section> : <>
+      <label className="field"><span>Expense for</span><select value={association} onChange={(event) => changeAssociation(event.target.value as "rental" | "vehicle" | "general")}><option value="rental">Associated rental</option><option value="vehicle">Vehicle directly</option><option value="general">General business</option></select><small>Rental-linked expenses are for reporting only and never reduce the customer rental balance.</small></label>
+      {association === "rental" && <><label className="field"><span>Associated rental</span><select required value={rentalId} onChange={(event) => setRentalId(event.target.value)}><option value="">Select rental</option>{rentalChoices.map((rental) => <option key={rental.databaseId} value={rental.databaseId}>{rentalChoiceLabel(rental)}</option>)}</select><small>Customer · place · car · starting date</small></label>{linkedRental && <div className="expense-linked-rental expense-linked-rental-clean"><CarFront size={16} /><span><strong>{linkedRental.customer}{linkedRental.city && linkedRental.city !== "—" ? ` · ${linkedRental.city}` : ""}</strong><small>{linkedRental.vehicle} · Started {customerReportDateOnly(linkedRental.startAt)}</small></span><b>Vehicle selected automatically</b></div>}</>}
+      {association === "vehicle" && <label className="field"><span>Vehicle</span><select required value={vehicleRegistration} onChange={(event) => { setVehicleRegistration(event.target.value); setRentalId(""); }}><option value="">Select vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.name} · {vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</option>)}</select><small>No rental will be associated with a direct vehicle expense.</small></label>}
+      {association === "general" && <div className="expense-general-note"><ReceiptIndianRupee size={16} /><span><strong>General business expense</strong><small>No rental or vehicle will be linked.</small></span></div>}
+    </>}
+
     <div className="field-grid"><label className="field"><span>Amount (₹)</span><input required min="0.01" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(amount)} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label></div>
     <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What was this expense for?" /></label>
     {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0}><Check size={16} />{saving ? "Saving…" : "Save expense"}</button></div>
