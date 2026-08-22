@@ -6596,3 +6596,47 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 .expense-rental-lock-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.expense-rental-lock-grid>div{min-width:0;padding:9px 10px;border:1px solid #e9e7f4;border-radius:10px;background:#fff}
 .expense-rental-lock-grid strong{display:block;margin-top:3px;color:#222630;font-size:11px;font-weight:850;line-height:1.25;overflow-wrap:anywhere}.expense-rental-lock-card>p{margin:0;color:#686d78;font-size:9px;line-height:1.4}
 @media(max-width:720px){.expense-rental-lock-card{padding:12px}.expense-rental-lock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.expense-rental-lock-grid strong{font-size:10px}}
+
+
+/* MECARDEE_PAYMENT_RENTAL_DROPDOWN_CSS_V8_9_83 */
+.payment-selected-rental {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:7px;
+  padding:10px;
+  border:1px solid #e5e3ef;
+  border-radius:13px;
+  background:#fafafb;
+}
+.payment-selected-rental>div {
+  min-width:0;
+  padding:8px 9px;
+  border-radius:9px;
+  background:#fff;
+}
+.payment-selected-rental small {
+  display:block;
+  color:#7a7f89;
+  font-size:8px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+.payment-selected-rental strong {
+  display:block;
+  margin-top:3px;
+  color:#22262d;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.payment-rental-picker-form .field>small {
+  margin-top:5px;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.35;
+}
+@media(max-width:720px){
+  .payment-selected-rental{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

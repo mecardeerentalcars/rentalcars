@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_PAYMENT_RENTAL_DROPDOWN_V8_9_83
+
 // MECARDEE_LOCKED_RENTAL_EXPENSE_UI_V8_9_82
 
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
@@ -1143,7 +1145,7 @@ export default function Home() {
       {dialog === "new-rental" && <NewRentalDialog vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} customers={customerList} seedVehicleId={rentalSeedVehicleId} close={() => { setRentalSeedVehicleId(null); setDialog(null); }} done={(message) => { setRentalSeedVehicleId(null); setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "rental-detail" && selectedRental && <RentalDetailDialog rental={selectedRental} close={() => setDialog(null)} switchDialog={setDialog} sendWhatsApp={sendWhatsApp} addExpense={() => openExpense(selectedRental.databaseId)} />}
       {dialog === "pending-payments" && <PendingPaymentsDialog rentals={rentalList} close={() => setDialog(null)} receive={(rental) => { setSelectedRental(rental); setDialog("payment"); }} />}
-      {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
+      {dialog === "payment" && selectedRental && <PaymentDialog rental={selectedRental} rentals={rentalList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "extend" && selectedRental && <ExtendDialog rental={selectedRental} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "change-vehicle" && selectedRental && <ChangeVehicleDialog rental={selectedRental} vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "return" && selectedRental && <ReturnDialog rental={selectedRental} close={() => setDialog(null)} onConfirmed={handleSettlementConfirmed} sendSettlementWhatsApp={openWhatsAppSafely} />}
@@ -3587,22 +3589,52 @@ function PendingPaymentsDialog({ rentals, close, receive }: { rentals: Rental[];
   </DialogShell>;
 }
 
-function PaymentDialog({ rental, close, done }: { rental: Rental; close: () => void; done: (message: string) => void }) {
-  const [amount, setAmount] = useState(rental.balance);
+function PaymentDialog({ rental, rentals, close, done }: { rental: Rental; rentals: Rental[]; close: () => void; done: (message: string) => void }) {
+  const paymentRentals = useMemo(() => {
+    const eligible = rentals.filter((item) => item.balance > 0);
+    if (rental.balance > 0 && !eligible.some((item) => item.databaseId === rental.databaseId)) eligible.unshift(rental);
+    return eligible.sort((a, b) => {
+      const aActive = a.state === "completed" ? 1 : 0;
+      const bActive = b.state === "completed" ? 1 : 0;
+      return aActive - bActive || new Date(b.startAt).getTime() - new Date(a.startAt).getTime();
+    });
+  }, [rentals, rental]);
+
+  const [rentalId, setRentalId] = useState(rental.databaseId);
+  const selectedRental = paymentRentals.find((item) => item.databaseId === rentalId) ?? rental;
+  const [amount, setAmount] = useState(selectedRental.balance);
   const [method, setMethod] = useState("UPI");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function selectRental(nextId: string) {
+    setRentalId(nextId);
+    const nextRental = paymentRentals.find((item) => item.databaseId === nextId);
+    if (nextRental) {
+      setAmount(nextRental.balance);
+      setError(null);
+    }
+  }
+
+  const rentalOptionLabel = (item: Rental) => [
+    item.customer,
+    item.city && item.city !== "—" ? item.city : null,
+    item.vehicle,
+    customerReportDateOnly(item.startAt),
+    `${money(item.balance)} pending`,
+  ].filter(Boolean).join(" · ");
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!selectedRental || selectedRental.balance <= 0) return setError("Select a rental with a pending balance.");
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch("/api/payments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingNumber: rental.id, amount, method, notes, receivedBy: CURRENT_USER_NAME }) });
+      const response = await fetch("/api/payments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingNumber: selectedRental.id, amount, method, notes, receivedBy: CURRENT_USER_NAME }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string; payment?: { paymentNumber: string; balance: number } }>(response);
       if (!response.ok || !payload.payment) throw new Error(payload.error ?? "Could not record payment.");
-      done(`${money(amount)} payment ${payload.payment.paymentNumber} recorded for ${rental.customer}`);
+      done(`${money(amount)} payment ${payload.payment.paymentNumber} recorded for ${selectedRental.customer}`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not record payment.");
     } finally {
@@ -3610,7 +3642,17 @@ function PaymentDialog({ rental, close, done }: { rental: Rental; close: () => v
     }
   }
 
-  return <DialogShell title="Receive payment" subtitle={`${rental.customer} · ${rental.id}`} close={close}><form className="simple-form" onSubmit={submit}><div className="amount-due"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><label className="field"><span>Amount received (₹)</span><input required min="0.01" max={rental.balance} step="0.01" type="number" inputMode="decimal" value={amount} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label><label className="field"><span>Notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional payment note" /></label><div className="remaining-box"><span>Remaining after payment</span><strong>{money(Math.max(0, rental.balance - amount))}</strong></div>{error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0 || amount > rental.balance}><Check size={16} />{saving ? "Recording…" : "Record payment"}</button></div></form></DialogShell>;
+  return <DialogShell title="Receive payment" subtitle={`${selectedRental.customer}${selectedRental.city && selectedRental.city !== "—" ? ` · ${selectedRental.city}` : ""} · ${selectedRental.vehicle}`} close={close}><form className="simple-form payment-rental-picker-form" onSubmit={submit}>
+    <label className="field"><span>Rental / customer</span><select required value={rentalId} onChange={(event) => selectRental(event.target.value)}>{paymentRentals.map((item) => <option key={item.databaseId} value={item.databaseId}>{rentalOptionLabel(item)}</option>)}</select><small>Customer · place · car · starting date · pending balance</small></label>
+    <div className="payment-selected-rental"><div><small>Customer</small><strong>{selectedRental.customer}</strong></div><div><small>Place</small><strong>{selectedRental.city && selectedRental.city !== "—" ? selectedRental.city : "—"}</strong></div><div><small>Car</small><strong>{selectedRental.vehicle}</strong></div><div><small>Starting date</small><strong>{customerReportDateOnly(selectedRental.startAt)}</strong></div></div>
+    <div className="amount-due"><span>Balance pending</span><strong>{money(selectedRental.balance)}</strong></div>
+    <label className="field"><span>Amount received (₹)</span><input required min="0.01" max={selectedRental.balance} step="0.01" type="number" inputMode="decimal" value={amount} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label>
+    <label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label>
+    <label className="field"><span>Notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional payment note" /></label>
+    <div className="remaining-box"><span>Remaining after payment</span><strong>{money(Math.max(0, selectedRental.balance - amount))}</strong></div>
+    {error && <p className="form-error">{error}</p>}
+    <div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0 || amount > selectedRental.balance}><Check size={16} />{saving ? "Recording…" : "Record payment"}</button></div>
+  </form></DialogShell>;
 }
 
 function ExtendDialog({ rental, close, done }: { rental: Rental; close: () => void; done: (message: string) => void }) {
