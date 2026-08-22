@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_AUTO_LATEST_DEPLOY_V8_9_84
+
 // MECARDEE_PAYMENT_RENTAL_DROPDOWN_V8_9_83
 
 // MECARDEE_LOCKED_RENTAL_EXPENSE_UI_V8_9_82
@@ -653,6 +655,155 @@ export default function Home() {
     return () => document.removeEventListener("pointerdown", handleOutside);
   }, [notificationsOpen]);
 
+  // MECARDEE_AUTO_LATEST_DEPLOY_V8_9_84
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || (location.protocol !== "https:" && location.hostname !== "localhost")) return;
+
+    let disposed = false;
+    let safeReloadTimer: number | null = null;
+    let registration: ServiceWorkerRegistration | null = null;
+
+    const currentVersionKey = "mecardee-current-deploy-version";
+    const reloadedVersionKey = "mecardee-reloaded-deploy-version";
+    const pendingVersionKey = "mecardee-pending-deploy-version";
+
+    const getStored = (storage: Storage, key: string) => {
+      try { return storage.getItem(key); } catch { return null; }
+    };
+    const setStored = (storage: Storage, key: string, value: string) => {
+      try { storage.setItem(key, value); } catch { /* storage may be unavailable in restrictive browser modes */ }
+    };
+    const removeStored = (storage: Storage, key: string) => {
+      try { storage.removeItem(key); } catch { /* ignore */ }
+    };
+
+    const cleanVersionQuery = () => {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has("mecardee_v")) return;
+      url.searchParams.delete("mecardee_v");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    };
+
+    const userIsEditing = () => {
+      if (document.querySelector(".dialog-overlay")) return true;
+      const active = document.activeElement as HTMLElement | null;
+      return Boolean(active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName));
+    };
+
+    const performReload = (version: string) => {
+      if (disposed) return;
+      setStored(sessionStorage, reloadedVersionKey, version);
+      removeStored(sessionStorage, pendingVersionKey);
+      const url = new URL(window.location.href);
+      url.searchParams.set("mecardee_v", version);
+      window.location.replace(url.toString());
+    };
+
+    const reloadWhenSafe = (version: string) => {
+      const knownVersion = getStored(localStorage, currentVersionKey);
+      const alreadyReloaded = getStored(sessionStorage, reloadedVersionKey);
+
+      if (!knownVersion) {
+        setStored(localStorage, currentVersionKey, version);
+        cleanVersionQuery();
+        return;
+      }
+
+      if (knownVersion === version) {
+        cleanVersionQuery();
+        return;
+      }
+
+      if (alreadyReloaded === version) {
+        setStored(localStorage, currentVersionKey, version);
+        cleanVersionQuery();
+        return;
+      }
+
+      if (!userIsEditing()) {
+        performReload(version);
+        return;
+      }
+
+      // Do not interrupt rental/payment/booking forms. Refresh as soon as the dialog
+      // is closed or the user leaves the active input.
+      setStored(sessionStorage, pendingVersionKey, version);
+      if (safeReloadTimer !== null) return;
+      safeReloadTimer = window.setInterval(() => {
+        const pending = getStored(sessionStorage, pendingVersionKey);
+        if (!pending || userIsEditing()) return;
+        window.clearInterval(safeReloadTimer!);
+        safeReloadTimer = null;
+        performReload(pending);
+      }, 1000);
+    };
+
+    const checkDeploymentVersion = async () => {
+      try {
+        const response = await fetch(`/app-version.json?t=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json() as { version?: unknown };
+        if (typeof payload.version === "string" && payload.version) reloadWhenSafe(payload.version);
+      } catch {
+        // Offline / weak network: keep the current app and try again on focus/online.
+      }
+    };
+
+    const onWorkerMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: unknown; version?: unknown } | null;
+      if (data?.type === "MECARDEE_VERSION_READY" && typeof data.version === "string") {
+        reloadWhenSafe(data.version);
+      }
+    };
+
+    const onControllerChange = () => { void checkDeploymentVersion(); };
+    const onForeground = () => {
+      if (document.visibilityState !== "visible") return;
+      void registration?.update().catch(() => undefined);
+      void checkDeploymentVersion();
+    };
+    const onOnline = () => {
+      void registration?.update().catch(() => undefined);
+      void checkDeploymentVersion();
+    };
+
+    navigator.serviceWorker.addEventListener("message", onWorkerMessage);
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    document.addEventListener("visibilitychange", onForeground);
+    window.addEventListener("focus", onForeground);
+    window.addEventListener("online", onOnline);
+
+    void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((nextRegistration) => {
+      registration = nextRegistration;
+
+      const activateWorker = (worker: ServiceWorker | null) => {
+        if (!worker) return;
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            worker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      };
+
+      activateWorker(nextRegistration.installing);
+      nextRegistration.addEventListener("updatefound", () => activateWorker(nextRegistration.installing));
+      if (nextRegistration.waiting) nextRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+      void nextRegistration.update().catch(() => undefined);
+    }).catch((error) => console.warn("Service worker registration failed", error));
+
+    void checkDeploymentVersion();
+
+    return () => {
+      disposed = true;
+      if (safeReloadTimer !== null) window.clearInterval(safeReloadTimer);
+      navigator.serviceWorker.removeEventListener("message", onWorkerMessage);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      document.removeEventListener("visibilitychange", onForeground);
+      window.removeEventListener("focus", onForeground);
+      window.removeEventListener("online", onOnline);
+    };
+  }, []);
+
   useEffect(() => {
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
     const isAndroid = /Android/i.test(navigator.userAgent);
@@ -661,10 +812,6 @@ export default function Home() {
     // v8 used a permanent localStorage dismissal. Clear that old flag once so Android users
     // who dismissed the early version are eligible to see the improved prompt again.
     localStorage.removeItem("mecardee-install-dismissed");
-
-    if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-      void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch((error) => console.warn("Service worker registration failed", error));
-    }
 
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();

@@ -1,6 +1,28 @@
-const VERSION = "build-1787422675722";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const publicDir = path.join(root, "public");
+fs.mkdirSync(publicDir, { recursive: true });
+
+const rawVersion =
+  process.env.RAILWAY_DEPLOYMENT_ID ||
+  process.env.RAILWAY_GIT_COMMIT_SHA ||
+  process.env.RAILWAY_GIT_COMMIT ||
+  process.env.SOURCE_VERSION ||
+  process.env.COMMIT_SHA ||
+  `build-${Date.now()}`;
+
+const version = String(rawVersion)
+  .trim()
+  .replace(/[^a-zA-Z0-9._-]+/g, "-")
+  .slice(0, 96) || `build-${Date.now()}`;
+
+const generatedAt = new Date().toISOString();
+
+const sw = `const VERSION = ${JSON.stringify(version)};
 const CACHE_PREFIX = "mecardee-shell-";
-const CACHE = `mecardee-shell-deploy-${VERSION}`;
+const CACHE = \`mecardee-shell-deploy-\${VERSION}\`;
 const SHELL = ["/manifest.webmanifest", "/icons/mecardee-192.png", "/icons/mecardee-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -21,7 +43,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    const legacyUpgrade = keys.some((key) => /^mecardee-shell-v\d+$/.test(key));
+    const legacyUpgrade = keys.some((key) => /^mecardee-shell-v\\d+$/.test(key));
 
     await Promise.all(
       keys
@@ -89,3 +111,13 @@ self.addEventListener("fetch", (event) => {
     })());
   }
 });
+`;
+
+fs.writeFileSync(
+  path.join(publicDir, "app-version.json"),
+  `${JSON.stringify({ version, generatedAt })}\n`,
+  "utf8",
+);
+fs.writeFileSync(path.join(publicDir, "sw.js"), sw, "utf8");
+
+console.log(`Mecardee PWA version generated: ${version}`);

@@ -6,8 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "vinext build",
+    "dev": "node scripts/generate-pwa-version.mjs && vinext dev",
+    "build": "node scripts/generate-pwa-version.mjs && vinext build",
     "start": "vinext start",
     "test": "npm run build && tsx --test tests/rendered-html.test.mjs tests/rental-calculations.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
