@@ -1,3 +1,4 @@
+import { defineConfig as __mecardeeCompatDefineConfig, mergeConfig as __mecardeeCompatMergeConfig } from "vite";
 import { sites } from "@openai/sites-vite-plugin";
 import vinext from "vinext";
 import { defineConfig } from "vite";
@@ -33,7 +34,8 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async () => {
+// MECARDEE_OLD_CHROME_COMPAT_WRAPPER_V8_9_90
+const __mecardeeCompatOriginalConfig = defineConfig(async () => {
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= "false";
@@ -56,4 +58,20 @@ export default defineConfig(async () => {
       }),
     ],
   };
+});
+
+export default __mecardeeCompatDefineConfig(async (env) => {
+  const __mecardeeCompatResolved =
+    typeof __mecardeeCompatOriginalConfig === "function"
+      ? await __mecardeeCompatOriginalConfig(env)
+      : await __mecardeeCompatOriginalConfig;
+
+  return __mecardeeCompatMergeConfig(
+    __mecardeeCompatResolved ?? {},
+    {
+      build: {
+        target: ["chrome64", "edge79", "firefox67", "safari11.1"],
+      },
+    },
+  );
 });
