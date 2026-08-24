@@ -1,7 +1,7 @@
 // MECARDEE_ROLE_GUARD_V8_9_55
 import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, maintenanceRecords, payments, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
 import {
@@ -240,9 +240,21 @@ async function saveSettlement(request: Request, editCompleted: boolean) {
         : currentSegmentCharge.rentalCharge;
 
       const sendToMaintenance = requestedMaintenance && !currentVehicle.isGuest;
+      const [newerVehicleSegment] = editCompleted
+        ? await tx
+          .select({ id: rentalSegments.id })
+          .from(rentalSegments)
+          .where(and(
+            eq(rentalSegments.vehicleId, currentVehicle.id),
+            gt(rentalSegments.startAt, currentSegment.startAt),
+          ))
+          .orderBy(asc(rentalSegments.startAt))
+          .limit(1)
+          .for("update")
+        : [];
       const vehicleCanBeSynchronized = !editCompleted || (
         ["available", "maintenance"].includes(currentVehicle.status) &&
-        currentVehicle.odometerKm === existingSettlement!.actualReturnKilometer
+        !newerVehicleSegment
       );
       if (editCompleted && existingSettlement!.sendToMaintenance !== sendToMaintenance && !vehicleCanBeSynchronized) {
         throw new RequestError("This vehicle has newer activity. Its maintenance status cannot be changed from this historical settlement.", 409);

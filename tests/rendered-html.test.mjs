@@ -89,6 +89,7 @@ test("keeps settlement, schedule, and report corrections wired through every ent
   assert.match(settlement, /storedCurrentRentalDays/);
   assert.match(settlement, /export async function PATCH\(request: Request\)/);
   assert.match(settlement, /Only a completed rental settlement can be edited/);
+  assert.match(settlement, /!newerVehicleSegment/);
   assert.match(page, /method: editCompleted \? "PATCH" : "POST"/);
   assert.match(page, /confirmed\.calculation\.amountDue/);
   assert.match(page, /aria-pressed=\{physicalReturnConfirmed\}/);
