@@ -52,3 +52,17 @@ test("keeps the frontend product-specific and starter-free", async () => {
   assert.match(packageJson, /"lucide-react"/);
   assert.doesNotMatch(`${page}\n${layout}\n${packageJson}`, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });
+
+test("reports vehicle replacements and excludes Guest Car finances", async () => {
+  const [page, snapshot] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/snapshot/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /Vehicle usage \/ changes/);
+  assert.match(page, /KM by vehicle/);
+  assert.match(page, /Guest Car - details only/);
+  assert.match(page, /financial amount excluded/);
+  assert.match(page, /vehicle\.isGuest \? "Excluded"/);
+  assert.match(snapshot, /segment\.rentalCharge \+ segment\.extraKmCharge \+ segment\.fuelCharge/);
+});

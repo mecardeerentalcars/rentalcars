@@ -1378,7 +1378,7 @@ export default function Home() {
           {view === "customers" && <CustomersView currentUser={sessionUser!} payments={paymentList} rentals={rentalList} customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} />}
-          {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
+          {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={[...vehicleList, ...guestVehicleList]} />}
           {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} customers={customerList} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
         </div>
       </main>
@@ -1960,7 +1960,7 @@ function GuestCarsView({ vehicles, rentals, addVehicle, openVehicle, openRental 
   const onRent = vehicles.filter((vehicle) => ["rented", "today", "overdue"].includes(vehicle.statusKey)).length;
   const usageRows = rentals.flatMap((rental) => rental.segments
     .filter((segment) => segment.isGuest)
-    .map((segment) => ({ rental, segment, charge: Number(segment.rentalCharge || 0) + Number(segment.extraKmCharge || 0) })))
+    .map((segment) => ({ rental, segment, charge: Number(segment.rentalCharge || 0) + Number(segment.extraKmCharge || 0) + Number(segment.fuelCharge || 0) })))
     .sort((a, b) => new Date(b.segment.startAt).getTime() - new Date(a.segment.startAt).getTime());
   const totalCustomerCharges = usageRows.reduce((sum, row) => sum + row.charge, 0);
 
@@ -2162,13 +2162,14 @@ function downloadExcelTable(
 ) {
   const xmlEscape = (value: string | number) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   const widths = headers.map((header, columnIndex) => {
-    const longest = Math.max(header.length, ...rows.slice(0, 100).map((row) => String(row[columnIndex] ?? "").length));
+    const longest = Math.max(header.length, ...rows.slice(0, 100).flatMap((row) => String(row[columnIndex] ?? "").split("\n").map((line) => line.length)));
     return Math.min(210, Math.max(85, longest * 7.2));
   });
   const cells = (row: (string | number)[]) => row.map((cell, columnIndex) => {
     const numeric = typeof cell === "number";
     const style = numeric && currencyColumns.includes(columnIndex) ? "Currency" : numeric ? "Number" : "Cell";
-    return `<Cell ss:StyleID="${style}"><Data ss:Type="${numeric ? "Number" : "String"}">${xmlEscape(cell)}</Data></Cell>`;
+    const excelValue = typeof cell === "string" ? cell.replaceAll("\n", " | ") : cell;
+    return `<Cell ss:StyleID="${style}"><Data ss:Type="${numeric ? "Number" : "String"}">${xmlEscape(excelValue)}</Data></Cell>`;
   }).join("");
   const mergeAcross = Math.max(0, headers.length - 1);
   const totalMerge = Math.max(0, headers.length - 2);
@@ -2211,9 +2212,13 @@ async function downloadPdfTable(
   };
 
   const key = headers.join("|").toLowerCase();
-  const reportWidths: (number | string)[] = key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")
-    ? [74, 112, 84, 70, 70, "*", 68, 68, 68]
-    : key.includes("payment|customer|rental|date|method|amount|received by")
+  const reportWidths: (number | string)[] = key.includes("vehicle usage / changes|km by vehicle")
+    ? [48, 62, 58, 45, 45, "*", 90, 48, 48, 48, 48, 52, 52]
+    : key.includes("type|customer / rental|usage period|vehicle changes|km usage")
+      ? [52, 48, 45, 62, 62, "*", 72, 28, 48, 48, 48, 48, 48]
+      : key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")
+        ? [74, 112, 84, 70, 70, "*", 68, 68, 68]
+        : key.includes("payment|customer|rental|date|method|amount|received by")
       ? [88, 105, 92, 76, 64, 74, "*"]
       : key.includes("date|category|vehicle|method|amount|description")
         ? [70, 92, 115, 72, 76, "*"]
@@ -2451,17 +2456,54 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const day = value ? value.slice(0, 10) : "";
       return (!dateFrom || !day || day >= dateFrom) && (!dateTo || !day || day <= dateTo);
     };
-    const ownSegments = (rental: Rental) => rental.segments.filter((segment) => !segment.isGuest);
-    const ownWeight = (rental: Rental) => ownSegments(rental).reduce((sum, segment) => sum + Math.max(0, segment.rentalCharge + segment.extraKmCharge), 0);
+    const orderedSegments = (rental: Rental) => [...rental.segments].sort((a, b) => a.sequence - b.sequence);
+    const ownSegments = (rental: Rental) => orderedSegments(rental).filter((segment) => !segment.isGuest);
+    const segmentCharge = (segment: RentalSegmentRow) => Math.max(0, segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge);
+    const ownWeight = (rental: Rental) => ownSegments(rental).reduce((sum, segment) => sum + segmentCharge(segment), 0);
     const vehicleShare = (rental: Rental, vehicleId: string) => {
       const segments = ownSegments(rental);
       if (!segments.some((segment) => segment.vehicleId === vehicleId)) return 0;
       if (segments.length === 1) return 1;
       const totalWeight = ownWeight(rental);
-      const selectedWeight = segments.filter((segment) => segment.vehicleId === vehicleId).reduce((sum, segment) => sum + Math.max(0, segment.rentalCharge + segment.extraKmCharge), 0);
+      const selectedWeight = segments.filter((segment) => segment.vehicleId === vehicleId).reduce((sum, segment) => sum + segmentCharge(segment), 0);
       if (totalWeight > 0) return selectedWeight / totalWeight;
       const vehicleSegmentCount = segments.filter((segment) => segment.vehicleId === vehicleId).length;
       return vehicleSegmentCount / Math.max(1, segments.length);
+    };
+    const segmentOverlapsPeriod = (segment: RentalSegmentRow) => {
+      const segmentStart = segment.startAt.slice(0, 10);
+      const segmentEnd = (segment.endAt || today).slice(0, 10);
+      return (!dateTo || segmentStart <= dateTo) && (!dateFrom || segmentEnd >= dateFrom);
+    };
+    const segmentPeriod = (segment: RentalSegmentRow) => `${segment.start} to ${segment.endAt ? segment.end : "Current"}`;
+    const segmentKilometers = (segment: RentalSegmentRow) => {
+      const startKm = segment.startingKilometer;
+      if (segment.endingKilometer === null) return `${startKm.toLocaleString("en-IN")} km to pending`;
+      const usedKm = Math.max(0, segment.endingKilometer - startKm);
+      return `${startKm.toLocaleString("en-IN")} to ${segment.endingKilometer.toLocaleString("en-IN")} km (${usedKm.toLocaleString("en-IN")} km used)`;
+    };
+    const segmentChange = (rental: Rental, segment: RentalSegmentRow, index: number, segments = orderedSegments(rental)) => {
+      const previous = segments[index - 1];
+      const next = segments[index + 1];
+      const role = segment.vehicleId === rental.originalVehicleId ? "Original vehicle" : index === 0 ? `Starting replacement for ${rental.originalVehicle}` : "Replacement vehicle";
+      const transition = previous
+        ? `Replaced ${previous.vehicle} (${previous.plate})`
+        : next
+          ? "First vehicle used"
+          : "Only vehicle used";
+      const nextStep = next ? `Changed to ${next.vehicle} (${next.plate})${next.isGuest ? " - Guest Car" : ""}` : "Final vehicle";
+      const guestNote = segment.isGuest ? " | Guest Car - details only; financial amount excluded" : "";
+      return `#${segment.sequence} ${role}: ${segment.vehicle} (${segment.plate}) | ${transition} | ${nextStep}${guestNote}`;
+    };
+    const rentalVehicleUsage = (rental: Rental) => {
+      const segments = orderedSegments(rental);
+      if (!segments.length) return `${rental.originalVehicle} (${rental.originalPlate}) - vehicle history unavailable`;
+      return segments.map((segment, index) => `${segmentChange(rental, segment, index, segments)} | Used ${segmentPeriod(segment)}`).join("\n");
+    };
+    const rentalVehicleKilometers = (rental: Rental) => {
+      const segments = orderedSegments(rental);
+      if (!segments.length) return "KM history unavailable";
+      return segments.map((segment) => `#${segment.sequence} ${segment.vehicle}: ${segmentKilometers(segment)}`).join("\n");
     };
 
     if (reportType === "payments") {
@@ -2486,17 +2528,25 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       };
     }
     if (reportType === "cars") {
-      // Company vehicle report. Guest Cars remain excluded from business income.
+      // Guest Cars are visible for operational traceability, but every financial
+      // column remains excluded from business reporting.
       const chosen = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)) : vehicles;
       const rentalMap = new Map(rentals.map((rental) => [rental.id, rental]));
-      const periodRentals = rentals.filter((rental) => within(rental.startAt));
       const periodPayments = payments.filter((payment) => within(payment.receivedAt));
       const periodExpenses = expenses.filter((expense) => Boolean(expense.vehicleId && within(expense.rawDate)));
 
       const rows = chosen.map((vehicle) => {
-        const carRentals = periodRentals.filter((rental) => vehicleShare(rental, vehicle.id) > 0);
-        const customerNames = [...new Set(carRentals.map((rental) => rental.customer).filter(Boolean))].join(", ") || "—";
-        const rentalDates = carRentals.map((rental) => formatIndiaWhen(rental.startAt)).join(", ") || "—";
+        const usageEntries = rentals.flatMap((rental) => orderedSegments(rental)
+          .filter((segment) => segment.vehicleId === vehicle.id && segmentOverlapsPeriod(segment))
+          .map((segment) => {
+            const allSegments = orderedSegments(rental);
+            return { rental, segment, segmentIndex: allSegments.findIndex((item) => item.id === segment.id) };
+          }));
+        const carRentals = [...new Map(usageEntries.map(({ rental }) => [rental.id, rental])).values()];
+        const customerRentals = usageEntries.map(({ rental, segment }) => `${rental.id} - ${rental.customer} (segment #${segment.sequence})`).join("\n") || "—";
+        const usagePeriods = usageEntries.map(({ rental, segment }) => `${rental.id} #${segment.sequence}: ${segmentPeriod(segment)}`).join("\n") || "—";
+        const vehicleChanges = usageEntries.map(({ rental, segment, segmentIndex }) => segmentChange(rental, segment, segmentIndex)).join("\n") || "No usage in selected period";
+        const kilometerUsage = usageEntries.map(({ rental, segment }) => `${rental.id} #${segment.sequence}: ${segmentKilometers(segment)}`).join("\n") || "—";
         const rentalValue = carRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal * vehicleShare(rental, vehicle.id), 0);
         const collected = periodPayments.reduce((sum, payment) => {
           const rental = rentalMap.get(payment.rental);
@@ -2508,23 +2558,26 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         return [
           vehicle.name,
           vehicle.plate,
-          customerNames,
-          rentalDates,
+          vehicle.isGuest ? "Guest Car - details only" : "Company car",
+          customerRentals,
+          usagePeriods,
+          vehicleChanges,
+          kilometerUsage,
           carRentals.length,
-          rentalValue,
-          collected,
-          outstanding,
-          carExpenses,
-          collected - carExpenses,
+          vehicle.isGuest ? "Excluded" : rentalValue,
+          vehicle.isGuest ? "Excluded" : collected,
+          vehicle.isGuest ? "Excluded" : outstanding,
+          vehicle.isGuest ? "Excluded" : carExpenses,
+          vehicle.isGuest ? "Excluded" : collected - carExpenses,
         ] as (string | number)[];
       });
 
       return {
         title: "Car-wise report",
-        headers: ["Vehicle", "Registration", "Customer", "Rental date", "Rentals", "Rental value", "Collected", "Outstanding", "Expenses", "Net collected"],
+        headers: ["Vehicle", "Registration", "Type", "Customer / rental", "Usage period", "Vehicle changes", "KM usage", "Rentals", "Rental value", "Collected", "Outstanding", "Expenses", "Net collected"],
         rows,
-        currencyColumns: [5, 6, 7, 8, 9],
-        total: rows.reduce((sum, row) => sum + Number(row[9] ?? 0), 0),
+        currencyColumns: [8, 9, 10, 11, 12],
+        total: rows.reduce((sum, row) => sum + (typeof row[12] === "number" ? row[12] : 0), 0),
         label: "Net collected",
       };
     }
@@ -2550,7 +2603,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const rows = [...grouped.values()]
         .map((customerRentals) => {
           const first = customerRentals[0];
-          const vehiclesUsed = [...new Set(customerRentals.map((rental) => `${rental.originalVehicle} ${rental.originalPlate}`))].join(", ");
+          const vehiclesUsed = [...new Set(customerRentals.flatMap((rental) => orderedSegments(rental).map((segment) => `${segment.vehicle} ${segment.plate}${segment.isGuest ? " (Guest Car - amount excluded)" : ""}`)))].join(", ");
           const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.endAt)}`).join(", ");
           return [
             first.customer,
@@ -2582,15 +2635,15 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
     }
     return {
       title: "Rentals report",
-      headers: ["Original vehicle", "Customer", "Start", "Return", "Status", "Business total", "Business paid", "Business balance", "Expenses", "Paid by", "Expense category"],
+      headers: ["Rental", "Original vehicle", "Customer", "Start", "Return", "Vehicle usage / changes", "KM by vehicle", "Status", "Business total", "Business paid", "Business balance", "Expenses", "Paid by", "Expense category"],
       rows: base.map((rental) => {
         const linkedExpenses = expenses.filter((expense) => expense.bookingId === rental.databaseId);
         const expenseTotal = linkedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
         const expenseUsers = [...new Set(linkedExpenses.map((expense) => expense.createdBy).filter(Boolean))].join(", ") || "—";
         const expenseCategories = [...new Set(linkedExpenses.map((expense) => expense.category).filter(Boolean))].join(", ") || "—";
-        return [`${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.endAt), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance, expenseTotal, expenseUsers, expenseCategories] as (string | number)[];
+        return [rental.id, `${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.actualReturnAt || rental.endAt), rentalVehicleUsage(rental), rentalVehicleKilometers(rental), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance, expenseTotal, expenseUsers, expenseCategories] as (string | number)[];
       }),
-      currencyColumns: [5, 6, 7, 8],
+      currencyColumns: [8, 9, 10, 11],
       total: base.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0),
       label: "Rental value",
     };
@@ -2622,7 +2675,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         {(reportType === "rentals" || reportType === "outstanding") && <label className="field mecardee-report-filter-field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
         {reportType === "payments" && <label className="field mecardee-report-filter-field"><span>Paid by</span><select value={paidByFilter} onChange={(event) => setPaidByFilter(event.target.value)}><option value="all">All users</option>{paidByChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>}
       </div>
-      {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple company cars. Guest Cars are intentionally excluded from this income report.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => <label key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}</small></span></label>)}</div></div>}
+      {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple vehicles. Guest Cars show their usage and KM, while every financial value is excluded.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => <label key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</small></span></label>)}</div></div>}
       {reportType === "customers" && <div className="customer-report-filter">
         <div className="customer-report-filter-head">
           <div><strong>Customers</strong><small>Search and select one or multiple customers. Leave empty for all customers.</small></div>
@@ -2650,7 +2703,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       <div className="report-actions"><button className="secondary-button" onClick={() => downloadPdfTable(exportName, report.title, subtitle, pdfHeaders, pdfRows, pdfCurrencyColumns, report.label, report.total)} disabled={!report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={!report.rows.length}><Download size={16} />Excel</button></div>
     </section>
     <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Guest Car rental amounts excluded from business totals</small></article></section>
-    <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>)}</tr>)}</tbody></table></div></section>
+    <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table className={reportType === "rentals" || reportType === "cars" ? "report-detailed-table" : ""}><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => { const header = report.headers[cellIndex]; const detailed = ["Vehicle usage / changes", "KM by vehicle", "Customer / rental", "Usage period", "Vehicle changes", "KM usage"].includes(header); return <td className={detailed ? "report-detail-cell" : ""} key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>; })}</tr>)}</tbody></table></div></section>
   </>;
 }
 

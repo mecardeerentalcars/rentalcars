@@ -286,7 +286,7 @@ export async function GET() {
                 - settlement.damageCharge,
               ))
             : null;
-          const guestRentalAmount = roundMoney(segmentDtos.filter((segment) => segment.isGuest).reduce((sum, segment) => sum + segment.rentalCharge + segment.extraKmCharge, 0));
+          const guestRentalAmount = roundMoney(segmentDtos.filter((segment) => segment.isGuest).reduce((sum, segment) => sum + segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge, 0));
 
           const chargeableLateMs = booking.status === "completed"
             ? 0
