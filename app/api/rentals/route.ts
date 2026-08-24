@@ -6,6 +6,7 @@ import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
 import { nextSimpleBookingNumber } from "@/lib/simple-booking-number";
 import { calculateExpectedReturnKilometer, rentalDaysFromSchedule } from "@/lib/rental-calculations";
+import { nextSimplePaymentNumber } from "@/lib/simple-payment-number";
 
 type CreateRentalBody = {
   vehicleRegistration?: unknown;
@@ -33,8 +34,6 @@ const optionalText = (value: unknown) => typeof value === "string" && value.trim
 const amount = (value: unknown, field: string) => { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new RequestError(`${field} must be zero or greater.`); return Math.round(number * 100) / 100; };
 const wholeNumber = (value: unknown, field: string, minimum = 0) => { const number = Number(value); if (!Number.isInteger(number) || number < minimum) throw new RequestError(`${field} must be a whole number of at least ${minimum}.`); return number; };
 const date = (value: unknown, field: string) => { const result = new Date(text(value, field)); if (Number.isNaN(result.getTime())) throw new RequestError(`${field} is invalid.`); return result; };
-const numberId = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
-
 async function vehicleConflict(tx: any, vehicleId: string, startAt: Date, endAt: Date, excludeBookingId?: string) {
   const bookedWhere = excludeBookingId
     ? and(eq(bookings.vehicleId, vehicleId), eq(bookings.status, "booked"), ne(bookings.id, excludeBookingId), lt(bookings.startAt, endAt), gt(bookings.endAt, startAt))
@@ -152,7 +151,7 @@ export async function POST(request: Request) {
           status: "active",
         });
         if (advancePaid > 0) await tx.insert(payments).values({
-          paymentNumber: numberId("PAY"), bookingId: booking.id, customerId: customer.id, amount: advancePaid,
+          paymentNumber: await nextSimplePaymentNumber(tx), bookingId: booking.id, customerId: customer.id, amount: advancePaid,
           method: paymentMethod, paymentType: "advance", notes: `Advance for ${bookingNumber}`, receivedBy, receivedAt: new Date(),
         });
         await tx.update(vehicles).set({ status: "rented", odometerKm: startingKilometer, updatedAt: new Date() }).where(eq(vehicles.id, assignedVehicle.id));

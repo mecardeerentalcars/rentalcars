@@ -76,6 +76,7 @@ import {
   rentalDaysFromSchedule,
 } from "@/lib/rental-calculations";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
+import { effectiveBookingCalendarEndAt } from "@/lib/booking-calendar";
 import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
 import {
@@ -368,7 +369,7 @@ type CustomerRow = {
 };
 
 type PaymentRow = {
-  id: string; customer: string; phone: string; rental: string; date: string; receivedAt: string; amount: number; actualAmount?: number; method: string; type: string; receivedBy: string; notes: string | null;
+  id: string; customer: string; phone: string; place: string; rental: string; vehicle: string; date: string; receivedAt: string; amount: number; actualAmount?: number; method: string; type: string; receivedBy: string; notes: string | null;
 };
 
 type ExpenseRow = {
@@ -424,6 +425,7 @@ const navItems: { label: string; view: View; icon: LucideIcon; badge?: string }[
 
 const CURRENT_USER_NAME = "Admin";
 const money = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
+const displayUserName = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
 
 function dateInputValue(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
@@ -1219,7 +1221,7 @@ export default function Home() {
   function exportPayments() {
     if (!paymentList.length) return showToast("No payments to export.");
     const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const rows = [["Payment", "Customer", "Rental", "Date", "Method", "Amount", "Received by"], ...paymentList.map((payment) => [payment.id, payment.customer, payment.rental, payment.date, payment.method, payment.amount, payment.receivedBy])];
+    const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentList.map((payment) => [payment.id, payment.customer, payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
     const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `mecardee-payments-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -1572,6 +1574,7 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
 function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: BookingRecord[]; rentals: Rental[]; close: () => void }) {
   const [calendarMonth, setCalendarMonth] = useState(() => indiaDateKey(new Date()).slice(0, 7));
   const today = indiaDateKey(new Date());
+  const rentalByBookingId = useMemo(() => new Map(rentals.map((rental) => [rental.databaseId, rental])), [rentals]);
 
   const monthStart = new Date(`${calendarMonth}-01T12:00:00+05:30`);
   const monthLabel = new Intl.DateTimeFormat("en-IN", {
@@ -1598,7 +1601,12 @@ function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: Book
   const overlapsDate = (booking: BookingRecord, key: string) => {
     const dayStart = new Date(`${key}T00:00:00+05:30`).getTime();
     const dayEnd = new Date(`${key}T23:59:59+05:30`).getTime();
-    return new Date(booking.startAt).getTime() <= dayEnd && new Date(booking.endAt).getTime() >= dayStart;
+    const calendarEndAt = effectiveBookingCalendarEndAt(
+      booking.endAt,
+      booking.status,
+      rentalByBookingId.get(booking.id)?.actualReturnAt,
+    );
+    return new Date(booking.startAt).getTime() <= dayEnd && new Date(calendarEndAt).getTime() >= dayStart;
   };
 
   const statusClass = (booking: BookingRecord) => {
@@ -1651,7 +1659,7 @@ function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: Book
             return <div className={`dashboard-calendar-day ${outside ? "outside" : ""} ${key === today ? "today" : ""}`} key={key}>
               <strong className="dashboard-calendar-date">{date.getDate()}</strong>
               <div className="dashboard-calendar-events">
-                {dayBookings.slice(0, 4).map((booking) => {
+                {dayBookings.map((booking) => {
                   const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals);
                   return <span className={`dashboard-calendar-entry ${statusClass(booking)} ${changeRequired ? "change-required" : ""}`} key={booking.id}>
                     <b>{booking.vehicle}</b>
@@ -1659,7 +1667,6 @@ function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: Book
                     {changeRequired ? <em>Change</em> : booking.status === "rented" ? <em>Rented</em> : null}
                   </span>;
                 })}
-                {dayBookings.length > 4 && <span className="dashboard-calendar-more">+{dayBookings.length - 4} more</span>}
               </div>
             </div>;
           })}
@@ -1813,6 +1820,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
   const [dateTo, setDateTo] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(() => indiaDateKey(new Date()).slice(0, 7));
   const today = indiaDateKey(new Date());
+  const rentalByBookingId = useMemo(() => new Map(rentals.map((rental) => [rental.databaseId, rental])), [rentals]);
 
   const bucket = (booking: BookingRecord) => {
     if (booking.status === "rented") return "Active";
@@ -1867,7 +1875,12 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
   function overlapsDate(booking: BookingRecord, key: string) {
     const dayStart = new Date(`${key}T00:00:00+05:30`).getTime();
     const dayEnd = new Date(`${key}T23:59:59+05:30`).getTime();
-    return new Date(booking.startAt).getTime() <= dayEnd && new Date(booking.endAt).getTime() >= dayStart;
+    const calendarEndAt = effectiveBookingCalendarEndAt(
+      booking.endAt,
+      booking.status,
+      rentalByBookingId.get(booking.id)?.actualReturnAt,
+    );
+    return new Date(booking.startAt).getTime() <= dayEnd && new Date(calendarEndAt).getTime() >= dayStart;
   }
 
   return <>
@@ -1918,7 +1931,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
           const outside = date.getMonth() !== monthStart.getMonth();
           return <div className={`booking-calendar-day ${outside ? "outside" : ""} ${key === today ? "today" : ""}`} key={key}>
             <strong>{date.getDate()}</strong>
-            <div>{dayBookings.slice(0, 3).map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${booking.customer}`}><span>{booking.vehicle}</span><small>{booking.customer}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}{dayBookings.length > 3 && <span className="booking-more">+{dayBookings.length - 3} more</span>}</div>
+            <div>{dayBookings.map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${booking.customer}`}><span>{booking.vehicle}</span><small>{booking.customer}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}</div>
           </div>;
         })}
       </div>
@@ -1962,7 +1975,7 @@ function VehiclesView({ vehicles, metrics, openNew, addVehicle, openVehicle, sho
     <PageHeading eyebrow="FLEET" title="Vehicles" description="Your full fleet, availability and document health in one place." action={<div className="heading-actions"><button className="secondary-button mobile-vehicle-add" onClick={addVehicle} aria-label="Add vehicle"><Plus size={16} /><span>Add vehicle</span></button><button className="primary-button" onClick={() => openNew()}><CalendarDays size={16} />Rent a car</button></div>} />
     <section className="fleet-strip"><div><span className="strip-icon"><CarFront size={19} /></span><p><strong>{metrics.totalCars} vehicles</strong><small>Total fleet</small></p></div><div><i className="dot available" /><p><strong>{metrics.availableCars} available</strong><small>{metrics.totalCars ? Math.round((metrics.availableCars / metrics.totalCars) * 100) : 0}% of fleet</small></p></div><div><i className="dot rented" /><p><strong>{metrics.onRentCars} on rent</strong><small>{metrics.overdue ? `${metrics.overdue} overdue` : "No overdue rentals"}</small></p></div><div><i className="dot maintenance" /><p><strong>{metrics.maintenanceCars} in service</strong><small>Maintenance status</small></p></div><span className="fleet-progress"><i style={{ width: `${metrics.roadReadyPercent}%` }} /></span></section>
     <div className="panel-toolbar vehicle-toolbar"><div className="filter-tabs">{["All vehicles", "Available", "Rented", "Maintenance", "Inactive"].map((item) => <button className={filter === item ? "active" : ""} onClick={() => setFilter(item)} key={item}>{item}</button>)}</div><button className="filter-button" onClick={() => setTextFilter(window.prompt("Filter by vehicle, make, plate, fuel or transmission", textFilter) ?? textFilter)}><SlidersHorizontal size={15} />More filters</button></div>
-    <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => openVehicle(vehicle)}>View vehicle</button><button onClick={() => openNew(vehicle.id)} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
+    <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card" key={vehicle.id}><div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} vehicle`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><button type="button" className="vehicle-image-open" aria-label={`View ${vehicle.name}`} onClick={() => openVehicle(vehicle)} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><button aria-label={`More options for ${vehicle.name}`} onClick={() => showToast(`${vehicle.name} · ${vehicle.plate} · ${vehicle.odometer}`)}><MoreHorizontal size={17} /></button></div><div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div><div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div><div className={`document-note ${vehicle.statusKey === "overdue" || vehicle.statusKey === "today" ? "warning" : ""}`}><ShieldCheck size={14} /><span><strong>{vehicle.note}</strong><small>{vehicle.docs}</small></span></div><div className="vehicle-actions"><button onClick={() => openVehicle(vehicle)}>View vehicle</button><button onClick={() => openNew(vehicle.id)} disabled={vehicle.statusKey !== "available"}>{vehicle.statusKey === "available" ? "Rent now" : "Unavailable"}</button></div></div></article>)}</section>
   </>;
 }
 
@@ -1990,7 +2003,7 @@ function GuestCarsView({ vehicles, rentals, addVehicle, openVehicle, openRental 
     </section>
     <div className="panel-toolbar vehicle-toolbar"><div><strong>Guest Car list</strong></div><button className="filter-button" onClick={() => setTextFilter(window.prompt("Filter Guest Cars by name, make, plate, fuel or transmission", textFilter) ?? textFilter)}><SlidersHorizontal size={15} />Filter</button></div>
     {shown.length ? <section className="vehicle-grid">{shown.map((vehicle) => <article className="vehicle-card guest-vehicle-card" key={vehicle.id}>
-      <div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} Guest Car`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><span className="guest-car-badge">Guest Car</span></div>
+      <div className="vehicle-photo"><img src={vehicle.image} alt={`${vehicle.name} Guest Car`} onLoad={(event) => { const image = event.currentTarget; image.dataset.photoShape = image.naturalHeight > image.naturalWidth ? "portrait" : "landscape"; }} /><button type="button" className="vehicle-image-open" aria-label={`View ${vehicle.name}`} onClick={() => openVehicle(vehicle, false)} /><span className={`vehicle-status ${vehicle.statusKey}`}><i />{vehicle.status}</span><span className="guest-car-badge">Guest Car</span></div>
       <div className="vehicle-card-body"><div className="vehicle-title"><div><h3>{vehicle.name}</h3><p>{vehicle.plate}</p></div><strong>{money(vehicle.rate)}<small>/ day</small></strong></div><div className="guest-owner-meta"><UserRound size={13} /><span><strong>{vehicle.guestOwnerName || "Owner not recorded"}</strong><small>{vehicle.guestOwnerPlace || "Place not recorded"}</small></span></div>
         <div className="spec-row"><span><Fuel size={14} />{vehicle.fuel}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.year}</span></div>
         <div className="odometer"><span><Gauge size={15} />Odometer</span><strong>{vehicle.odometer}</strong></div>
@@ -2154,7 +2167,7 @@ function PaymentsView({ rentals, payments, metrics, openPayment, openExpense, ex
   return <>
     <PageHeading eyebrow="MONEY" title="Expenses & Payments" description="Record business expenses, customer collections and outstanding balances from one place." action={<div className="payments-page-actions"><button className="secondary-button expense-action-button" onClick={openExpense}><ReceiptIndianRupee size={17} />Add expense</button><button className="primary-button" onClick={openPayment}><Plus size={17} />Receive payment</button></div>} />
     <section className="payment-summary"><article className="featured"><span>Collected this month</span><strong>{money(metrics.collectedMonth)}</strong><small><TrendingUp size={14} /> {metrics.collectionChangePercent >= 0 ? "+" : ""}{metrics.collectionChangePercent}% vs last month</small></article><article><span>Collected today</span><strong>{money(metrics.collectedToday)}</strong><small>{metrics.paymentsToday} payments</small></article><article><span>Outstanding</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">Across {metrics.outstandingRentals} rentals</small></article><article><span>Expenses this month</span><strong>{money(metrics.expensesMonth)}</strong><small>Business expenses recorded</small></article></section>
-    <div className="payments-layout"><section className="data-panel"><div className="panel-heading"><div><h2>Recent payments</h2><p>Latest customer collections</p></div><button onClick={exportPayments}><Download size={15} />Export</button></div><div className="payments-table"><div className="payments-head"><span>Customer</span><span>Rental</span><span>Date</span><span>Method</span><span>Amount</span></div>{payments.map((payment) => <article key={payment.id}><span><i>{payment.customer.split(" ").map((part) => part[0]).join("")}</i><span><strong>{payment.customer}</strong><small>{payment.id}</small></span></span><span><strong>{payment.rental}</strong><small>Received by {payment.receivedBy}</small></span><span>{payment.date}</span><span><b>{payment.method}</b></span><strong className="green-text">+ {money(payment.amount)}</strong></article>)}</div></section><aside className="outstanding-card"><div className="panel-heading"><div><h2>Outstanding</h2><p>Follow up with {metrics.outstandingCustomers} customers</p></div></div>{outstanding.slice(0,3).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.vehicle} · {rental.statusText}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${rental.customer}`}><Send size={14} /></button></article>)}<button className="full-link" onClick={() => window.alert(outstanding.length ? outstanding.map((rental) => `${rental.customer} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n") : "No outstanding balances.")}>View outstanding report <ChevronRight size={15} /></button></aside></div>
+    <div className="payments-layout"><section className="data-panel"><div className="panel-heading"><div><h2>Recent payments</h2><p>Latest customer collections</p></div><button onClick={exportPayments}><Download size={15} />Export</button></div><div className="payments-table"><div className="payments-head"><span>Customer</span><span>Rental</span><span>Date</span><span>Method</span><span>Amount</span></div>{payments.map((payment) => <article key={payment.id}><span><i>{payment.customer.split(" ").map((part) => part[0]).join("")}</i><span><strong>{payment.customer}</strong><small>{payment.place} · {payment.id}</small></span></span><span><strong>{payment.rental}</strong><small>{payment.vehicle} · Entered by {displayUserName(payment.receivedBy)}</small></span><span>{payment.date}</span><span><b>{payment.method}</b></span><strong className="green-text">+ {money(payment.amount)}</strong></article>)}</div></section><aside className="outstanding-card"><div className="panel-heading"><div><h2>Outstanding</h2><p>Follow up with {metrics.outstandingCustomers} customers</p></div></div>{outstanding.slice(0,3).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.vehicle} · {rental.statusText}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${rental.customer}`}><Send size={14} /></button></article>)}<button className="full-link" onClick={() => window.alert(outstanding.length ? outstanding.map((rental) => `${rental.customer} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n") : "No outstanding balances.")}>View outstanding report <ChevronRight size={15} /></button></aside></div>
   </>;
 }
 
@@ -2228,14 +2241,16 @@ async function downloadPdfTable(
   };
 
   const key = headers.join("|").toLowerCase();
-  const reportWidths: (number | string)[] = key.includes("vehicle usage / changes|km by vehicle")
-    ? [48, 62, 58, 45, 45, "*", 90, 48, 48, 48, 48, 52, 52]
+  const reportWidths: (number | string)[] = key.includes("customer|phone|rental|rental dates|vehicle usage / changes|km by vehicle|status|rental value|collected|outstanding")
+    ? [70, 70, 55, 82, "*", 100, 65, 68, 68, 68]
+    : key.includes("vehicle usage / changes|km by vehicle")
+      ? [48, 62, 58, 45, 45, "*", 90, 48, 48, 48, 48, 52, 52]
     : key.includes("type|customer / rental|usage period|vehicle changes|km usage")
       ? [52, 48, 45, 62, 62, "*", 72, 28, 48, 48, 48, 48, 48]
       : key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")
         ? [74, 112, 84, 70, 70, "*", 68, 68, 68]
-        : key.includes("payment|customer|rental|date|method|amount|received by")
-      ? [88, 105, 92, 76, 64, 74, "*"]
+        : key.includes("payment|customer|place|date|associated rental|vehicle|method|amount|entered by")
+      ? [72, 86, 58, 64, 72, 88, 54, 62, "*"]
       : key.includes("date|category|vehicle|method|amount|description")
         ? [70, 92, 115, 72, 76, "*"]
         : key.includes("rental|customer|phone|vehicle|expected return|status|balance")
@@ -2257,11 +2272,11 @@ async function downloadPdfTable(
       { label: "COLLECTED", value: money(sumColumn("Collected")) },
       { label: "NET COLLECTED", value: money(sumColumn("Net collected")) },
     );
-  } else if (key.includes("payment|customer|rental|date|method|amount|received by")) {
+  } else if (key.includes("payment|customer|place|date|associated rental|vehicle|method|amount|entered by")) {
     kpis.push(
       { label: "COLLECTED", value: money(total) },
       { label: "CUSTOMERS", value: String(uniqueCount("Customer")) },
-      { label: "RECEIVED BY", value: CURRENT_USER_NAME },
+      { label: "ENTERED BY", value: `${uniqueCount("Entered by")} user${uniqueCount("Entered by") === 1 ? "" : "s"}` },
     );
   } else if (key.includes("date|category|vehicle|method|amount|description")) {
     kpis.push(
@@ -2525,7 +2540,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
     if (reportType === "payments") {
       // snapshot payment rows already exclude the Guest Car financial portion.
       const filtered = payments.filter((payment) => within(payment.receivedAt) && (paidByFilter === "all" || payment.receivedBy.toLowerCase() === paidByFilter.toLowerCase()));
-      return { title: "Payments report", headers: ["Payment", "Customer", "Rental", "Date", "Method", "Amount", "Paid by"], rows: filtered.map((payment) => [payment.id, payment.customer, payment.rental, payment.date, payment.method, payment.amount, payment.receivedBy] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
+      return { title: "Payments report", headers: ["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], rows: filtered.map((payment) => [payment.id, payment.customer, payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)] as (string | number)[]), currencyColumns: [7], total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
     }
     if (reportType === "expenses") {
       const rentalById = new Map(rentals.map((rental) => [rental.databaseId, rental]));
@@ -2607,39 +2622,27 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         return !selectedSet.size || selectedSet.has(key);
       });
 
-      const grouped = new Map<string, Rental[]>();
-      for (const rental of filteredRentals) {
-        const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
-        const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}`;
-        const current = grouped.get(key) || [];
-        current.push(rental);
-        grouped.set(key, current);
-      }
-
-      const rows = [...grouped.values()]
-        .map((customerRentals) => {
-          const first = customerRentals[0];
-          const vehiclesUsed = [...new Set(customerRentals.flatMap((rental) => orderedSegments(rental).map((segment) => `${segment.vehicle} ${segment.plate}${segment.isGuest ? " (Guest Car - amount excluded)" : ""}`)))].join(", ");
-          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.actualReturnAt || rental.endAt)}`).join(", ");
-          return [
-            first.customer,
-            first.phone,
-            customerRentals.length,
-            vehiclesUsed,
-            rentalDates,
-            customerRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0),
-            customerRentals.reduce((sum, rental) => sum + rental.businessPaid, 0),
-            customerRentals.reduce((sum, rental) => sum + rental.businessBalance, 0),
-          ] as (string | number)[];
-        })
-        .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      const rows = [...filteredRentals]
+        .sort((a, b) => String(a.customer).localeCompare(String(b.customer)) || new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+        .map((rental) => [
+          rental.customer,
+          rental.phone,
+          rental.id,
+          `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.actualReturnAt || rental.endAt)}`,
+          rentalVehicleUsage(rental),
+          rentalVehicleKilometers(rental),
+          rental.statusText,
+          rental.businessFinancialTotal,
+          rental.businessPaid,
+          rental.businessBalance,
+        ] as (string | number)[]);
 
       return {
         title: "Customer-wise report",
-        headers: ["Customer", "Phone", "Rentals", "Vehicles", "Rental dates", "Rental value", "Collected", "Outstanding"],
+        headers: ["Customer", "Phone", "Rental", "Rental dates", "Vehicle usage / changes", "KM by vehicle", "Status", "Rental value", "Collected", "Outstanding"],
         rows,
-        currencyColumns: [5, 6, 7],
-        total: rows.reduce((sum, row) => sum + Number(row[5] ?? 0), 0),
+        currencyColumns: [7, 8, 9],
+        total: rows.reduce((sum, row) => sum + Number(row[7] ?? 0), 0),
         label: "Rental value",
       };
     }
@@ -2669,7 +2672,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   const customerScope = selectedCustomerKeys.length
     ? customerChoices.filter((customer) => selectedCustomerKeys.includes(customer.key)).map((customer) => customer.name).join(", ")
     : "All customers";
-  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` · Status: ${status}` : ""}${reportType === "payments" ? ` · Paid by: ${paidByFilter === "all" ? "All users" : paidByFilter}` : ""}${reportType === "cars" ? ` · ${vehicleScope}` : ""}${reportType === "customers" ? ` · ${customerScope}` : ""}`;
+  const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` · Status: ${status}` : ""}${reportType === "payments" ? ` · Entered by: ${paidByFilter === "all" ? "All users" : displayUserName(paidByFilter)}` : ""}${reportType === "cars" ? ` · ${vehicleScope}` : ""}${reportType === "customers" ? ` · ${customerScope}` : ""}`;
   const exportName = `mecardee-${reportType}-${dateFrom || "all"}-${dateTo || "all"}`;
 
 
@@ -2689,7 +2692,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         <label className="field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
         <label className="field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         {(reportType === "rentals" || reportType === "outstanding") && <label className="field mecardee-report-filter-field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
-        {reportType === "payments" && <label className="field mecardee-report-filter-field"><span>Paid by</span><select value={paidByFilter} onChange={(event) => setPaidByFilter(event.target.value)}><option value="all">All users</option>{paidByChoices.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>}
+        {reportType === "payments" && <label className="field mecardee-report-filter-field"><span>Entered by</span><select value={paidByFilter} onChange={(event) => setPaidByFilter(event.target.value)}><option value="all">All users</option>{paidByChoices.map((name) => <option key={name} value={name}>{displayUserName(name)}</option>)}</select></label>}
       </div>
       {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple vehicles. Guest Cars show their usage and KM, while every financial value is excluded.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => <label key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</small></span></label>)}</div></div>}
       {reportType === "customers" && <div className="customer-report-filter">
@@ -3138,7 +3141,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
         {tab === "bookings" && (editableBookings.length ? editableBookings.map((booking) => <article className="transaction-row settings-booking-row" key={booking.id}><div className="transaction-main"><span className="transaction-kind rental"><CalendarDays size={15} /></span><div><strong>{booking.vehicle} · {booking.plate}</strong><small>{booking.bookingNumber} · {booking.customer}</small><small>{formatWhen(booking.startAt)} → {formatWhen(booking.endAt)} · {booking.days} rental day{booking.days === 1 ? "" : "s"} · {money(booking.rate)}/day</small>{booking.vehicleId !== booking.requestedVehicleId && <small className="settings-booking-original">Original request: {booking.requestedVehicle} · {booking.requestedPlate}</small>}</div></div><div className="transaction-side"><span className="settings-booking-status">Booked</span><div className="transaction-actions"><button onClick={() => { setError(""); setBookingEditTarget(booking); }} disabled={busy}><Pencil size={14} />Edit booking</button></div></div></article>) : <div className="transaction-empty">No active bookings to edit.</div>)}
         {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit details</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
         {tab === "returns" && (completedReturns.length ? completedReturns.map((rental) => <article className="transaction-row rental-schedule-row completed-return-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind history"><CheckCircle2 size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>Returned {formatWhen(rental.actualReturnAt!)} · Final total {money(rental.total)} · Paid {money(rental.paid)}</small></div></div><div className="transaction-side"><span className="rental-schedule-status completed">Completed</span><div className="transaction-actions"><button className="danger" onClick={() => { setError(""); setReopenReason("Accidental final settlement"); setReopenTarget(rental); }} disabled={busy}><RotateCcw size={14} />Reopen to on rent</button></div></div></article>) : <div className="transaction-empty">No completed returns are available.</div>)}
-        {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
+        {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Entered by {displayUserName(payment.receivedBy)}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
       </div>}
@@ -4357,9 +4360,9 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
           <div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div>
         </div>
         <p className="calculation-note return-rule-note">Allowance: {currentRentalDays} day{currentRentalDays === 1 ? "" : "s"} × {rental.allowedKmPerDay} km. Fuel mileage: {rental.mileageKmPerLitre} km/L.</p>
-        {!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>}
+        {!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span><span className="maintenance-check-state"><Check size={13} />{sendToMaintenance ? "Selected" : "Tap to select"}</span></span></label>}
         {rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}
-        <label className="maintenance-check final-return-confirm"><input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} /><span><ShieldCheck size={16} /><span><strong>Vehicle has physically returned</strong><small>Required before completing this rental.</small></span></span></label>
+        <label className="maintenance-check final-return-confirm"><input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} /><span><ShieldCheck size={16} /><span><strong>Vehicle has physically returned</strong><small>Required before completing this rental.</small></span><span className="maintenance-check-state"><Check size={13} />{physicalReturnConfirmed ? "Confirmed" : "Tap to confirm"}</span></span></label>
         {error && <p className="form-error">{error}</p>}
         <div className="return-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart || !physicalReturnConfirmed}>{saving ? "Confirming…" : "Confirm final return"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></div>
       </aside>

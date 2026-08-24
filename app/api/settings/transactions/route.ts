@@ -280,7 +280,7 @@ export async function DELETE(request: Request) {
             INSERT INTO transaction_delete_history
               (id, transaction_type, transaction_id, transaction_number, display_label, snapshot, reason, deleted_by)
             VALUES
-              (${historyId}::uuid, ${type}, ${snapshot.id}::uuid, ${snapshot.paymentNumber}, ${label}, ${JSON.stringify(snapshot)}::jsonb, ${reason}, 'Admin')
+              (${historyId}::uuid, ${type}, ${snapshot.id}::uuid, ${snapshot.paymentNumber}, ${label}, ${JSON.stringify(snapshot)}::jsonb, ${reason}, ${__mecardeeAuth.user.username})
           `);
           await tx.delete(payments).where(eq(payments.id, id));
           await tx.update(bookings).set({ updatedAt: new Date() }).where(eq(bookings.id, snapshot.bookingId));
@@ -297,7 +297,7 @@ export async function DELETE(request: Request) {
           INSERT INTO transaction_delete_history
             (id, transaction_type, transaction_id, transaction_number, display_label, snapshot, reason, deleted_by)
           VALUES
-            (${historyId}::uuid, ${type}, ${snapshot.id}::uuid, ${snapshot.expenseNumber}, ${label}, ${JSON.stringify(snapshot)}::jsonb, ${reason}, 'Admin')
+            (${historyId}::uuid, ${type}, ${snapshot.id}::uuid, ${snapshot.expenseNumber}, ${label}, ${JSON.stringify(snapshot)}::jsonb, ${reason}, ${__mecardeeAuth.user.username})
         `);
         await tx.delete(expenses).where(eq(expenses.id, id));
         return { historyId, type, number: snapshot.expenseNumber };
@@ -357,7 +357,7 @@ export async function POST(request: Request) {
             method: String(snapshot.method),
             paymentType: String(snapshot.paymentType ?? "rental"),
             notes: snapshot.notes ? String(snapshot.notes) : null,
-            receivedBy: String(snapshot.receivedBy ?? "Admin"),
+            receivedBy: String(snapshot.receivedBy ?? __mecardeeAuth.user.username),
             receivedAt: new Date(snapshot.receivedAt),
             createdAt: new Date(snapshot.createdAt),
           });
@@ -389,14 +389,14 @@ export async function POST(request: Request) {
             amount: Number(snapshot.amount),
             description: snapshot.description ? String(snapshot.description) : null,
             method: String(snapshot.method),
-            createdBy: String(snapshot.createdBy ?? "Admin"),
+            createdBy: String(snapshot.createdBy ?? __mecardeeAuth.user.username),
             createdAt: new Date(snapshot.createdAt),
           });
         }
 
         await tx.execute(sql`
           UPDATE transaction_delete_history
-          SET restored_at = now(), restored_by = 'Admin'
+          SET restored_at = now(), restored_by = ${__mecardeeAuth.user.username}
           WHERE id = ${historyId}::uuid
         `);
         return { type, transactionNumber: String(history.transaction_number ?? "") };

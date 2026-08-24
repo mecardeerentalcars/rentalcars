@@ -12,12 +12,28 @@ import {
 } from "../lib/rental-calculations";
 import { calculateSegmentCharge, roundFinalPayable } from "../lib/rental-segments";
 import { formatSimpleBookingNumber } from "../lib/simple-booking-number";
+import { formatSimplePaymentNumber } from "../lib/simple-payment-number";
+import { effectiveBookingCalendarEndAt } from "../lib/booking-calendar";
 
 test("booking and rental number series both start from a compact 001", () => {
   assert.equal(formatSimpleBookingNumber("BKG", 1), "BKG-001");
   assert.equal(formatSimpleBookingNumber("RNT", 1), "RNT-001");
   assert.equal(formatSimpleBookingNumber("DRF", 1), "DRF-001");
   assert.equal(formatSimpleBookingNumber("BKG", 12), "BKG-012");
+});
+
+test("payment number series uses the same compact 001 format", () => {
+  assert.equal(formatSimplePaymentNumber(1), "PAY-001");
+  assert.equal(formatSimplePaymentNumber(12), "PAY-012");
+});
+
+test("completed calendar entries stop on the actual early-return date", () => {
+  const scheduledEndAt = "2026-08-25T13:00:00+05:30";
+  const actualReturnAt = "2026-08-24T14:37:00+05:30";
+
+  assert.equal(effectiveBookingCalendarEndAt(scheduledEndAt, "completed", actualReturnAt), actualReturnAt);
+  assert.equal(effectiveBookingCalendarEndAt(scheduledEndAt, "rented", actualReturnAt), scheduledEndAt);
+  assert.equal(effectiveBookingCalendarEndAt(scheduledEndAt, "completed", null), scheduledEndAt);
 });
 
 test("expected return kilometer uses rental days and the vehicle allowance", () => {

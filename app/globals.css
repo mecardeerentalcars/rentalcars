@@ -211,6 +211,8 @@ img { display: block; max-width: 100%; }
 .vehicle-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .vehicle-status.rented { color: var(--blue); }.vehicle-status.today { color: var(--amber); }.vehicle-status.overdue { color: var(--red); }.vehicle-status.maintenance { color: #8c622c; } .vehicle-status.inactive { color: #6b7280; }
 .vehicle-photo > button { position: absolute; right: 11px; top: 11px; z-index: 2; width: 30px; height: 30px; border: 0; border-radius: 8px; background: rgba(255,255,255,.92); color: #64716e; display: grid; place-items: center; }
+.vehicle-photo > .vehicle-image-open { inset: 0; z-index: 1; width: 100%; height: 100%; border-radius: 0; background: transparent; cursor: pointer; }
+.vehicle-photo > .vehicle-image-open:focus-visible { outline: 3px solid #6d5ee7; outline-offset: -3px; }
 .vehicle-card-body { padding: 15px; }
 .vehicle-title { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .vehicle-title h3 { margin: 0 0 4px; font: 600 16px Georgia, serif; }
@@ -338,6 +340,18 @@ img { display: block; max-width: 100%; }
 .calculation-box { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }.calculation-box div { padding: 10px 11px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 8px; }.calculation-box div:last-child { border: 0; background: var(--green-soft); color: var(--green); font-weight: 800; }.calculation-box strong { color: var(--ink); }.calculation-box div:last-child strong { color: var(--green); }
 .return-form { grid-template-columns: 1.55fr .75fr; }.charge-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }.charge-grid label { display: grid; gap: 6px; }.charge-grid input { min-width: 0; }.final-bill > div { padding: 9px 0; border-bottom: 1px solid #dce3e1; color: var(--muted); font-size: 8px; }.final-bill > div strong { color: var(--ink); }.final-bill .final-total { padding: 12px 0; color: var(--ink); font-weight: 800; }.final-bill .final-total strong { font: 600 16px Georgia, serif; }.final-bill .paid strong { color: var(--green); }.final-bill .due { border: 0; color: var(--red); font-weight: 800; }.final-bill .due strong { color: var(--red); font: 600 19px Georgia, serif; }
 .maintenance-check { margin-top: 12px; display: block; }.maintenance-check > input { position: absolute; opacity: 0; }.maintenance-check > span { padding: 10px; border: 1px solid var(--line); background: white; border-radius: 9px; display: flex; gap: 8px; align-items: center; cursor: pointer; }.maintenance-check input:checked + span { border-color: #d19a50; background: var(--amber-soft); }.maintenance-check > span > svg { color: var(--amber); }.maintenance-check strong, .maintenance-check small { display: block; }.maintenance-check strong { font-size: 7px; }.maintenance-check small { color: var(--muted); font-size: 6px; margin-top: 3px; }
+.maintenance-check > span > span:nth-child(2) { min-width: 0; flex: 1; }
+.maintenance-check-state { flex: 0 0 auto; display: inline-flex !important; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #d7d9e3; border-radius: 999px; color: #696d79; background: #fff; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.maintenance-check-state svg { opacity: 0; }
+.maintenance-check input:checked + span .maintenance-check-state { border-color: #c4832e; background: #c4832e; color: #fff; }
+.maintenance-check input:checked + span .maintenance-check-state svg { opacity: 1; }
+.maintenance-check > input:focus-visible + span { outline: 3px solid rgba(91,79,202,.28); outline-offset: 2px; }
+.final-return-confirm input:checked + span { border-color: #6555d9; background: #f0edff; }
+.final-return-confirm input:checked + span .maintenance-check-state { border-color: #6555d9; background: #6555d9; }
+@media (max-width: 700px) {
+  .maintenance-check > span { align-items: flex-start; flex-wrap: wrap; padding: 12px; }
+  .maintenance-check-state { margin-left: 24px; }
+}
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 120; background: #153029; color: white; border: 1px solid #2e4a43; box-shadow: 0 15px 40px rgba(7,26,21,.25); border-radius: 12px; padding: 12px 15px; display: flex; align-items: center; gap: 9px; font-size: 9px; font-weight: 700; animation: rise .25s ease; }.toast svg { color: #78c7a5; }
 
 @media (max-width: 1180px) {
@@ -1457,7 +1471,7 @@ body { font-size: 15px; line-height: 1.45; }
   padding: 7px;
   border-top: 1px solid var(--line);
   border-right: 1px solid var(--line);
-  overflow: hidden;
+  overflow: visible;
 }
 .booking-calendar-day:nth-child(7n) { border-right: 0; }
 .booking-calendar-day > strong { font-size: 11px; color: var(--ink); display: inline-grid; place-items: center; width: 23px; height: 23px; }
@@ -1482,7 +1496,6 @@ body { font-size: 15px; line-height: 1.45; }
 .booking-calendar-day button.active { background: #e8f6ef; color: #1f7d4d; }
 .booking-calendar-day button.completed { background: #eaf4ff; color: #2c69a5; }
 .booking-calendar-day button.cancelled { background: #feeceb; color: #a6433d; text-decoration: line-through; }
-.booking-more { font-size: 8px; color: var(--muted); padding-left: 4px; }
 
 @media (max-width: 1180px) {
   .bookings-toolbar { grid-template-columns: 1fr 1fr 1fr; }
@@ -1629,7 +1642,6 @@ body { font-size: 15px; line-height: 1.45; }
   .booking-calendar-day button { padding: 3px; border-radius: 5px; }
   .booking-calendar-day button span { font-size: 7px; }
   .booking-calendar-day button small { display: none; }
-  .booking-more { font-size: 7px; padding-left: 1px; }
 
   /* New Booking dialog: every field and action is usable on a phone. */
   .booking-form .field-grid,
@@ -3775,12 +3787,6 @@ body { font-size: 15px; line-height: 1.45; }
   text-transform: uppercase;
 }
 
-.dashboard-calendar-more {
-  padding-left: 3px;
-  color: #64748b;
-  font-size: 7px;
-  font-weight: 750;
-}
 
 /* Tablet / mobile:
    Keep the popup nearly full-width. The month grid deliberately keeps a
@@ -4204,7 +4210,7 @@ body { font-size: 15px; line-height: 1.45; }
     min-width: 0 !important;
     min-height: 86px !important;
     padding: 3px 2px !important;
-    overflow: hidden !important;
+    overflow: visible !important;
   }
 
   .dashboard-calendar-date {
@@ -4263,10 +4269,6 @@ body { font-size: 15px; line-height: 1.45; }
     font-size: 4.3px !important;
   }
 
-  .dashboard-calendar-more {
-    padding-left: 1px !important;
-    font-size: 5px !important;
-  }
 }
 
 

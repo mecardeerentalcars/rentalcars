@@ -84,3 +84,29 @@ test("keeps settlement, schedule, and report corrections wired through every ent
   assert.match(extension, /activeSegmentProjection\?\.rentalDays/);
   assert.match(paymentAdmin, /const replacementFlow/);
 });
+
+test("mobile return controls, vehicle image navigation, and payment report fields remain connected", async () => {
+  const [page, styles, vehicleEditor, snapshot] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/vehicles/[id]/vehicle-details-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/snapshot/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /className="vehicle-image-open"/);
+  assert.match(page, /maintenance-check-state/);
+  assert.match(page, /"Associated rental", "Vehicle"/);
+  assert.match(page, /"Entered by"/);
+  assert.match(page, /effectiveBookingCalendarEndAt/);
+  assert.doesNotMatch(page, /dayBookings\.slice/);
+  assert.doesNotMatch(page, /dashboard-calendar-more/);
+  assert.doesNotMatch(page, /booking-more/);
+  assert.match(styles, /\.vehicle-photo > \.vehicle-image-open/);
+  assert.match(styles, /\.final-return-confirm input:checked/);
+  assert.match(vehicleEditor, /operationalStatusEditor/);
+  assert.match(snapshot, /place: customer\.city/);
+  assert.match(snapshot, /vehicle: vehicleLabels\.join/);
+  assert.match(page, /headers: \["Customer", "Phone", "Rental", "Rental dates", "Vehicle usage \/ changes", "KM by vehicle"/);
+  assert.match(page, /const rows = \[\.\.\.filteredRentals\]/);
+  assert.doesNotMatch(page, /const grouped = new Map<string, Rental\[\]>/);
+});

@@ -710,20 +710,28 @@ export async function GET() {
         .map((row) => ({ ...row, businessAmount: businessPaymentByPaymentId.get(row.payment.id) ?? row.payment.amount }))
         .filter((row) => row.businessAmount > 0);
 
-      const paymentDtos = businessPaymentRows.slice(0, 100).map(({ payment, customer, booking, businessAmount }) => ({
-        id: payment.paymentNumber,
-        customer: customer.name,
-        phone: customer.phone,
-        rental: booking.bookingNumber,
-        date: formatDateTime(payment.receivedAt, today),
-        receivedAt: payment.receivedAt.toISOString(),
-        amount: businessAmount,
-        actualAmount: payment.amount,
-        method: payment.method,
-        type: payment.paymentType,
-        receivedBy: payment.receivedBy,
-        notes: payment.notes,
-      }));
+      const paymentDtos = businessPaymentRows.slice(0, 100).map(({ payment, customer, booking, businessAmount }) => {
+        const rental = rentalByDatabaseId.get(booking.id);
+        const vehicleLabels = rental?.segments.length
+          ? [...new Set(rental.segments.map((segment) => `${segment.vehicle} (${segment.plate})`))]
+          : [`${vehicleById.get(booking.requestedVehicleId)?.name ?? "Vehicle"} (${vehicleById.get(booking.requestedVehicleId)?.registrationNumber ?? "—"})`];
+        return {
+          id: payment.paymentNumber,
+          customer: customer.name,
+          phone: customer.phone,
+          place: customer.city ?? "—",
+          rental: booking.bookingNumber,
+          vehicle: vehicleLabels.join(" → "),
+          date: formatDateTime(payment.receivedAt, today),
+          receivedAt: payment.receivedAt.toISOString(),
+          amount: businessAmount,
+          actualAmount: payment.amount,
+          method: payment.method,
+          type: payment.paymentType,
+          receivedBy: payment.receivedBy,
+          notes: payment.notes,
+        };
+      });
 
       const expenseDtos = expenseRows.slice(0, 100).map(({ expense, vehicle }) => ({
         id: expense.expenseNumber,

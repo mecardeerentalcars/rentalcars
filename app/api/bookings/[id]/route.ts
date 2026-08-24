@@ -7,6 +7,7 @@ import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
 import { calculateExpectedReturnKilometer, rentalDaysFromSchedule } from "@/lib/rental-calculations";
+import { nextSimplePaymentNumber } from "@/lib/simple-payment-number";
 
 class RequestError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -31,8 +32,6 @@ const date = (value: unknown, field: string) => {
   if (Number.isNaN(result.getTime())) throw new RequestError(`${field} is invalid.`);
   return result;
 };
-const numberId = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
-
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const __mecardeeAuth = await requireWriteAccess();
   if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
@@ -227,7 +226,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
       if (advancePaid > 0) {
         await tx.insert(payments).values({
-          paymentNumber: numberId("PAY"),
+          paymentNumber: await nextSimplePaymentNumber(tx),
           bookingId: record.booking.id,
           customerId: record.customer.id,
           amount: advancePaid,
