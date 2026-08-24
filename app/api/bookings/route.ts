@@ -5,6 +5,7 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, rentalSegments, vehicles } from "@/db/schema";
 import { nextSimpleBookingNumber } from "@/lib/simple-booking-number";
+import { rentalDaysFromSchedule } from "@/lib/rental-calculations";
 
 type CreateBookingBody = {
   requestedVehicleRegistration?: unknown;
@@ -34,11 +35,6 @@ const amount = (value: unknown, field: string) => {
   if (!Number.isFinite(number) || number < 0) throw new RequestError(`${field} must be zero or greater.`);
   return Math.round(number * 100) / 100;
 };
-const whole = (value: unknown, field: string, minimum = 1) => {
-  const number = Number(value);
-  if (!Number.isInteger(number) || number < minimum) throw new RequestError(`${field} must be at least ${minimum}.`);
-  return number;
-};
 export async function POST(request: Request) {
   const __mecardeeAuth = await requireWriteAccess();
   if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
@@ -49,9 +45,9 @@ export async function POST(request: Request) {
     const customerPhone = text(body.customerPhone, "Customer phone");
     const startAt = date(body.startAt, "Start date");
     const endAt = date(body.endAt, "Return date");
-    const rentalDays = whole(body.rentalDays, "Rental days");
     const dailyRate = amount(body.dailyRate, "Daily rate");
     if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");
+    const rentalDays = rentalDaysFromSchedule(startAt, endAt);
 
     const result = await withRequestDb((db) => db.transaction(async (tx) => {
       const [requestedVehicle] = await tx.select().from(vehicles).where(eq(vehicles.registrationNumber, requestedVehicleRegistration)).limit(1).for("update");

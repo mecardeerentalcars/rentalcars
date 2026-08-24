@@ -10,6 +10,7 @@ import {
   calculateLateRentalCharge,
   calculateRentalChargeForActualReturn,
   calculateSettlement,
+  normalisePendingBalance,
 } from "@/lib/rental-calculations";
 import { calculateSegmentCharge, roundFinalPayable } from "@/lib/rental-segments";
 
@@ -216,8 +217,15 @@ export async function POST(request: Request) {
       const calculation = {
         ...calculationRaw,
         finalAmount: roundedFinalAmount,
-        amountDue: roundFinalPayable(Math.max(0, roundedFinalAmount - amountAlreadyPaid)),
+        amountDue: normalisePendingBalance(roundedFinalAmount - amountAlreadyPaid),
       };
+
+      const storedCurrentRentalDays = singleOriginalSegment
+        ? chargeableRentalDays
+        : currentSegmentCharge.rentalDays;
+      const storedCurrentRentalCharge = singleOriginalSegment
+        ? roundMoney(chargeableRentalDays * currentSegment.dailyRate)
+        : currentSegmentCharge.rentalCharge;
 
       const sendToMaintenance = requestedMaintenance && !currentVehicle.isGuest;
 
@@ -255,12 +263,10 @@ export async function POST(request: Request) {
       await tx.update(rentalSegments).set({
         endAt: actualReturnAt,
         endingKilometer: actualReturnKilometer,
-        rentalDays: currentSegmentCharge.rentalDays,
+        rentalDays: storedCurrentRentalDays,
         // For the legacy one-vehicle case store the gross booked-day charge so
         // old booking discounts remain represented once at the booking level.
-        rentalCharge: singleOriginalSegment
-          ? roundMoney(currentSegmentCharge.rentalCharge)
-          : currentSegmentCharge.rentalCharge,
+        rentalCharge: storedCurrentRentalCharge,
         extraKilometers: calculation.extraKilometers,
         extraKmCharge: calculation.extraKmCharge,
         returnFuelRangeKm,
@@ -296,7 +302,7 @@ export async function POST(request: Request) {
       const finalSegments = segmentRows.map((row) => {
         const isCurrent = row.segment.id === currentSegment.id;
         const segmentEnd = isCurrent ? actualReturnAt : (row.segment.endAt ?? actualReturnAt);
-        const rentalDays = isCurrent ? currentSegmentCharge.rentalDays : row.segment.rentalDays;
+        const rentalDays = isCurrent ? storedCurrentRentalDays : row.segment.rentalDays;
         const rentalCharge = isCurrent
           ? (singleOriginalSegment ? rentalBaseAmount : currentSegmentCharge.rentalCharge)
           : row.segment.rentalCharge;

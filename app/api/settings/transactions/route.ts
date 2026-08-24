@@ -3,7 +3,8 @@
 import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
-import { bookings, customers, expenses, payments, returnSettlements, vehicles } from "@/db/schema";
+import { bookings, customers, expenses, payments, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
+import { calculateSegmentCharge } from "@/lib/rental-segments";
 
 type TransactionType = "payment" | "expense";
 type AnyRow = Record<string, any>;
@@ -83,8 +84,37 @@ async function paymentLimit(tx: any, bookingId: string, excludingPaymentId?: str
     .select({ total: sql<number>`coalesce(sum(${payments.amount}), 0)::float8` })
     .from(payments)
     .where(where);
+  let payable = Number(settlement?.finalAmount ?? booking.baseRentalAmount + booking.otherCharges);
+  if (!settlement && booking.status === "rented") {
+    const segments = await tx.select().from(rentalSegments).where(eq(rentalSegments.bookingId, bookingId));
+    const replacementFlow =
+      segments.length > 1 ||
+      (segments.length === 1 && segments[0]?.vehicleId !== booking.requestedVehicleId);
+    if (replacementFlow) {
+      const projectedGross = segments.reduce((sum: number, segment: typeof rentalSegments.$inferSelect) => {
+        if (segment.status === "completed") return sum + segment.rentalCharge + segment.extraKmCharge;
+        const projectedEnd = booking.endAt.getTime() > segment.startAt.getTime()
+          ? booking.endAt
+          : new Date(Math.max(Date.now(), segment.startAt.getTime()));
+        const charge = calculateSegmentCharge({
+          startAt: segment.startAt,
+          endAt: projectedEnd,
+          dailyRate: segment.dailyRate,
+          startingKilometer: segment.startingKilometer,
+          endingKilometer: segment.startingKilometer,
+          allowedKmPerDay: segment.allowedKmPerDay,
+          extraKmRate: segment.extraKmRate,
+        });
+        return sum + charge.rentalCharge;
+      }, 0);
+      payable = Math.max(
+        0,
+        Math.round((projectedGross - booking.bookingDiscount + booking.otherCharges) * 100) / 100,
+      );
+    }
+  }
   return {
-    payable: Number(settlement?.finalAmount ?? booking.baseRentalAmount + booking.otherCharges),
+    payable,
     otherPayments: Number(paidRow?.total ?? 0),
   };
 }

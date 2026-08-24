@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateExpectedReturnKilometer,
+  calculateFuelShortageCharge,
   calculateLateRentalCharge,
   calculateRentalChargeForActualReturn,
   calculateSettlement,
   buildSettlementWhatsAppMessage,
+  normalisePendingBalance,
+  rentalDaysFromSchedule,
 } from "../lib/rental-calculations";
 import { calculateSegmentCharge, roundFinalPayable } from "../lib/rental-segments";
 import { formatSimpleBookingNumber } from "../lib/simple-booking-number";
@@ -19,6 +22,47 @@ test("booking and rental number series both start from a compact 001", () => {
 
 test("expected return kilometer uses rental days and the vehicle allowance", () => {
   assert.equal(calculateExpectedReturnKilometer(50_000, 5, 100), 50_500);
+});
+
+test("booking days are derived from the India calendar dates shown to staff", () => {
+  assert.equal(
+    rentalDaysFromSchedule("2026-08-20T13:00:00+05:30", "2026-08-30T13:00:00+05:30"),
+    10,
+  );
+  assert.equal(
+    rentalDaysFromSchedule("2026-08-20T23:00:00+05:30", "2026-08-21T01:00:00+05:30"),
+    1,
+  );
+});
+
+test("balances below one rupee are settled instead of shown as pending", () => {
+  assert.equal(normalisePendingBalance(0.99), 0);
+  assert.equal(normalisePendingBalance(1), 1);
+  assert.equal(normalisePendingBalance(1.01), 1.01);
+  assert.equal(normalisePendingBalance(-5), 0);
+});
+
+test("fuel litre rounding is identical in change-vehicle and final settlement calculations", () => {
+  const fuel = calculateFuelShortageCharge(101, 100, 3, 100);
+  assert.deepEqual(fuel, {
+    fuelRangeShortageKm: 1,
+    requiredFuelLitres: 0.333,
+    fuelCharge: 33.3,
+  });
+  const settlement = calculateSettlement({
+    baseRentalAmount: 0,
+    rentalDays: 1,
+    startingKilometer: 0,
+    actualReturnKilometer: 0,
+    allowedKmPerDay: 0,
+    extraKmRate: 0,
+    startingFuelRangeKm: 101,
+    returnFuelRangeKm: 100,
+    mileageKmPerLitre: 3,
+    fuelPricePerLitre: 100,
+  });
+  assert.equal(settlement.requiredFuelLitres, fuel.requiredFuelLitres);
+  assert.equal(settlement.fuelCharge, fuel.fuelCharge);
 });
 
 test("extra kilometers and fuel shortage are charged automatically", () => {

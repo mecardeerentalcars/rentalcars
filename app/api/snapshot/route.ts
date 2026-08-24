@@ -19,6 +19,7 @@ import {
   vehicles,
 } from "@/db/schema";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
+import { normalisePendingBalance } from "@/lib/rental-calculations";
 
 const TIME_ZONE = "Asia/Kolkata";
 const now = () => new Date();
@@ -305,7 +306,7 @@ export async function GET() {
             : booking.baseRentalAmount;
           const liveTotal = roundMoney(baseRentalAmount + booking.otherCharges + segmentExtraKm + liveLateRentalCharge);
           const total = roundMoney(settlement?.finalAmount ?? liveTotal);
-          const balance = roundMoney(Math.max(0, total - paid));
+          const balance = normalisePendingBalance(total - paid);
           const businessFinancialTotal = roundMoney(Math.max(0, total - guestRentalAmount));
 
           let state: "active" | "today" | "overdue" | "completed" = "active";
@@ -447,7 +448,7 @@ export async function GET() {
         return {
           ...rental,
           businessPaid,
-          businessBalance: roundMoney(Math.max(0, rental.businessFinancialTotal - businessPaid)),
+          businessBalance: normalisePendingBalance(rental.businessFinancialTotal - businessPaid),
         };
       });
       const rentalByDatabaseId = new Map(rentals.map((rental) => [rental.databaseId, rental]));

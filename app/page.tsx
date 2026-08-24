@@ -65,7 +65,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { buildSettlementWhatsAppMessage, calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateRentalChargeForActualReturn, calculateSettlement } from "@/lib/rental-calculations";
+import {
+  buildSettlementWhatsAppMessage,
+  calculateExpectedReturnKilometer,
+  calculateFuelShortageCharge,
+  calculateLateRentalCharge,
+  calculateRentalChargeForActualReturn,
+  calculateSettlement,
+  normalisePendingBalance,
+  rentalDaysFromSchedule,
+} from "@/lib/rental-calculations";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
 import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
@@ -1149,7 +1158,7 @@ export default function Home() {
           rentalDays: segment.rentalDays,
           startingKilometer: segment.startingKilometer,
           endingKilometer: segment.endingKilometer,
-          rentalCharge: segment.rentalCharge,
+          rentalCharge: rental.segments.length === 1 ? settlement.rentalAmount : segment.rentalCharge,
           extraKilometers: segment.extraKilometers,
           extraKmCharge: segment.extraKmCharge,
           startingFuelRangeKm: segment.startingFuelRangeKm,
@@ -1924,7 +1933,8 @@ function RentalsView({ rentals, metrics, openRental, openNew }: { rentals: Renta
   const [extraFilter, setExtraFilter] = useState("");
   const shown = rentals.filter((rental) => {
     const matchesState = filter === "All" || (filter === "Active" ? rental.state !== "completed" : rental.state === filter.toLowerCase());
-    const start = rental.startAt.slice(0, 10); const end = rental.endAt.slice(0, 10);
+    const start = indiaDateKey(rental.startAt);
+    const end = indiaDateKey(rental.actualReturnAt || rental.endAt);
     const matchesDate = (!dateFrom || end >= dateFrom) && (!dateTo || start <= dateTo);
     const q = extraFilter.trim().toLowerCase();
     const matchesExtra = !q || `${rental.id} ${rental.vehicle} ${rental.plate} ${rental.customer} ${rental.phone}`.toLowerCase().includes(q);
@@ -2459,7 +2469,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
   const report = useMemo(() => {
     const within = (value: string) => {
-      const day = value ? value.slice(0, 10) : "";
+      const day = value ? indiaDateKey(value) : "";
       return (!dateFrom || !day || day >= dateFrom) && (!dateTo || !day || day <= dateTo);
     };
     const orderedSegments = (rental: Rental) => [...rental.segments].sort((a, b) => a.sequence - b.sequence);
@@ -2477,8 +2487,8 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       return vehicleSegmentCount / Math.max(1, segments.length);
     };
     const segmentOverlapsPeriod = (segment: RentalSegmentRow) => {
-      const segmentStart = segment.startAt.slice(0, 10);
-      const segmentEnd = (segment.endAt || today).slice(0, 10);
+      const segmentStart = indiaDateKey(segment.startAt);
+      const segmentEnd = indiaDateKey(segment.endAt || today);
       return (!dateTo || segmentStart <= dateTo) && (!dateFrom || segmentEnd >= dateFrom);
     };
     const segmentPeriod = (segment: RentalSegmentRow) => `${segment.start} to ${segment.endAt ? segment.end : "Current"}`;
@@ -2610,7 +2620,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         .map((customerRentals) => {
           const first = customerRentals[0];
           const vehiclesUsed = [...new Set(customerRentals.flatMap((rental) => orderedSegments(rental).map((segment) => `${segment.vehicle} ${segment.plate}${segment.isGuest ? " (Guest Car - amount excluded)" : ""}`)))].join(", ");
-          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.endAt)}`).join(", ");
+          const rentalDates = customerRentals.map((rental) => `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.actualReturnAt || rental.endAt)}`).join(", ");
           return [
             first.customer,
             first.phone,
@@ -3614,7 +3624,6 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
   const [startTime, setStartTime] = useState(startParts.time);
   const [returnDate, setReturnDate] = useState(endParts.date);
   const [returnTime, setReturnTime] = useState(endParts.time);
-  const [days, setDays] = useState(booking.days);
   const [rate, setRate] = useState(booking.rate);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3622,6 +3631,7 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
   const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === vehicleId) ?? null;
   const startAt = useMemo(() => new Date(`${startDate}T${startTime}:00+05:30`), [startDate, startTime]);
   const endAt = useMemo(() => new Date(`${returnDate}T${returnTime}:00+05:30`), [returnDate, returnTime]);
+  const days = useMemo(() => rentalDaysFromSchedule(startAt, endAt), [startAt.getTime(), endAt.getTime()]);
   const selectedConflict = useMemo(() => selectedVehicle && endAt > startAt
     ? findVehiclePeriodConflict(selectedVehicle.id, startAt, endAt, bookings, rentals, booking.id)
     : null, [selectedVehicle?.id, startAt.getTime(), endAt.getTime(), bookings, rentals, booking.id]);
@@ -3653,7 +3663,7 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
         <label className="field"><span>Pickup time</span><input type="time" required value={startTime} onChange={(event) => { const nextTime = event.target.value; setStartTime(nextTime); setReturnTime(nextTime); }} /><small>Return time follows the pickup time automatically.</small></label>
         <label className="field"><span>Return date</span><input type="date" required value={returnDate} onChange={(event) => setReturnDate(event.target.value)} /></label>
         <label className="field"><span>Return time</span><input type="time" required value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label>
-        <label className="field"><span>Rental days</span><input type="number" min="1" required value={days} onChange={(event) => setDays(Math.max(1, Number(event.target.value) || 1))} /></label>
+        <label className="field"><span>Rental days</span><input type="number" min="1" readOnly value={days} /><small>Calculated automatically from the pickup and return dates.</small></label>
         <label className="field"><span>Daily rate (₹)</span><input type="number" min="0" required value={blankZero(rate)} onChange={(event) => setRate(numberFromInput(event.target.value))} /></label>
       </div>
       <div className="duration-note"><CalendarRange size={16} /><strong>{days} day{days === 1 ? "" : "s"}</strong><span>{money(days * rate)} estimated rental</span></div>
@@ -4038,7 +4048,7 @@ function PaymentDialog({ rental, rentals, close, done }: { rental: Rental; renta
     <label className="field"><span>Amount received (₹)</span><input required min="0.01" max={selectedRental.balance} step="0.01" type="number" inputMode="decimal" value={amount} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label>
     <label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label>
     <label className="field"><span>Notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional payment note" /></label>
-    <div className="remaining-box"><span>Remaining after payment</span><strong>{money(Math.max(0, selectedRental.balance - amount))}</strong></div>
+    <div className="remaining-box"><span>Remaining after payment</span><strong>{money(normalisePendingBalance(selectedRental.balance - amount))}</strong></div>
     {error && <p className="form-error">{error}</p>}
     <div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0 || amount > selectedRental.balance}><Check size={16} />{saving ? "Recording…" : "Record payment"}</button></div>
   </form></DialogShell>;
@@ -4121,12 +4131,15 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
     ? (currentVehicleDetails?.allowedKmPerDay ?? rental.allowedKmPerDay)
     : 0;
   const currentAllowedKilometers = currentCharge ? currentCharge.rentalDays * currentAllowedKmPerDay : 0;
-  const currentFuelShortageKm = currentSegment ? Math.max(0, currentSegment.startingFuelRangeKm - returnFuelRangeKm) : 0;
   const currentMileageKmPerLitre = currentVehicleDetails?.mileageKmPerLitre ?? rental.mileageKmPerLitre;
-  const currentFuelLitres = currentFuelShortageKm > 0 && currentMileageKmPerLitre > 0
-    ? currentFuelShortageKm / currentMileageKmPerLitre
-    : 0;
-  const currentFuelCharge = Math.round(currentFuelLitres * fuelPricePerLitre * 100) / 100;
+  const currentFuelCalculation = calculateFuelShortageCharge(
+    currentSegment?.startingFuelRangeKm ?? 0,
+    returnFuelRangeKm,
+    currentMileageKmPerLitre,
+    fuelPricePerLitre,
+  );
+  const currentFuelShortageKm = currentFuelCalculation.fuelRangeShortageKm;
+  const currentFuelCharge = currentFuelCalculation.fuelCharge;
   const currentSegmentTotal = currentCharge
     ? Math.round((currentCharge.rentalCharge + currentCharge.extraKmCharge + currentFuelCharge) * 100) / 100
     : 0;
@@ -4249,14 +4262,14 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
     amountAlreadyPaid: rental.paid,
   });
   const roundedFinalAmount = Math.max(0, Math.round(calculationRaw.finalAmount));
-  const calculation = { ...calculationRaw, finalAmount: roundedFinalAmount, amountDue: Math.max(0, Math.round(roundedFinalAmount - rental.paid)) };
+  const calculation = { ...calculationRaw, finalAmount: roundedFinalAmount, amountDue: normalisePendingBalance(roundedFinalAmount - rental.paid) };
 
   const previewSegments = rental.segments.map((segment) => segment.id === currentSegment?.id ? {
     ...segment,
     endAt: actualReturnIso,
     end: formatIndiaWhen(actualReturnIso),
     endingKilometer: actualReturnKilometer,
-    rentalDays: liveCurrentSegmentCharge?.rentalDays ?? segment.rentalDays,
+    rentalDays: singleOriginalSegment ? legacyRentalCharge.chargeableRentalDays : (liveCurrentSegmentCharge?.rentalDays ?? segment.rentalDays),
     rentalCharge: singleOriginalSegment ? rentalBaseAmount : (liveCurrentSegmentCharge?.rentalCharge ?? segment.rentalCharge),
     extraKilometers: liveCurrentSegmentCharge?.extraKilometers ?? 0,
     extraKmCharge: calculation.extraKmCharge,

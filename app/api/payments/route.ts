@@ -4,6 +4,7 @@ import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "
 import { eq, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
+import { normalisePendingBalance } from "@/lib/rental-calculations";
 import { bookings, customers, payments, rentalSegments, returnSettlements } from "@/db/schema";
 
 type PaymentBody = {
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
         }
       }
       const total = Number(settlement?.finalAmount ?? openRentalAmount);
-      const balance = Math.max(0, Math.round((total - alreadyPaid) * 100) / 100);
+      const balance = normalisePendingBalance(total - alreadyPaid);
       if (balance <= 0) throw new RequestError("This rental is already fully paid.", 409);
       if (receivedAmount > balance) {
         throw new RequestError(`Payment cannot exceed the current balance of ₹${balance.toLocaleString("en-IN")}.`);
@@ -114,7 +115,7 @@ export async function POST(request: Request) {
       return {
         paymentNumber: saved.paymentNumber,
         amount: saved.amount,
-        balance: Math.max(0, Math.round((balance - receivedAmount) * 100) / 100),
+        balance: normalisePendingBalance(balance - receivedAmount),
       };
     }));
 

@@ -36,6 +36,53 @@ export type SettlementCalculation = {
 const nonNegative = (value: number) => Math.max(0, Number.isFinite(value) ? value : 0);
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+const indiaCalendarDateParts = (value: string | Date) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((item) => item.type === type)?.value ?? 0);
+  return { year: part("year"), month: part("month"), day: part("day") };
+};
+
+/** Rental days follow the calendar dates shown to staff in India. */
+export function rentalDaysFromSchedule(startAt: string | Date, endAt: string | Date) {
+  const start = indiaCalendarDateParts(startAt);
+  const end = indiaCalendarDateParts(endAt);
+  if (!start || !end) return 1;
+  const startDay = Date.UTC(start.year, start.month - 1, start.day);
+  const endDay = Date.UTC(end.year, end.month - 1, end.day);
+  return Math.max(1, Math.round((endDay - startDay) / 86_400_000));
+}
+
+/** Amounts below one rupee are treated as settled, not as a pending balance. */
+export function normalisePendingBalance(value: number) {
+  const balance = roundMoney(nonNegative(value));
+  return balance < 1 ? 0 : balance;
+}
+
+export function calculateFuelShortageCharge(
+  startingFuelRangeKm: number,
+  returnFuelRangeKm: number,
+  mileageKmPerLitre: number,
+  fuelPricePerLitre: number,
+) {
+  const fuelRangeShortageKm = Math.max(0, Math.round(startingFuelRangeKm - returnFuelRangeKm));
+  const mileage = nonNegative(mileageKmPerLitre);
+  const requiredFuelLitres =
+    mileage > 0 ? Math.round((fuelRangeShortageKm / mileage) * 1000) / 1000 : 0;
+  return {
+    fuelRangeShortageKm,
+    requiredFuelLitres,
+    fuelCharge: roundMoney(requiredFuelLitres * nonNegative(fuelPricePerLitre)),
+  };
+}
+
 
 export type LateRentalCharge = {
   graceHours: number;
@@ -142,13 +189,12 @@ export function calculateSettlement(input: SettlementCalculationInput): Settleme
   );
   const extraKilometers = Math.max(0, Math.round(input.actualReturnKilometer - expectedReturnKilometer));
   const extraKmCharge = roundMoney(extraKilometers * nonNegative(input.extraKmRate));
-  const fuelRangeShortageKm = Math.max(
-    0,
-    Math.round(input.startingFuelRangeKm - input.returnFuelRangeKm),
+  const { fuelRangeShortageKm, requiredFuelLitres, fuelCharge } = calculateFuelShortageCharge(
+    input.startingFuelRangeKm,
+    input.returnFuelRangeKm,
+    input.mileageKmPerLitre,
+    input.fuelPricePerLitre,
   );
-  const mileage = nonNegative(input.mileageKmPerLitre);
-  const requiredFuelLitres = mileage > 0 ? Math.round((fuelRangeShortageKm / mileage) * 1000) / 1000 : 0;
-  const fuelCharge = roundMoney(requiredFuelLitres * nonNegative(input.fuelPricePerLitre));
   const additionalCharges = roundMoney(
     nonNegative(input.existingOtherCharges ?? 0) +
       nonNegative(input.lateFee ?? 0) +
@@ -160,7 +206,7 @@ export function calculateSettlement(input: SettlementCalculationInput): Settleme
   const subtotal = roundMoney(nonNegative(input.baseRentalAmount) + additionalCharges);
   const discountAmount = roundMoney(nonNegative(input.discountAmount ?? 0));
   const finalAmount = roundMoney(Math.max(0, subtotal - discountAmount));
-  const amountDue = roundMoney(Math.max(0, finalAmount - nonNegative(input.amountAlreadyPaid ?? 0)));
+  const amountDue = normalisePendingBalance(finalAmount - nonNegative(input.amountAlreadyPaid ?? 0));
 
   return {
     allowedKilometers,

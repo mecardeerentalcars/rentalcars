@@ -66,3 +66,21 @@ test("reports vehicle replacements and excludes Guest Car finances", async () =>
   assert.match(page, /vehicle\.isGuest \? "Excluded"/);
   assert.match(snapshot, /segment\.rentalCharge \+ segment\.extraKmCharge \+ segment\.fuelCharge/);
 });
+
+test("keeps settlement, schedule, and report corrections wired through every entry point", async () => {
+  const [page, snapshot, settlement, extension, paymentAdmin] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/snapshot/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/settlements/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/extensions/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/settings/transactions/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /normalisePendingBalance\(roundedFinalAmount - rental\.paid\)/);
+  assert.match(page, /customerReportDateOnly\(rental\.actualReturnAt \|\| rental\.endAt\)/);
+  assert.match(page, /const segmentStart = indiaDateKey\(segment\.startAt\)/);
+  assert.match(snapshot, /const balance = normalisePendingBalance\(total - paid\)/);
+  assert.match(settlement, /storedCurrentRentalDays/);
+  assert.match(extension, /activeSegmentProjection\?\.rentalDays/);
+  assert.match(paymentAdmin, /const replacementFlow/);
+});

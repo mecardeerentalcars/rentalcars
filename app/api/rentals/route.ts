@@ -5,7 +5,7 @@ import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
 import { nextSimpleBookingNumber } from "@/lib/simple-booking-number";
-import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
+import { calculateExpectedReturnKilometer, rentalDaysFromSchedule } from "@/lib/rental-calculations";
 
 type CreateRentalBody = {
   vehicleRegistration?: unknown;
@@ -68,7 +68,6 @@ export async function POST(request: Request) {
     const customerPhone = text(body.customerPhone, "Customer phone");
     const startAt = date(body.startAt, "Start date");
     const endAt = date(body.endAt, "Return date");
-    const rentalDays = wholeNumber(body.rentalDays, "Rental days", 1);
     const dailyRate = amount(body.dailyRate, "Daily rate");
     const securityDeposit = amount(body.securityDeposit ?? 0, "Security deposit");
     const advancePaid = amount(body.advancePaid ?? 0, "Advance paid");
@@ -80,6 +79,7 @@ export async function POST(request: Request) {
     const mode = body.mode === "draft" ? "draft" : "rented";
 
     if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");
+    const rentalDays = rentalDaysFromSchedule(startAt, endAt);
     const grossRentalAmount = Math.round(rentalDays * dailyRate * 100) / 100;
     if (bookingDiscount > grossRentalAmount) throw new RequestError("Discount cannot exceed the rental amount.");
     const baseRentalAmount = grossRentalAmount - bookingDiscount;

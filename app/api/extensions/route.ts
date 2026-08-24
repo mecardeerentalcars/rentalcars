@@ -4,6 +4,7 @@ import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, rentalExtensions, rentalSegments, vehicles } from "@/db/schema";
 import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
+import { calculateSegmentCharge } from "@/lib/rental-segments";
 
 type ExtensionBody = { bookingNumber?: unknown; additionalDays?: unknown; notes?: unknown };
 class RequestError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
@@ -53,8 +54,23 @@ export async function POST(request: Request) {
       const extensionRate = segment?.dailyRate ?? record.booking.dailyRate;
       const addedAmount = Math.round(extensionRate * additionalDays * 100) / 100;
       const rentalDays = record.booking.rentalDays + additionalDays;
+      const activeSegmentProjection = segment
+        ? calculateSegmentCharge({
+            startAt: segment.startAt,
+            endAt: newEndAt,
+            dailyRate: segment.dailyRate,
+            startingKilometer: segment.startingKilometer,
+            endingKilometer: segment.startingKilometer,
+            allowedKmPerDay: segment.allowedKmPerDay,
+            extraKmRate: segment.extraKmRate,
+          })
+        : null;
       const expectedReturnKilometer = segment
-        ? calculateExpectedReturnKilometer(segment.startingKilometer, Math.max(1, rentalDays), segment.allowedKmPerDay)
+        ? calculateExpectedReturnKilometer(
+            segment.startingKilometer,
+            activeSegmentProjection?.rentalDays ?? 1,
+            segment.allowedKmPerDay,
+          )
         : record.booking.startingKilometer === null
           ? record.booking.expectedReturnKilometer
           : calculateExpectedReturnKilometer(record.booking.startingKilometer, rentalDays, actualVehicle.allowedKmPerDay);

@@ -6,7 +6,7 @@ import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "
 import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
-import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
+import { calculateExpectedReturnKilometer, rentalDaysFromSchedule } from "@/lib/rental-calculations";
 
 class RequestError extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -58,10 +58,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (action === "edit") {
         const startAt = date(body.startAt, "Start date");
         const endAt = date(body.endAt, "Return date");
-        const rentalDays = whole(body.rentalDays, "Rental days");
         const dailyRate = amount(body.dailyRate, "Daily rate");
-        if (rentalDays < 1) throw new RequestError("Rental days must be at least 1.");
         if (endAt <= startAt) throw new RequestError("Return date must be after the start date.");
+        const rentalDays = rentalDaysFromSchedule(startAt, endAt);
 
         const requestedVehicleId = optionalText(body.vehicleId) ?? record.vehicle.id;
         const targetVehicle = requestedVehicleId === record.vehicle.id

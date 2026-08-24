@@ -6,6 +6,7 @@ import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, rentalSegments, vehicles } from "@/db/schema";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
+import { calculateFuelShortageCharge } from "@/lib/rental-calculations";
 
 class RequestError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
 const text = (value: unknown, field: string) => { if (typeof value !== "string" || !value.trim()) throw new RequestError(`${field} is required.`); return value.trim(); };
@@ -87,10 +88,13 @@ export async function POST(request: Request) {
       if (fuelRangeShortageKm > 0 && current.vehicle.mileageKmPerLitre <= 0) {
         throw new RequestError("Vehicle mileage must be configured before calculating fuel shortage.", 409);
       }
-      const requiredFuelLitres = fuelRangeShortageKm > 0
-        ? fuelRangeShortageKm / current.vehicle.mileageKmPerLitre
-        : 0;
-      const fuelCharge = roundMoney(requiredFuelLitres * fuelPricePerLitre);
+      const fuelCalculation = calculateFuelShortageCharge(
+        current.segment.startingFuelRangeKm,
+        returnFuelRangeKm,
+        current.vehicle.mileageKmPerLitre,
+        fuelPricePerLitre,
+      );
+      const fuelCharge = fuelCalculation.fuelCharge;
       const segmentTotal = roundMoney(charge.rentalCharge + charge.extraKmCharge + fuelCharge);
 
       await tx.update(rentalSegments).set({
@@ -142,7 +146,7 @@ export async function POST(request: Request) {
         finishedVehicle: current.vehicle.name,
         finishedCharge: charge.rentalCharge,
         finishedAllowedKilometers: charge.rentalDays * current.segment.allowedKmPerDay,
-        finishedFuelShortageKm: fuelRangeShortageKm,
+        finishedFuelShortageKm: fuelCalculation.fuelRangeShortageKm,
         finishedFuelCharge: fuelCharge,
         finishedTotal: segmentTotal,
         nextVehicle: nextVehicle.name,
