@@ -1270,6 +1270,7 @@ export default function Home() {
     setSyncing(true);
     try {
       await refreshData();
+      window.location.reload();
     } finally {
       setSyncing(false);
     }
@@ -1387,7 +1388,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNew={() => openNewRental()} openNewBooking={newBookingFromTab} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendWhatsApp={sendWhatsApp} sendBookingWhatsApp={sendBookingWhatsApp} />}
+          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
           {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
@@ -1460,7 +1461,7 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNew, openNewBooking, openNotifications, openPendingPayments, goTo, sendWhatsApp, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNew: () => void; openNewBooking: () => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
+function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNotifications, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
   const [dashboardCalendarOpen, setDashboardCalendarOpen] = useState(false);
   // MECARDEE_DYNAMIC_GREETING_BUTTON_SIZE_V8_9_52
@@ -1522,10 +1523,6 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
       <div className="ai-glow ai-glow-one" /><div className="ai-glow ai-glow-two" />
       <div className="booking-brief-header">
         <div className="booking-brief-label"><span><CalendarRange size={14} />Booking priority</span><i>Live</i></div>
-        <div className="booking-brief-actions">
-          <button type="button" onClick={openNew} title="New rental"><CarFront size={16} /><span>New rental</span></button>
-          <button type="button" onClick={openNewBooking} title="New booking"><CalendarDays size={16} /><span>New booking</span></button>
-        </div>
       </div>
       <div className="booking-brief-heading">
         <div><small>Nearest bookings in pickup order</small><h2>{nearestBookings.length ? "What is coming next" : "No upcoming bookings"}</h2></div>
@@ -1552,7 +1549,7 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
     <section className="side-card dashboard-reminders-inline">
           <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div></div>
           {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} type={reminder.type} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
-          <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>
+          {reminders.length > 3 && <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>}
         </section>
     <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span className="stat-label-full">{stat.label}</span><span className="stat-label-mobile">{stat.shortLabel}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
     <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
@@ -2513,28 +2510,21 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const usedKm = Math.max(0, segment.endingKilometer - startKm);
       return `${startKm.toLocaleString("en-IN")} to ${segment.endingKilometer.toLocaleString("en-IN")} km (${usedKm.toLocaleString("en-IN")} km used)`;
     };
-    const segmentChange = (rental: Rental, segment: RentalSegmentRow, index: number, segments = orderedSegments(rental)) => {
-      const previous = segments[index - 1];
-      const next = segments[index + 1];
-      const role = segment.vehicleId === rental.originalVehicleId ? "Original vehicle" : index === 0 ? `Starting replacement for ${rental.originalVehicle}` : "Replacement vehicle";
-      const transition = previous
-        ? `Replaced ${previous.vehicle} (${previous.plate})`
-        : next
-          ? "First vehicle used"
-          : "Only vehicle used";
-      const nextStep = next ? `Changed to ${next.vehicle} (${next.plate})${next.isGuest ? " - Guest Car" : ""}` : "Final vehicle";
-      const guestNote = segment.isGuest ? " | Guest Car - details only; financial amount excluded" : "";
-      return `#${segment.sequence} ${role}: ${segment.vehicle} (${segment.plate}) | ${transition} | ${nextStep}${guestNote}`;
-    };
     const rentalVehicleUsage = (rental: Rental) => {
       const segments = orderedSegments(rental);
-      if (!segments.length) return `${rental.originalVehicle} (${rental.originalPlate}) - vehicle history unavailable`;
-      return segments.map((segment, index) => `${segmentChange(rental, segment, index, segments)} | Used ${segmentPeriod(segment)}`).join("\n");
+      if (segments.length <= 1) return "—";
+      return segments.map((segment) => {
+        const endDate = segment.endAt ? customerReportDateOnly(segment.endAt) : "Current";
+        const usedKm = segment.endingKilometer === null
+          ? "KM pending"
+          : `${Math.max(0, segment.endingKilometer - segment.startingKilometer).toLocaleString("en-IN")} km`;
+        return `${segment.vehicle} (${segment.plate}) · ${customerReportDateOnly(segment.startAt)} to ${endDate} · ${usedKm}`;
+      }).join("\n");
     };
     const rentalVehicleKilometers = (rental: Rental) => {
       const segments = orderedSegments(rental);
       if (!segments.length) return "KM history unavailable";
-      return segments.map((segment) => `#${segment.sequence} ${segment.vehicle}: ${segmentKilometers(segment)}`).join("\n");
+      return segments.map((segment) => `${segment.vehicle}: ${segmentKilometers(segment)}`).join("\n");
     };
 
     if (reportType === "payments") {
@@ -2569,14 +2559,12 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const rows = chosen.map((vehicle) => {
         const usageEntries = rentals.flatMap((rental) => orderedSegments(rental)
           .filter((segment) => segment.vehicleId === vehicle.id && segmentOverlapsPeriod(segment))
-          .map((segment) => {
-            const allSegments = orderedSegments(rental);
-            return { rental, segment, segmentIndex: allSegments.findIndex((item) => item.id === segment.id) };
-          }));
+          .map((segment) => ({ rental, segment })));
         const carRentals = [...new Map(usageEntries.map(({ rental }) => [rental.id, rental])).values()];
         const customerRentals = usageEntries.map(({ rental, segment }) => `${rental.id} - ${rental.customer} (segment #${segment.sequence})`).join("\n") || "—";
         const usagePeriods = usageEntries.map(({ rental, segment }) => `${rental.id} #${segment.sequence}: ${segmentPeriod(segment)}`).join("\n") || "—";
-        const vehicleChanges = usageEntries.map(({ rental, segment, segmentIndex }) => segmentChange(rental, segment, segmentIndex)).join("\n") || "No usage in selected period";
+        const changedRentals = [...new Map(usageEntries.filter(({ rental }) => orderedSegments(rental).length > 1).map(({ rental }) => [rental.id, rental])).values()];
+        const vehicleChanges = changedRentals.map((rental) => `${rental.id}\n${rentalVehicleUsage(rental)}`).join("\n") || "—";
         const kilometerUsage = usageEntries.map(({ rental, segment }) => `${rental.id} #${segment.sequence}: ${segmentKilometers(segment)}`).join("\n") || "—";
         const rentalValue = carRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal * vehicleShare(rental, vehicle.id), 0);
         const collected = periodPayments.reduce((sum, payment) => {

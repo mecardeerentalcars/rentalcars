@@ -6349,6 +6349,127 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   }
 }
 
+/* MECARDEE_STICKY_COMPACT_MOBILE_DASHBOARD_V8_9_86
+   Keep search available while scrolling and keep priority + reminders readable
+   above the fixed create/navigation bar. */
+@media (max-width: 720px) {
+  .mobile-search-slot {
+    position: sticky !important;
+    top: 62px !important;
+    z-index: 21 !important;
+    margin: -18px -15px 12px !important;
+    padding: 10px 15px !important;
+    background: rgba(246, 246, 250, .94) !important;
+    border-bottom: 1px solid rgba(226, 225, 234, .9);
+    box-shadow: 0 9px 22px rgba(42, 39, 80, .07);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-search-slot .global-search {
+    height: 48px !important;
+    border-radius: 14px !important;
+    box-shadow: 0 4px 14px rgba(42, 39, 80, .045) !important;
+  }
+
+  .mobile-search-slot .search-results {
+    z-index: 70 !important;
+  }
+
+  .dashboard-greeting .page-heading {
+    min-height: 58px;
+    margin-bottom: 10px !important;
+    gap: 10px;
+  }
+
+  .dashboard-greeting .page-heading .eyebrow {
+    margin-bottom: 4px;
+    font-size: 9px !important;
+  }
+
+  .dashboard-greeting .page-heading h1 {
+    margin-bottom: 0 !important;
+    font-size: 22px !important;
+  }
+
+  .dashboard-greeting .page-heading > div > p:last-child {
+    display: none;
+  }
+
+  .booking-brief-card {
+    padding: 11px !important;
+    border-radius: 17px !important;
+  }
+
+  .booking-brief-header {
+    min-height: 27px;
+  }
+
+  .booking-brief-heading {
+    margin: 6px 0 7px !important;
+  }
+
+  .booking-brief-heading small,
+  .booking-brief-heading > span {
+    display: none !important;
+  }
+
+  .booking-brief-card .booking-brief-heading h2 {
+    font-size: 15px !important;
+  }
+
+  .booking-priority-list {
+    gap: 5px !important;
+  }
+
+  .booking-priority-open {
+    min-height: 60px !important;
+  }
+
+  .booking-priority-item:not(.is-next) .booking-priority-open {
+    min-height: 54px !important;
+  }
+
+  .booking-priority-item:not(.is-next) .booking-priority-time small {
+    display: none !important;
+  }
+
+  .booking-brief-footer {
+    margin-top: 6px !important;
+  }
+
+  .booking-brief-footer button {
+    min-height: 34px !important;
+  }
+
+  .dashboard-reminders-inline {
+    margin: 10px 0 12px !important;
+    padding: 13px !important;
+    border-radius: 17px !important;
+  }
+
+  .dashboard-reminders-inline .side-card-title {
+    padding-bottom: 5px !important;
+  }
+
+  .dashboard-reminders-inline .side-card-title h3 {
+    font-size: 19px !important;
+  }
+
+  .dashboard-reminders-inline .reminder {
+    min-height: 54px !important;
+    padding: 8px 0 !important;
+  }
+
+  .dashboard-reminders-inline .full-link {
+    min-height: 34px;
+    padding-top: 7px;
+  }
+
+  .content {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
 /* MECARDEE_BOOKING_QUICK_SCHEDULE_HANDOVER_WHATSAPP_CSS_V8_9_54 */
 
 /* Booking detail: schedule correction comes before Start rental / Waiting. */

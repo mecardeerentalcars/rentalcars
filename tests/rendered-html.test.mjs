@@ -61,8 +61,8 @@ test("reports vehicle replacements and excludes Guest Car finances", async () =>
 
   assert.match(page, /Vehicle usage \/ changes/);
   assert.match(page, /KM by vehicle/);
-  assert.match(page, /Guest Car - details only/);
-  assert.match(page, /financial amount excluded/);
+  assert.match(page, /if \(segments\.length <= 1\) return "—"/);
+  assert.match(page, /const changedRentals/);
   assert.match(page, /vehicle\.isGuest \? "Excluded"/);
   assert.match(snapshot, /segment\.rentalCharge \+ segment\.extraKmCharge \+ segment\.fuelCharge/);
 });
@@ -109,4 +109,10 @@ test("mobile return controls, vehicle image navigation, and payment report field
   assert.match(page, /headers: \["Customer", "Phone", "Rental", "Rental dates", "Vehicle usage \/ changes", "KM by vehicle"/);
   assert.match(page, /const rows = \[\.\.\.filteredRentals\]/);
   assert.doesNotMatch(page, /const grouped = new Map<string, Rental\[\]>/);
+  assert.doesNotMatch(page, /className="booking-brief-actions"/);
+  assert.match(page, /if \(segments\.length <= 1\) return "—"/);
+  assert.match(page, /segment\.vehicle.*customerReportDateOnly\(segment\.startAt\).*usedKm/s);
+  assert.match(page, /async function manualSync\(\).*await refreshData\(\);.*window\.location\.reload\(\);/s);
+  assert.match(styles, /MECARDEE_STICKY_COMPACT_MOBILE_DASHBOARD/);
+  assert.match(styles, /\.mobile-search-slot \{.*position: sticky/s);
 });
