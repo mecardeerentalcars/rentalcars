@@ -162,7 +162,7 @@ export async function GET() {
         number: payment.paymentNumber,
         bookingNumber: booking.bookingNumber,
         bookingId: payment.bookingId,
-        customer: customer.name,
+        customer: customer.city ? `${customer.name} · ${customer.city}` : customer.name,
         customerId: payment.customerId,
         amount: payment.amount,
         method: payment.method,

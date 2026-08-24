@@ -666,7 +666,7 @@ export async function GET() {
             return {
               id: segment.id,
               bookingNumber: linked?.booking.bookingNumber ?? "Rental",
-              customer: linked?.customer.name ?? "—",
+              customer: linked?.customer ? `${linked.customer.name}${linked.customer.city ? ` · ${linked.customer.city}` : ""}` : "—",
               phone: linked?.customer.phone ?? "—",
               startAt: segment.startAt.toISOString(),
               endAt: endAt.toISOString(),

@@ -426,6 +426,11 @@ const navItems: { label: string; view: View; icon: LucideIcon; badge?: string }[
 const CURRENT_USER_NAME = "Admin";
 const money = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 const displayUserName = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1) : "—";
+const customerWithPlace = (name: string, place?: string | null) => {
+  const customerName = String(name || "Unknown customer").trim();
+  const customerPlace = String(place || "").trim();
+  return customerPlace && customerPlace !== "—" ? `${customerName} · ${customerPlace}` : customerName;
+};
 
 function dateInputValue(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
@@ -470,7 +475,7 @@ function findVehiclePeriodConflict(
     item.vehicleId === vehicleId &&
     periodsOverlap(item.startAt, item.endAt, startAt, endAt)
   );
-  if (booking) return { type: "booking" as const, label: booking.bookingNumber, customer: booking.customer };
+  if (booking) return { type: "booking" as const, label: booking.bookingNumber, customer: customerWithPlace(booking.customer, booking.city) };
 
   const requestedEnd = new Date(endAt).getTime();
   const rental = rentals.find((item) =>
@@ -482,7 +487,7 @@ function findVehiclePeriodConflict(
       new Date(segment.startAt).getTime() < requestedEnd
     )
   );
-  if (rental) return { type: "rental" as const, label: rental.id, customer: rental.customer };
+  if (rental) return { type: "rental" as const, label: rental.id, customer: customerWithPlace(rental.customer, rental.city) };
   return null;
 }
 
@@ -1041,7 +1046,7 @@ export default function Home() {
     const digits = (booking.whatsappNumber || booking.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const label = booking.status === "cancelled" ? "Booking update" : "Booking confirmation";
-    const text = `Mecardee Rental — ${label}\n\nHello ${booking.customer},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nBooking amount: ${money(booking.amount)}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replaceAll("_", " ")}\n\nPlease reply if any detail needs correction.`;
+    const text = `Mecardee Rental — ${label}\n\nHello ${customerWithPlace(booking.customer, booking.city)},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nBooking amount: ${money(booking.amount)}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replaceAll("_", " ")}\n\nPlease reply if any detail needs correction.`;
     openWhatsAppSafely(phone, text);
   }
 
@@ -1056,7 +1061,7 @@ export default function Home() {
   async function deleteCustomer(customer: CustomerRow) {
     // VIEWER_GUARD_deleteCustomer
     if (sessionUser?.role === "viewer") { showToast("Viewer access is read-only."); return; }
-    const confirmed = window.confirm(`Delete ${customer.name}?\n\nThis will permanently remove the customer and any booking-only reservations linked to them. Customers with rental history cannot be deleted. This cannot be undone.`);
+    const confirmed = window.confirm(`Delete ${customerWithPlace(customer.name, customer.city)}?\n\nThis will permanently remove the customer and any booking-only reservations linked to them. Customers with rental history cannot be deleted. This cannot be undone.`);
     if (!confirmed) return;
     try {
       const response = await fetch("/api/customers/delete", {
@@ -1134,7 +1139,7 @@ export default function Home() {
         amountDue: rental.balance,
       };
       const text = buildSettlementWhatsAppMessage({
-        customerName: rental.customer,
+        customerName: customerWithPlace(rental.customer, rental.city),
         phone: rental.whatsappNumber || rental.phone,
         vehicleName: rental.vehicle,
         registrationNumber: rental.plate,
@@ -1173,7 +1178,7 @@ export default function Home() {
       openWhatsAppSafely(phone, text);
       return;
     }
-    const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${rental.customer}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}\nBalance due: ${money(rental.balance)}`;
+    const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${customerWithPlace(rental.customer, rental.city)}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}\nBalance due: ${money(rental.balance)}`;
     openWhatsAppSafely(phone, text);
   }
 
@@ -1205,7 +1210,7 @@ export default function Home() {
 
     const text =
       `Mecardee Rental - ${label}\n\n` +
-      `Hello ${reservation.customer},\n` +
+      `Hello ${customerWithPlace(reservation.customer, reservation.city)},\n` +
       `${intro}\n\n` +
       `Vehicle: ${reservation.vehicle} (${reservation.plate})\n` +
       `Booking: ${reservation.bookingNumber}\n` +
@@ -1221,7 +1226,7 @@ export default function Home() {
   function exportPayments() {
     if (!paymentList.length) return showToast("No payments to export.");
     const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentList.map((payment) => [payment.id, payment.customer, payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
+    const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentList.map((payment) => [payment.id, customerWithPlace(payment.customer, payment.place), payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
     const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `mecardee-payments-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -1535,11 +1540,11 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
             <img src={booking.image} alt="" />
             <span className="booking-priority-body">
               <span className="booking-priority-car"><strong>{booking.vehicle}</strong><small>{booking.plate}</small></span>
-              <span className="booking-priority-customer"><UserRound size={13} />{booking.customer}{booking.city ? <em> - {booking.city}</em> : null}</span>
+              <span className="booking-priority-customer"><UserRound size={13} />{customerWithPlace(booking.customer, booking.city)}</span>
               <span className="booking-priority-time"><b>{bookingMoment(booking)}</b><small>{booking.start} to {booking.returnDate}</small></span>
             </span>
           </button>
-          <button type="button" className="booking-priority-whatsapp" title="Send WhatsApp reminder" aria-label={`Send WhatsApp reminder to ${booking.customer}`} onClick={() => sendBookingWhatsApp(booking, "reminder")}><MessageCircle size={17} /><span>Reminder</span></button>
+          <button type="button" className="booking-priority-whatsapp" title="Send WhatsApp reminder" aria-label={`Send WhatsApp reminder to ${customerWithPlace(booking.customer, booking.city)}`} onClick={() => sendBookingWhatsApp(booking, "reminder")}><MessageCircle size={17} /><span>Reminder</span></button>
         </article>)}
       </div> : <div className="booking-brief-empty"><span><CalendarRange size={22} /></span><div><strong>No customer is waiting for an upcoming pickup.</strong><small>Create a booking now and it will appear here automatically.</small></div></div>}
       <div className="booking-brief-footer">
@@ -1660,7 +1665,7 @@ function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: Book
                   const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals);
                   return <span className={`dashboard-calendar-entry ${statusClass(booking)} ${changeRequired ? "change-required" : ""}`} key={booking.id}>
                     <b>{booking.vehicle}</b>
-                    <small>{booking.customer}</small>
+                    <small>{customerWithPlace(booking.customer, booking.city)}</small>
                     {changeRequired ? <em>Change</em> : booking.status === "rented" ? <em>Rented</em> : null}
                   </span>;
                 })}
@@ -1719,11 +1724,11 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
     if (rental) {
       key = "rented";
       label = "On rent";
-      detail = `${rental.customer} · until ${rental.returnDate}`;
+      detail = `${customerWithPlace(rental.customer, rental.city)} · until ${rental.returnDate}`;
     } else if (reservation) {
       key = "booked";
       label = "Booked";
-      detail = `${reservation.customer} · ${reservation.start} → ${reservation.returnDate}`;
+      detail = `${customerWithPlace(reservation.customer, reservation.city)} · ${reservation.start} → ${reservation.returnDate}`;
     } else if (blocked) {
       key = vehicle.statusKey;
       label = vehicle.statusKey === "maintenance" ? "Maintenance" : "Inactive";
@@ -1732,7 +1737,7 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
       const next = reservations
         .filter((item) => item.vehicleId === vehicle.id && new Date(item.startAt).getTime() > dayEnd)
         .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0];
-      if (next) detail = `Next booking: ${next.start} · ${next.customer}`;
+      if (next) detail = `Next booking: ${next.start} · ${customerWithPlace(next.customer, next.city)}`;
     }
     return { vehicle, rental, reservation, canBook, blocked, key, label, detail };
   });
@@ -1752,14 +1757,14 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
         <div className="fleet-status-body"><div><h3>{vehicle.name}</h3><strong>{vehicle.plate}</strong></div>
           <div className={`fleet-card-detail ${key}`}>
             {rental ? <>
-              <span className="fleet-card-customer">{rental.customer}</span>
+              <span className="fleet-card-customer">{customerWithPlace(rental.customer, rental.city)}</span>
               <span className="fleet-return-highlight">
                 <small>Returns on</small>
                 <strong>{fleetDayLabel(rental.endAt)}</strong>
                 <em>{fleetTimeLabel(rental.endAt)}</em>
               </span>
             </> : reservation ? <>
-              <span className="fleet-card-customer">{reservation.customer}</span>
+              <span className="fleet-card-customer">{customerWithPlace(reservation.customer, reservation.city)}</span>
               <span className="fleet-booking-timing">
                 <span><small>Pickup</small><strong>{fleetMomentLabel(reservation.startAt)}</strong></span>
                 <span><small>Return</small><strong>{fleetMomentLabel(reservation.endAt)}</strong></span>
@@ -1769,7 +1774,7 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
           <div className="fleet-status-actions">
             {rental && <button className="primary-button" onClick={() => openRental(rental)}><CarFront size={15} />View rental</button>}
             {(canBook || Boolean(rental)) && <button className={`primary-button ${rental ? "rental-book-action" : ""}`} onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book now</button>}
-            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation, "reminder")} aria-label={`WhatsApp booking reminder to ${reservation.customer}`} title="WhatsApp booking reminder"><MessageCircle size={17} /></button></>}
+            {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation, "reminder")} aria-label={`WhatsApp booking reminder to ${customerWithPlace(reservation.customer, reservation.city)}`} title="WhatsApp booking reminder"><MessageCircle size={17} /></button></>}
             {canBook && blocked && <button className="fleet-secondary-action" onClick={() => openVehicle(vehicle)}>View vehicle</button>}
           </div>
         </div>
@@ -1783,12 +1788,12 @@ function RentalCard({ rental, open, sendWhatsApp }: { rental: Rental; open: () =
     <button className="rental-main" onClick={open}>
       <img src={rental.image} alt="" />
       <span className="rental-vehicle"><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span><strong>{rental.vehicle}</strong><small>{rental.plate} · {rental.id}</small></span>
-      <span className="rental-customer"><small>Customer</small><strong>{rental.customer}</strong><span>{rental.phone}</span></span>
+      <span className="rental-customer"><small>Customer</small><strong>{customerWithPlace(rental.customer, rental.city)}</strong><span>{rental.phone}</span></span>
       <span className="rental-return"><small>Expected return</small><strong>{rental.returnDate}</strong><span>{rental.days} days · {money(rental.rate)}/day</span></span>
       <span className="rental-balance"><small>Balance due</small><strong>{money(rental.balance)}</strong><span>{money(rental.paid)} paid</span></span>
       <ChevronRight className="row-chevron" size={18} />
     </button>
-    <div className="rental-quick"><a href={`tel:${rental.phone.replaceAll(" ", "")}`} aria-label={`Call ${rental.customer}`}><Phone size={15} /></a><button onClick={sendWhatsApp} aria-label={`WhatsApp ${rental.customer}`}><MessageCircle size={15} /></button><button onClick={open}><MoreHorizontal size={16} /></button></div>
+    <div className="rental-quick"><a href={`tel:${rental.phone.replaceAll(" ", "")}`} aria-label={`Call ${customerWithPlace(rental.customer, rental.city)}`}><Phone size={15} /></a><button onClick={sendWhatsApp} aria-label={`WhatsApp ${customerWithPlace(rental.customer, rental.city)}`}><MessageCircle size={15} /></button><button onClick={open}><MoreHorizontal size={16} /></button></div>
   </article>;
 }
 
@@ -1829,7 +1834,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
   };
 
   const shown = bookings.filter((booking) => {
-    const searchText = `${booking.bookingNumber} ${booking.vehicle} ${booking.plate} ${booking.customer} ${booking.phone}`.toLowerCase();
+    const searchText = `${booking.bookingNumber} ${booking.vehicle} ${booking.plate} ${booking.customer} ${booking.city} ${booking.phone}`.toLowerCase();
     if (query.trim() && !searchText.includes(query.trim().toLowerCase())) return false;
     if (vehicleFilter !== "All" && booking.vehicleId !== vehicleFilter) return false;
     if (statusFilter !== "All" && bucket(booking) !== statusFilter) return false;
@@ -1906,7 +1911,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
         const status = bucket(booking);
         return <article className="booking-list-row" key={booking.id}>
           <span className="booking-car"><img src={booking.image} alt="" /><span><strong>{booking.vehicle}</strong><small>{booking.plate} · {booking.bookingNumber}</small></span></span>
-          <span><strong>{booking.customer}</strong><small>{booking.phone}</small></span>
+          <span><strong>{customerWithPlace(booking.customer, booking.city)}</strong><small>{booking.phone}</small></span>
           <span><strong>{booking.start}</strong><small>{booking.days} day{booking.days === 1 ? "" : "s"}</small></span>
           <span><strong>{booking.returnDate}</strong><small>Advance {money(booking.advancePaid)}</small></span>
           <span><strong>{money(booking.amount)}</strong><small>{booking.balance > 0 ? `${money(booking.balance)} pending` : "No pending balance"}</small></span>
@@ -1914,7 +1919,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
           <span className="booking-row-actions">
             <button onClick={() => openBooking(booking)}>View</button>
             {booking.status === "booked" && <button onClick={() => editBooking(booking)}><Pencil size={14} />Edit</button>}
-            <button className="whatsapp" onClick={() => sendWhatsApp(booking)} aria-label={`WhatsApp ${booking.customer}`}><MessageCircle size={15} /></button>
+            <button className="whatsapp" onClick={() => sendWhatsApp(booking)} aria-label={`WhatsApp ${customerWithPlace(booking.customer, booking.city)}`}><MessageCircle size={15} /></button>
             {booking.status === "booked" && <button className="start" disabled={!canStart} onClick={() => startBooking(booking)} title={canStart ? "Start rental" : vehicle?.statusKey !== "available" ? "Vehicle must be Available" : "Pickup time has not arrived"}><CarFront size={14} />Start rental</button>}
           </span>
         </article>;
@@ -1928,7 +1933,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
           const outside = date.getMonth() !== monthStart.getMonth();
           return <div className={`booking-calendar-day ${outside ? "outside" : ""} ${key === today ? "today" : ""}`} key={key}>
             <strong>{date.getDate()}</strong>
-            <div>{dayBookings.map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${booking.customer}`}><span>{booking.vehicle}</span><small>{booking.customer}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}</div>
+            <div>{dayBookings.map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${customerWithPlace(booking.customer, booking.city)}`}><span>{booking.vehicle}</span><small>{customerWithPlace(booking.customer, booking.city)}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}</div>
           </div>;
         })}
       </div>
@@ -1947,7 +1952,7 @@ function RentalsView({ rentals, metrics, openRental, openNew }: { rentals: Renta
     const end = indiaDateKey(rental.actualReturnAt || rental.endAt);
     const matchesDate = (!dateFrom || end >= dateFrom) && (!dateTo || start <= dateTo);
     const q = extraFilter.trim().toLowerCase();
-    const matchesExtra = !q || `${rental.id} ${rental.vehicle} ${rental.plate} ${rental.customer} ${rental.phone}`.toLowerCase().includes(q);
+    const matchesExtra = !q || `${rental.id} ${rental.vehicle} ${rental.plate} ${rental.customer} ${rental.city} ${rental.phone}`.toLowerCase().includes(q);
     return matchesState && matchesDate && matchesExtra;
   });
   return <>
@@ -1955,7 +1960,7 @@ function RentalsView({ rentals, metrics, openRental, openNew }: { rentals: Renta
     <section className="mini-stats"><article><CalendarDays size={19} /><div><span>Active rentals</span><strong>{metrics.activeRentals}</strong></div></article><article><Clock3 size={19} /><div><span>Returning today</span><strong>{metrics.returningToday}</strong></div></article><article><AlertTriangle size={19} /><div><span>Overdue</span><strong>{metrics.overdue}</strong></div></article><article><CircleDollarSign size={19} /><div><span>Outstanding</span><strong>{money(metrics.outstanding)}</strong></div></article></section>
     <section className="data-panel">
       <div className="panel-toolbar"><div className="filter-tabs">{["All", "Active", "Overdue", "Completed"].map((item) => <button key={item} onClick={() => setFilter(item)} className={filter === item ? "active" : ""}>{item}</button>)}</div><div className="toolbar-actions"><button onClick={() => { const from = window.prompt("From date (YYYY-MM-DD). Leave blank for any date.", dateFrom) ?? dateFrom; const to = window.prompt("To date (YYYY-MM-DD). Leave blank for any date.", dateTo) ?? dateTo; setDateFrom(from.trim()); setDateTo(to.trim()); }}><CalendarRange size={15} />Date range</button><button onClick={() => setExtraFilter(window.prompt("Filter by rental ID, vehicle, plate, customer or phone", extraFilter) ?? extraFilter)}><SlidersHorizontal size={15} />Filters</button></div></div>
-      <div className="history-table"><div className="table-head"><span>Rental</span><span>Customer</span><span>Rental period</span><span>Amount</span><span>Balance</span><span>Status</span><span /></div>{shown.map((rental) => <button className="history-row" key={rental.id} onClick={() => openRental(rental)}><span className="vehicle-cell"><img src={rental.image} alt="" /><span><strong>{rental.vehicle}</strong><small>{rental.plate} · {rental.id}</small></span></span><span><strong>{rental.customer}</strong><small>{rental.phone}</small></span><span><strong>{rental.start.split(",")[0]} → {rental.returnDate.split(",")[0]}</strong><small>{rental.days} rental days</small></span><span><strong>{money(rental.total)}</strong><small>{money(rental.rate)}/day</small></span><span><strong className={rental.balance ? "red-text" : "green-text"}>{money(rental.balance)}</strong><small>{money(rental.paid)} paid</small></span><span><i className={`status-pill ${rental.state}`}><b />{rental.statusText}</i></span><ChevronRight size={16} /></button>)}</div>
+      <div className="history-table"><div className="table-head"><span>Rental</span><span>Customer</span><span>Rental period</span><span>Amount</span><span>Balance</span><span>Status</span><span /></div>{shown.map((rental) => <button className="history-row" key={rental.id} onClick={() => openRental(rental)}><span className="vehicle-cell"><img src={rental.image} alt="" /><span><strong>{rental.vehicle}</strong><small>{rental.plate} · {rental.id}</small></span></span><span><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.phone}</small></span><span><strong>{rental.start.split(",")[0]} → {rental.returnDate.split(",")[0]}</strong><small>{rental.days} rental days</small></span><span><strong>{money(rental.total)}</strong><small>{money(rental.rate)}/day</small></span><span><strong className={rental.balance ? "red-text" : "green-text"}>{money(rental.balance)}</strong><small>{money(rental.paid)} paid</small></span><span><i className={`status-pill ${rental.state}`}><b />{rental.statusText}</i></span><ChevronRight size={16} /></button>)}</div>
     </section>
   </>;
 }
@@ -2015,7 +2020,7 @@ function GuestCarsView({ vehicles, rentals, addVehicle, openVehicle, openRental 
         <div className="guest-usage-head"><span>Guest Car</span><span>Customer / rental</span><span>Usage period</span><span>KM</span><span>Charge</span><span /></div>
         {usageRows.map(({ rental, segment, charge }) => <article className="guest-usage-row" key={segment.id}>
           <span><strong>{segment.vehicle}</strong><small>{segment.plate} · Segment #{segment.sequence}</small></span>
-          <span><strong>{rental.customer}</strong><small>{rental.id}</small></span>
+          <span><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.id}</small></span>
           <span><strong>{segment.start}</strong><small>{segment.endAt ? `to ${segment.end}` : "Current active segment"}</small></span>
           <span><strong>{segment.startingKilometer.toLocaleString("en-IN")} km</strong><small>{segment.endingKilometer == null ? "Ending KM pending" : `to ${segment.endingKilometer.toLocaleString("en-IN")} km`}</small></span>
           <span><strong>{segment.endAt ? money(charge) : "In use"}</strong><small>{segment.endAt ? `${segment.rentalDays} day${segment.rentalDays === 1 ? "" : "s"}` : "Final charge calculated when segment closes"}</small></span>
@@ -2045,13 +2050,13 @@ function CustomersView({ customers, metrics, openNew, openRentalById, addCustome
   const [cityFilter, setCityFilter] = useState("");
   const shown = customers.filter((customer) => {
     const q = search.trim().toLowerCase(); const city = cityFilter.trim().toLowerCase();
-    return (!q || `${customer.name} ${customer.phone}`.toLowerCase().includes(q)) && (!city || customer.city.toLowerCase().includes(city));
+    return (!q || `${customer.name} ${customer.city} ${customer.phone}`.toLowerCase().includes(q)) && (!city || customer.city.toLowerCase().includes(city));
   });
   return <>
   {<>
     <PageHeading eyebrow="CUSTOMER DIRECTORY" title="Customers" description="Rental history, documents and balances—without duplicate records." action={<button className="primary-button" onClick={addCustomer}><UserRoundPlus size={17} />Add customer</button>} />
     <section className="customer-summary"><article><UsersRound size={20} /><div><strong>{metrics.totalCustomers}</strong><span>Total customers</span></div><small><TrendingUp size={13} /> {metrics.newCustomersThisMonth} this month</small></article><article><CalendarDays size={20} /><div><strong>{metrics.currentlyRentingCustomers}</strong><span>Currently renting</span></div><small>{metrics.totalCustomers ? Math.round((metrics.currentlyRentingCustomers / metrics.totalCustomers) * 100) : 0}% of customers</small></article><article><IndianRupee size={20} /><div><strong>{money(metrics.outstanding)}</strong><span>Pending balance</span></div><small className="warn"><AlertTriangle size={13} /> {metrics.outstandingCustomers} customers</small></article></section>
-    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customer.name}</strong><small>{customer.phone} · {customer.city}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customer.name}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customer.name}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-history-action" type="button" onClick={() => setHistoryCustomer(customer)}>View history</button>{currentUser.role === "superadmin" && <button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customer.name}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button>}<button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
+    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name, place or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customerWithPlace(customer.name, customer.city)}</strong><small>{customer.phone}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customerWithPlace(customer.name, customer.city)}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customerWithPlace(customer.name, customer.city)}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-history-action" type="button" onClick={() => setHistoryCustomer(customer)}>View history</button>{currentUser.role === "superadmin" && <button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customerWithPlace(customer.name, customer.city)}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button>}<button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
   </>}
   {historyCustomer && <CustomerHistoryDialog customer={historyCustomer} rentals={rentals} payments={payments} close={() => setHistoryCustomer(null)} openRentalById={openRentalById} />}
 </>;
@@ -2098,7 +2103,7 @@ function CustomerHistoryDialog({ customer, rentals, payments, close, openRentalB
     }).format(parsed);
   };
 
-  return <DialogShell title={`${customer.name} history`} subtitle={`${customer.phone || "No phone"} - ${customer.city || "No city"}`} close={close} wide>
+  return <DialogShell title={`${customerWithPlace(customer.name, customer.city)} history`} subtitle={customer.phone || "No phone"} close={close} wide>
     <div className="customer-history-dialog">
       <div className="customer-history-summary">
         <article><small>Rentals</small><strong>{customerRentals.length}</strong></article>
@@ -2164,7 +2169,7 @@ function PaymentsView({ rentals, payments, metrics, openPayment, openExpense, ex
   return <>
     <PageHeading eyebrow="MONEY" title="Expenses & Payments" description="Record business expenses, customer collections and outstanding balances from one place." action={<div className="payments-page-actions"><button className="secondary-button expense-action-button" onClick={openExpense}><ReceiptIndianRupee size={17} />Add expense</button><button className="primary-button" onClick={openPayment}><Plus size={17} />Receive payment</button></div>} />
     <section className="payment-summary"><article className="featured"><span>Collected this month</span><strong>{money(metrics.collectedMonth)}</strong><small><TrendingUp size={14} /> {metrics.collectionChangePercent >= 0 ? "+" : ""}{metrics.collectionChangePercent}% vs last month</small></article><article><span>Collected today</span><strong>{money(metrics.collectedToday)}</strong><small>{metrics.paymentsToday} payments</small></article><article><span>Outstanding</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">Across {metrics.outstandingRentals} rentals</small></article><article><span>Expenses this month</span><strong>{money(metrics.expensesMonth)}</strong><small>Business expenses recorded</small></article></section>
-    <div className="payments-layout"><section className="data-panel"><div className="panel-heading"><div><h2>Recent payments</h2><p>Latest customer collections</p></div><button onClick={exportPayments}><Download size={15} />Export</button></div><div className="payments-table"><div className="payments-head"><span>Customer</span><span>Rental</span><span>Date</span><span>Method</span><span>Amount</span></div>{payments.map((payment) => <article key={payment.id}><span><i>{payment.customer.split(" ").map((part) => part[0]).join("")}</i><span><strong>{payment.customer}</strong><small>{payment.place} · {payment.id}</small></span></span><span><strong>{payment.rental}</strong><small>{payment.vehicle} · Entered by {displayUserName(payment.receivedBy)}</small></span><span>{payment.date}</span><span><b>{payment.method}</b></span><strong className="green-text">+ {money(payment.amount)}</strong></article>)}</div></section><aside className="outstanding-card"><div className="panel-heading"><div><h2>Outstanding</h2><p>Follow up with {metrics.outstandingCustomers} customers</p></div></div>{outstanding.slice(0,3).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.vehicle} · {rental.statusText}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${rental.customer}`}><Send size={14} /></button></article>)}<button className="full-link" onClick={() => window.alert(outstanding.length ? outstanding.map((rental) => `${rental.customer} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n") : "No outstanding balances.")}>View outstanding report <ChevronRight size={15} /></button></aside></div>
+    <div className="payments-layout"><section className="data-panel"><div className="panel-heading"><div><h2>Recent payments</h2><p>Latest customer collections</p></div><button onClick={exportPayments}><Download size={15} />Export</button></div><div className="payments-table"><div className="payments-head"><span>Customer</span><span>Rental</span><span>Date</span><span>Method</span><span>Amount</span></div>{payments.map((payment) => <article key={payment.id}><span><i>{payment.customer.split(" ").map((part) => part[0]).join("")}</i><span><strong>{customerWithPlace(payment.customer, payment.place)}</strong><small>{payment.id}</small></span></span><span><strong>{payment.rental}</strong><small>{payment.vehicle} · Entered by {displayUserName(payment.receivedBy)}</small></span><span>{payment.date}</span><span><b>{payment.method}</b></span><strong className="green-text">+ {money(payment.amount)}</strong></article>)}</div></section><aside className="outstanding-card"><div className="panel-heading"><div><h2>Outstanding</h2><p>Follow up with {metrics.outstandingCustomers} customers</p></div></div>{outstanding.slice(0,3).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.vehicle} · {rental.statusText}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${customerWithPlace(rental.customer, rental.city)}`}><Send size={14} /></button></article>)}<button className="full-link" onClick={() => window.alert(outstanding.length ? outstanding.map((rental) => `${customerWithPlace(rental.customer, rental.city)} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n") : "No outstanding balances.")}>View outstanding report <ChevronRight size={15} /></button></aside></div>
   </>;
 }
 
@@ -2242,8 +2247,8 @@ async function downloadPdfTable(
     ? [70, 70, 55, 82, "*", 100, 65, 68, 68, 68]
     : key.includes("vehicle usage / changes|km by vehicle")
       ? [48, 62, 58, 45, 45, "*", 90, 48, 48, 48, 48, 52, 52]
-    : key.includes("type|customer / rental|usage period|vehicle changes|km usage")
-      ? [52, 48, 45, 62, 62, "*", 72, 28, 48, 48, 48, 48, 48]
+    : key.includes("vehicle|registration|rentals|total km|rental & km details|change details|revenue")
+      ? [92, 72, 42, 58, "*", 125, 68]
       : key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")
         ? [74, 112, 84, 70, 70, "*", 68, 68, 68]
         : key.includes("payment|customer|place|date|associated rental|vehicle|method|amount|entered by")
@@ -2457,12 +2462,12 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   }, [reportUsers, payments, expenses]);
 
   const customerChoices = useMemo(() => {
-    const choices = new Map<string, { key: string; name: string; phone: string }>();
+    const choices = new Map<string, { key: string; name: string; phone: string; place: string }>();
     for (const rental of rentals) {
       const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
-      const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}`;
+      const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}|place:${String(rental.city || "").trim().toLowerCase()}`;
       if (!choices.has(key)) {
-        choices.set(key, { key, name: rental.customer || "Unknown customer", phone: rental.phone || "" });
+        choices.set(key, { key, name: rental.customer || "Unknown customer", phone: rental.phone || "", place: rental.city || "" });
       }
     }
     return [...choices.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -2474,7 +2479,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
   const visibleCustomerChoices = customerChoices.filter((customer) => {
     const term = customerSearch.trim().toLowerCase();
-    return !term || customer.name.toLowerCase().includes(term) || customer.phone.toLowerCase().includes(term);
+    return !term || customer.name.toLowerCase().includes(term) || customer.phone.toLowerCase().includes(term) || customer.place.toLowerCase().includes(term);
   });
 
   const toggleVehicle = (vehicleId: string) => setSelectedVehicleIds((current) => current.includes(vehicleId) ? current.filter((id) => id !== vehicleId) : [...current, vehicleId]);
@@ -2503,7 +2508,6 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const segmentEnd = indiaDateKey(segment.endAt || today);
       return (!dateTo || segmentStart <= dateTo) && (!dateFrom || segmentEnd >= dateFrom);
     };
-    const segmentPeriod = (segment: RentalSegmentRow) => `${segment.start} to ${segment.endAt ? segment.end : "Current"}`;
     const segmentKilometers = (segment: RentalSegmentRow) => {
       const startKm = segment.startingKilometer;
       if (segment.endingKilometer === null) return `${startKm.toLocaleString("en-IN")} km to pending`;
@@ -2530,7 +2534,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
     if (reportType === "payments") {
       // snapshot payment rows already exclude the Guest Car financial portion.
       const filtered = payments.filter((payment) => within(payment.receivedAt) && (paidByFilter === "all" || payment.receivedBy.toLowerCase() === paidByFilter.toLowerCase()));
-      return { title: "Payments report", headers: ["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], rows: filtered.map((payment) => [payment.id, payment.customer, payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)] as (string | number)[]), currencyColumns: [7], total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
+      return { title: "Payments report", headers: ["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], rows: filtered.map((payment) => [payment.id, customerWithPlace(payment.customer, payment.place), payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)] as (string | number)[]), currencyColumns: [7], total: filtered.reduce((sum, payment) => sum + payment.amount, 0), label: "Collected" };
     }
     if (reportType === "expenses") {
       const rentalById = new Map(rentals.map((rental) => [rental.databaseId, rental]));
@@ -2540,7 +2544,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         headers: ["Date", "Category", "Vehicle", "Associated rental", "Paid by", "Method", "Amount", "Description"],
         rows: filtered.map((expense) => {
           const linkedRental = expense.bookingId ? rentalById.get(expense.bookingId) : null;
-          const associatedRental = linkedRental ? `${linkedRental.id} · ${linkedRental.vehicle} · ${linkedRental.customer}` : "—";
+          const associatedRental = linkedRental ? `${linkedRental.id} · ${linkedRental.vehicle} · ${customerWithPlace(linkedRental.customer, linkedRental.city)}` : "—";
           return [expense.date, expense.category, expense.vehicle, associatedRental, expense.createdBy, expense.method, expense.amount, expense.description] as (string | number)[];
         }),
         currencyColumns: [6],
@@ -2552,52 +2556,42 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       // Guest Cars are visible for operational traceability, but every financial
       // column remains excluded from business reporting.
       const chosen = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)) : vehicles;
-      const rentalMap = new Map(rentals.map((rental) => [rental.id, rental]));
-      const periodPayments = payments.filter((payment) => within(payment.receivedAt));
-      const periodExpenses = expenses.filter((expense) => Boolean(expense.vehicleId && within(expense.rawDate)));
-
       const rows = chosen.map((vehicle) => {
         const usageEntries = rentals.flatMap((rental) => orderedSegments(rental)
           .filter((segment) => segment.vehicleId === vehicle.id && segmentOverlapsPeriod(segment))
           .map((segment) => ({ rental, segment })));
         const carRentals = [...new Map(usageEntries.map(({ rental }) => [rental.id, rental])).values()];
-        const customerRentals = usageEntries.map(({ rental, segment }) => `${rental.id} - ${rental.customer} (segment #${segment.sequence})`).join("\n") || "—";
-        const usagePeriods = usageEntries.map(({ rental, segment }) => `${rental.id} #${segment.sequence}: ${segmentPeriod(segment)}`).join("\n") || "—";
+        const usageAndKm = usageEntries.map(({ rental, segment }) => {
+          const endDate = segment.endAt ? customerReportDateOnly(segment.endAt) : "Current";
+          const usedKm = segment.endingKilometer === null
+            ? "KM pending"
+            : `${Math.max(0, segment.endingKilometer - segment.startingKilometer).toLocaleString("en-IN")} km`;
+          return `${rental.id} · ${customerReportDateOnly(segment.startAt)} to ${endDate} · ${usedKm}`;
+        }).join("\n") || "—";
         const changedRentals = [...new Map(usageEntries.filter(({ rental }) => orderedSegments(rental).length > 1).map(({ rental }) => [rental.id, rental])).values()];
         const vehicleChanges = changedRentals.map((rental) => `${rental.id}\n${rentalVehicleUsage(rental)}`).join("\n") || "—";
-        const kilometerUsage = usageEntries.map(({ rental, segment }) => `${rental.id} #${segment.sequence}: ${segmentKilometers(segment)}`).join("\n") || "—";
+        const totalKilometers = usageEntries.reduce((sum, { segment }) => sum + (segment.endingKilometer === null ? 0 : Math.max(0, segment.endingKilometer - segment.startingKilometer)), 0);
+        const hasPendingKilometers = usageEntries.some(({ segment }) => segment.endingKilometer === null);
         const rentalValue = carRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal * vehicleShare(rental, vehicle.id), 0);
-        const collected = periodPayments.reduce((sum, payment) => {
-          const rental = rentalMap.get(payment.rental);
-          return sum + (rental ? payment.amount * vehicleShare(rental, vehicle.id) : 0);
-        }, 0);
-        const outstanding = carRentals.reduce((sum, rental) => sum + rental.businessBalance * vehicleShare(rental, vehicle.id), 0);
-        const carExpenses = periodExpenses.filter((expense) => expense.vehicleId === vehicle.id).reduce((sum, expense) => sum + expense.amount, 0);
 
         return [
-          vehicle.name,
+          `${vehicle.name}${vehicle.isGuest ? "\nGuest Car" : ""}`,
           vehicle.plate,
-          vehicle.isGuest ? "Guest Car - details only" : "Company car",
-          customerRentals,
-          usagePeriods,
-          vehicleChanges,
-          kilometerUsage,
           carRentals.length,
+          `${totalKilometers.toLocaleString("en-IN")} km${hasPendingKilometers ? " + pending" : ""}`,
+          usageAndKm,
+          vehicleChanges,
           vehicle.isGuest ? "Excluded" : rentalValue,
-          vehicle.isGuest ? "Excluded" : collected,
-          vehicle.isGuest ? "Excluded" : outstanding,
-          vehicle.isGuest ? "Excluded" : carExpenses,
-          vehicle.isGuest ? "Excluded" : collected - carExpenses,
         ] as (string | number)[];
       });
 
       return {
         title: "Car-wise report",
-        headers: ["Vehicle", "Registration", "Type", "Customer / rental", "Usage period", "Vehicle changes", "KM usage", "Rentals", "Rental value", "Collected", "Outstanding", "Expenses", "Net collected"],
+        headers: ["Vehicle", "Registration", "Rentals", "Total KM", "Rental & KM details", "Change details", "Revenue"],
         rows,
-        currencyColumns: [8, 9, 10, 11, 12],
-        total: rows.reduce((sum, row) => sum + (typeof row[12] === "number" ? row[12] : 0), 0),
-        label: "Net collected",
+        currencyColumns: [6],
+        total: rows.reduce((sum, row) => sum + (typeof row[6] === "number" ? row[6] : 0), 0),
+        label: "Rental revenue",
       };
     }
 
@@ -2606,14 +2600,14 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       const filteredRentals = rentals.filter((rental) => {
         if (!within(rental.startAt)) return false;
         const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
-        const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}`;
+        const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}|place:${String(rental.city || "").trim().toLowerCase()}`;
         return !selectedSet.size || selectedSet.has(key);
       });
 
       const rows = [...filteredRentals]
         .sort((a, b) => String(a.customer).localeCompare(String(b.customer)) || new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
         .map((rental) => [
-          rental.customer,
+          customerWithPlace(rental.customer, rental.city),
           rental.phone,
           rental.id,
           `${customerReportDateOnly(rental.startAt)} → ${customerReportDateOnly(rental.actualReturnAt || rental.endAt)}`,
@@ -2638,7 +2632,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
     const base = rentals.filter((rental) => within(rental.startAt) && (status === "all" || rental.state === status));
     if (reportType === "outstanding") {
       const filtered = base.filter((rental) => rental.businessBalance > 0);
-      return { title: "Outstanding balances", headers: ["Customer", "Phone", "Original vehicle", "Expected return", "Status", "Business balance"], rows: filtered.map((rental) => [rental.customer, rental.phone, `${rental.originalVehicle} ${rental.originalPlate}`, formatIndiaWhen(rental.endAt), rental.statusText, rental.businessBalance] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, rental) => sum + rental.businessBalance, 0), label: "Outstanding" };
+      return { title: "Outstanding balances", headers: ["Customer", "Phone", "Original vehicle", "Expected return", "Status", "Business balance"], rows: filtered.map((rental) => [customerWithPlace(rental.customer, rental.city), rental.phone, `${rental.originalVehicle} ${rental.originalPlate}`, formatIndiaWhen(rental.endAt), rental.statusText, rental.businessBalance] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, rental) => sum + rental.businessBalance, 0), label: "Outstanding" };
     }
     return {
       title: "Rentals report",
@@ -2648,7 +2642,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         const expenseTotal = linkedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
         const expenseUsers = [...new Set(linkedExpenses.map((expense) => expense.createdBy).filter(Boolean))].join(", ") || "—";
         const expenseCategories = [...new Set(linkedExpenses.map((expense) => expense.category).filter(Boolean))].join(", ") || "—";
-        return [rental.id, `${rental.originalVehicle} ${rental.originalPlate}`, rental.customer, formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.actualReturnAt || rental.endAt), rentalVehicleUsage(rental), rentalVehicleKilometers(rental), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance, expenseTotal, expenseUsers, expenseCategories] as (string | number)[];
+        return [rental.id, `${rental.originalVehicle} ${rental.originalPlate}`, customerWithPlace(rental.customer, rental.city), formatIndiaWhen(rental.startAt), formatIndiaWhen(rental.actualReturnAt || rental.endAt), rentalVehicleUsage(rental), rentalVehicleKilometers(rental), rental.statusText, rental.businessFinancialTotal, rental.businessPaid, rental.businessBalance, expenseTotal, expenseUsers, expenseCategories] as (string | number)[];
       }),
       currencyColumns: [8, 9, 10, 11],
       total: base.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0),
@@ -2658,7 +2652,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
 
   const vehicleScope = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)).map((vehicle) => vehicle.plate).join(", ") : "All cars";
   const customerScope = selectedCustomerKeys.length
-    ? customerChoices.filter((customer) => selectedCustomerKeys.includes(customer.key)).map((customer) => customer.name).join(", ")
+    ? customerChoices.filter((customer) => selectedCustomerKeys.includes(customer.key)).map((customer) => customerWithPlace(customer.name, customer.place)).join(", ")
     : "All customers";
   const subtitle = `${dateFrom || "Any date"} to ${dateTo || "Any date"}${reportType === "rentals" || reportType === "outstanding" ? ` · Status: ${status}` : ""}${reportType === "payments" ? ` · Entered by: ${paidByFilter === "all" ? "All users" : displayUserName(paidByFilter)}` : ""}${reportType === "cars" ? ` · ${vehicleScope}` : ""}${reportType === "customers" ? ` · ${customerScope}` : ""}`;
   const exportName = `mecardee-${reportType}-${dateFrom || "all"}-${dateTo || "all"}`;
@@ -2700,7 +2694,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
             <div className="customer-multi-options">
               {visibleCustomerChoices.length ? visibleCustomerChoices.map((customer) => <label key={customer.key} className={selectedCustomerKeys.includes(customer.key) ? "selected" : ""}>
                 <input type="checkbox" checked={selectedCustomerKeys.includes(customer.key)} onChange={() => toggleCustomer(customer.key)} />
-                <span><strong>{customer.name}</strong><small>{customer.phone || "No phone"}</small></span>
+                <span><strong>{customerWithPlace(customer.name, customer.place)}</strong><small>{customer.phone || "No phone"}</small></span>
                 <span className="customer-check">{selectedCustomerKeys.includes(customer.key) ? <Check size={14} /> : null}</span>
               </label>) : <div className="customer-multi-empty">No customer matches your search.</div>}
             </div>
@@ -2710,7 +2704,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       <div className="report-actions"><button className="secondary-button" onClick={() => downloadPdfTable(exportName, report.title, subtitle, pdfHeaders, pdfRows, pdfCurrencyColumns, report.label, report.total)} disabled={!report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={!report.rows.length}><Download size={16} />Excel</button></div>
     </section>
     <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Guest Car rental amounts excluded from business totals</small></article></section>
-    <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table className={reportType === "rentals" || reportType === "cars" ? "report-detailed-table" : ""}><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => { const header = report.headers[cellIndex]; const detailed = ["Vehicle usage / changes", "KM by vehicle", "Customer / rental", "Usage period", "Vehicle changes", "KM usage"].includes(header); return <td className={detailed ? "report-detail-cell" : ""} key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>; })}</tr>)}</tbody></table></div></section>
+    <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table className={reportType === "rentals" || reportType === "cars" ? "report-detailed-table" : ""}><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => { const header = report.headers[cellIndex]; const detailed = ["Vehicle usage / changes", "KM by vehicle", "Rental & KM details", "Change details"].includes(header); return <td className={detailed ? "report-detail-cell" : ""} key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>; })}</tr>)}</tbody></table></div></section>
   </>;
 }
 
@@ -3126,9 +3120,9 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       </div>
       {error && <p className="form-error transaction-manager-error">{error}</p>}
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
-        {tab === "bookings" && (editableBookings.length ? editableBookings.map((booking) => <article className="transaction-row settings-booking-row" key={booking.id}><div className="transaction-main"><span className="transaction-kind rental"><CalendarDays size={15} /></span><div><strong>{booking.vehicle} · {booking.plate}</strong><small>{booking.bookingNumber} · {booking.customer}</small><small>{formatWhen(booking.startAt)} → {formatWhen(booking.endAt)} · {booking.days} rental day{booking.days === 1 ? "" : "s"} · {money(booking.rate)}/day</small>{booking.vehicleId !== booking.requestedVehicleId && <small className="settings-booking-original">Original request: {booking.requestedVehicle} · {booking.requestedPlate}</small>}</div></div><div className="transaction-side"><span className="settings-booking-status">Booked</span><div className="transaction-actions"><button onClick={() => { setError(""); setBookingEditTarget(booking); }} disabled={busy}><Pencil size={14} />Edit booking</button></div></div></article>) : <div className="transaction-empty">No active bookings to edit.</div>)}
-        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit details</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
-        {tab === "returns" && (completedReturns.length ? completedReturns.map((rental) => <article className="transaction-row rental-schedule-row completed-return-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind history"><CheckCircle2 size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>Returned {formatWhen(rental.actualReturnAt!)} · Final total {money(rental.total)} · Paid {money(rental.paid)}</small></div></div><div className="transaction-side"><span className="rental-schedule-status completed">Completed</span><div className="transaction-actions"><button className="danger" onClick={() => { setError(""); setReopenReason("Accidental final settlement"); setReopenTarget(rental); }} disabled={busy}><RotateCcw size={14} />Reopen to on rent</button></div></div></article>) : <div className="transaction-empty">No completed returns are available.</div>)}
+        {tab === "bookings" && (editableBookings.length ? editableBookings.map((booking) => <article className="transaction-row settings-booking-row" key={booking.id}><div className="transaction-main"><span className="transaction-kind rental"><CalendarDays size={15} /></span><div><strong>{booking.vehicle} · {booking.plate}</strong><small>{booking.bookingNumber} · {customerWithPlace(booking.customer, booking.city)}</small><small>{formatWhen(booking.startAt)} → {formatWhen(booking.endAt)} · {booking.days} rental day{booking.days === 1 ? "" : "s"} · {money(booking.rate)}/day</small>{booking.vehicleId !== booking.requestedVehicleId && <small className="settings-booking-original">Original request: {booking.requestedVehicle} · {booking.requestedPlate}</small>}</div></div><div className="transaction-side"><span className="settings-booking-status">Booked</span><div className="transaction-actions"><button onClick={() => { setError(""); setBookingEditTarget(booking); }} disabled={busy}><Pencil size={14} />Edit booking</button></div></div></article>) : <div className="transaction-empty">No active bookings to edit.</div>)}
+        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {customerWithPlace(rental.customer, rental.city)}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit details</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
+        {tab === "returns" && (completedReturns.length ? completedReturns.map((rental) => <article className="transaction-row rental-schedule-row completed-return-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind history"><CheckCircle2 size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {customerWithPlace(rental.customer, rental.city)}</small><small>Returned {formatWhen(rental.actualReturnAt!)} · Final total {money(rental.total)} · Paid {money(rental.paid)}</small></div></div><div className="transaction-side"><span className="rental-schedule-status completed">Completed</span><div className="transaction-actions"><button className="danger" onClick={() => { setError(""); setReopenReason("Accidental final settlement"); setReopenTarget(rental); }} disabled={busy}><RotateCcw size={14} />Reopen to on rent</button></div></div></article>) : <div className="transaction-empty">No completed returns are available.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Entered by {displayUserName(payment.receivedBy)}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
@@ -3152,7 +3146,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     {rentalEditTarget && <DialogShell title="Edit active rental" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.id}`} close={() => !busy && setRentalEditTarget(null)} wide><form className="simple-form rental-admin-edit-form" onSubmit={saveRentalSchedule}>
       <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Full active-rental correction</strong><small>Amounts recalculate from these values. Payments remain recorded and prevent edits that would create an overpayment.</small></span></div>
       <div className="field-grid three">
-        <label className="field span-2"><span>Customer</span><select required value={rentalScheduleForm.customerId} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, customerId: event.target.value }))}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} — {customer.phone}</option>)}</select><small>Changing customer also keeps any linked payments on this rental consistent.</small></label>
+        <label className="field span-2"><span>Customer</span><select required value={rentalScheduleForm.customerId} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, customerId: event.target.value }))}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customerWithPlace(customer.name, customer.city)} — {customer.phone}</option>)}</select><small>Changing customer also keeps any linked payments on this rental consistent.</small></label>
         <label className="field"><span>Daily rate (₹)</span><input required min="0.01" step="0.01" type="number" value={blankZero(rentalScheduleForm.dailyRate)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, dailyRate: numberFromInput(event.target.value) }))} /></label>
         <label className="field"><span>Rental start date / time</span><input required disabled={rentalEditTarget.segments.length > 1} type="datetime-local" value={rentalScheduleForm.startAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startAt: event.target.value }))} />{rentalEditTarget.segments.length > 1 && <small>Locked because vehicle history already exists.</small>}</label>
         <label className="field"><span>Expected return date / time</span><input required type="datetime-local" value={rentalScheduleForm.endAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, endAt: event.target.value }))} /></label>
@@ -3470,7 +3464,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
   const [newCustomerWhatsapp, setNewCustomerWhatsapp] = useState("");
   const [newCustomerLicence, setNewCustomerLicence] = useState("");
   const [newCustomerCity, setNewCustomerCity] = useState("");
-  const [createdCustomer, setCreatedCustomer] = useState<{ name: string; phone: string } | null>(null);
+  const [createdCustomer, setCreatedCustomer] = useState<{ name: string; phone: string; city?: string } | null>(null);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3516,13 +3510,13 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
     const phoneKey = customerPhoneKey(newCustomerPhone);
     const duplicateCustomer = phoneKey ? (customers.find((customer) => customerPhoneKey(customer.phone) === phoneKey) ?? (createdCustomer && customerPhoneKey(createdCustomer.phone) === phoneKey ? createdCustomer : null)) : null;
     if (duplicateCustomer) {
-      setError(`This phone number is already added for ${duplicateCustomer.name}. Please select the existing customer.`);
+      setError(`This phone number is already added for ${customerWithPlace(duplicateCustomer.name, duplicateCustomer.city)}. Please select the existing customer.`);
       return;
     }
     setSavingCustomer(true);
     try {
       const response = await fetch("/api/customers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: newCustomerName, phone: newCustomerPhone, whatsappNumber: newCustomerWhatsapp, drivingLicence: newCustomerLicence, city: newCustomerCity }) });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string } }>(response);
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string; city?: string } }>(response);
       if (!response.ok || !payload.customer) throw new Error(customerCreateError(payload.error));
       setCreatedCustomer(payload.customer); setCustomerPhone(payload.customer.phone); setShowCustomerForm(false); showToast(`${payload.customer.name} added and selected`);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save customer."); } finally { setSavingCustomer(false); }
@@ -3547,7 +3541,8 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
       }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string; booking?: { bookingNumber: string; replacementBooked?: boolean; scheduleConflict?: boolean } }>(response);
       if (!response.ok || !payload.booking) throw new Error(payload.error ?? "Could not save booking.");
-      const customer = customers.find((item) => item.phone === customerPhone)?.name ?? createdCustomer?.name ?? customerPhone;
+      const selectedCustomer = customers.find((item) => item.phone === customerPhone) ?? createdCustomer;
+      const customer = selectedCustomer ? customerWithPlace(selectedCustomer.name, selectedCustomer.city) : customerPhone;
       const replacementNote = assignedBookingVehicle.id !== selectedVehicle.id ? ` · ${assignedBookingVehicle.name}${assignedBookingVehicle.isGuest ? " (Guest Car)" : ""} reserved as replacement` : requestedConflict ? " · CHANGE REQUIRED before schedule collision" : "";
       done(`${selectedVehicle.name} booking created for ${customer} · ${payload.booking.bookingNumber}${replacementNote}`);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save booking."); } finally { setSaving(false); }
@@ -3557,7 +3552,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
     <form className="rental-form booking-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}>
       <div className="form-content">
         <section className="form-section"><div className="form-section-title"><span><UserRound size={17} /></span><div><h3>Customer & vehicle</h3><p>Choose the customer first. A vehicle is prefilled only when booking directly from that vehicle.</p></div></div><div className="field-grid">
-          <label className="field"><span>Customer</span><select value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}><option value="">Select customer</option>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name} — {createdCustomer.phone}</option>}{customers.map((item) => <option value={item.phone} key={item.id}>{item.name} — {item.phone}</option>)}</select></label>
+          <label className="field"><span>Customer</span><select value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}><option value="">Select customer</option>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{customerWithPlace(createdCustomer.name, createdCustomer.city)} — {createdCustomer.phone}</option>}{customers.map((item) => <option value={item.phone} key={item.id}>{customerWithPlace(item.name, item.city)} — {item.phone}</option>)}</select></label>
           <button type="button" className="new-customer" onClick={() => setShowCustomerForm((value) => !value)}><UserRoundPlus size={16} />{showCustomerForm ? "Close" : "Add new customer"}</button>
           <label className="field span-2"><span>Requested vehicle</span><select value={vehicleId} disabled={!customerPhone && !initialVehicle} onChange={(e) => { setVehicleId(e.target.value); setReplacementVehicleId(""); const v = bookableVehicles.find((item) => item.id === e.target.value); setRate(v?.rate ?? 0); }}><option value="">Select vehicle</option>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate} · {item.status}</option>)}</select><small>{initialVehicle ? "Opened from this vehicle, so it was prefilled. Select the customer to continue." : customerPhone ? "Choose the vehicle the customer originally requested." : "Select the customer first to choose a vehicle."}</small></label>
         </div></section>
@@ -3586,7 +3581,7 @@ function BookingDetailDialog({ reservation, canStart, close, edit, start, cancel
   }
   return <DialogShell title={reservation.bookingNumber} subtitle="Future booking · not yet handed over" close={close}>
     <div className="booking-detail-card"><img src={reservation.image} alt={`${reservation.vehicle} vehicle`} /><div><span className="fleet-status-badge booked"><i />Booked</span><h2>{reservation.vehicle}</h2><p>{reservation.plate}</p></div></div>
-    <section className="detail-section"><div className="customer-detail-card"><span>{reservation.customer.split(" ").map((part)=>part[0]).join("")}</span><div><strong>{reservation.customer}</strong><small>{reservation.phone}</small></div></div></section>
+    <section className="detail-section"><div className="customer-detail-card"><span>{reservation.customer.split(" ").map((part)=>part[0]).join("")}</span><div><strong>{customerWithPlace(reservation.customer, reservation.city)}</strong><small>{reservation.phone}</small></div></div></section>
     {reservation.replacementBooked && <div className="original-booking-context compact booking-original-context"><strong>Original requested vehicle: {reservation.requestedVehicle} — {reservation.requestedPlate}</strong><span>Reserved vehicle: {reservation.vehicle} — {reservation.plate}. The original request remains attached to this booking.</span></div>}
     <section className="detail-section"><div className="timeline"><div><i /><span><small>Booked from</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Expected return</small><strong>{reservation.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Booked days</small><strong>{reservation.days}</strong></div><div><small>Daily rate</small><strong>{money(reservation.rate)}</strong></div><div><small>Estimated rent</small><strong>{money(reservation.amount)}</strong></div></div></section>
     {error && <p className="form-error">{error}</p>}
@@ -3600,7 +3595,7 @@ function BookingHistoryDialog({ booking, close, sendWhatsApp }: { booking: Booki
   const label = booking.status === "cancelled" ? "Cancelled" : booking.status === "completed" ? "Completed" : booking.status === "rented" ? "Active" : "Booking";
   return <DialogShell title={booking.bookingNumber} subtitle={`${label} booking record`} close={close}>
     <div className="booking-detail-card"><img src={booking.image} alt={`${booking.vehicle} vehicle`} /><div><span className={`fleet-status-badge ${booking.status === "cancelled" ? "maintenance" : booking.status === "completed" ? "available" : booking.status === "rented" ? "rented" : "booked"}`}><i />{label}</span><h2>{booking.vehicle}</h2><p>{booking.plate}</p></div></div>
-    <section className="detail-section"><div className="customer-detail-card"><span>{booking.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{booking.customer}</strong><small>{booking.phone}</small></div></div></section>
+    <section className="detail-section"><div className="customer-detail-card"><span>{booking.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(booking.customer, booking.city)}</strong><small>{booking.phone}</small></div></div></section>
     {booking.replacementBooked && <div className="original-booking-context compact booking-original-context"><strong>Original requested vehicle: {booking.requestedVehicle} — {booking.requestedPlate}</strong><span>Reserved vehicle: {booking.vehicle} — {booking.plate}. The original request remains attached to this booking.</span></div>}
     <section className="detail-section"><div className="timeline"><div><i /><span><small>Pickup</small><strong>{booking.start}</strong></span></div><b /><div><i /><span><small>Return</small><strong>{booking.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Days</small><strong>{booking.days}</strong></div><div><small>Daily rate</small><strong>{money(booking.rate)}</strong></div><div><small>Booking amount</small><strong>{money(booking.amount)}</strong></div><div><small>Advance</small><strong>{money(booking.advancePaid)}</strong></div><div><small>Total paid</small><strong>{money(booking.paid)}</strong></div><div><small>Balance</small><strong>{money(booking.balance)}</strong></div></div></section>
     <footer className="detail-actions"><button className="return-button" onClick={sendWhatsApp}><MessageCircle size={16} />WhatsApp</button><button onClick={close}>Close</button></footer>
@@ -3645,7 +3640,7 @@ function BookingEditDialog({ booking, vehicles, guestVehicles, bookings, rentals
     } catch (e) { setError(e instanceof Error ? e.message : "Could not update booking."); } finally { setSaving(false); }
   }
 
-  return <DialogShell title="Edit booking" subtitle={`${booking.bookingNumber} · ${booking.customer}`} close={close}>
+  return <DialogShell title="Edit booking" subtitle={`${booking.bookingNumber} · ${customerWithPlace(booking.customer, booking.city)}`} close={close}>
     <form className="simple-form booking-edit-form" onSubmit={submit}>
       <div className="original-booking-context compact"><strong>Original requested vehicle: {booking.requestedVehicle} — {booking.requestedPlate}</strong><span>Changing the reserved vehicle here does not remove the original booking context.</span></div>
       <label className="field"><span>Reserved vehicle</span><select required value={vehicleId} onChange={(event) => { const nextId = event.target.value; setVehicleId(nextId); const nextVehicle = allVehicles.find((item) => item.id === nextId); if (nextVehicle) setRate(nextVehicle.rate); }}><optgroup label="Our available vehicles">{ownOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}{item.id === booking.requestedVehicleId ? " · Original request" : ""}</option>)}</optgroup>{guestOptions.length > 0 && <optgroup label="Guest Cars">{guestOptions.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>You can change the vehicle while this booking is still active. Conflict-free alternatives are offered. The current reserved vehicle may still be saved with a schedule warning.</small></label>
@@ -3720,7 +3715,7 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
 
     const text =
       `Mecardee Rental - Rental started\n\n` +
-      `Hello ${reservation.customer},\n` +
+      `Hello ${customerWithPlace(reservation.customer, reservation.city)},\n` +
       `Your vehicle rental has been started.\n\n` +
       `Vehicle: ${startedHandover.vehicle} (${startedHandover.plate})\n` +
       `Booking: ${reservation.bookingNumber}\n` +
@@ -3756,13 +3751,13 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
       const response = await fetch(`/api/bookings/${reservation.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", replacementVehicleId: needsReplacement && replacementVehicleId ? replacementVehicleId : undefined, startingKilometer, startingFuelRangeKm, dailyRate: rate, securityDeposit: deposit, advancePaid: advance, bookingDiscount: discount, paymentMethod, receivedBy: CURRENT_USER_NAME }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string }>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Could not start rental.");
-      const statusMessage = `${reservation.bookingNumber} started as an active rental for ${reservation.customer}${assignedVehicle.id !== reservation.vehicleId ? ` using ${assignedVehicle.name} as replacement` : ""}`;
+      const statusMessage = `${reservation.bookingNumber} started as an active rental for ${customerWithPlace(reservation.customer, reservation.city)}${assignedVehicle.id !== reservation.vehicleId ? ` using ${assignedVehicle.name} as replacement` : ""}`;
       setStartedHandover({ vehicle: assignedVehicle.name, plate: assignedVehicle.plate, startingKilometer, startingFuelRangeKm, expectedKm, allowedKmPerDay: assignedVehicle.allowedKmPerDay, statusMessage });
     } catch (e) { setError(e instanceof Error ? e.message : "Could not start rental."); } finally { setSaving(false); }
   }
 
-  return <DialogShell title={startedHandover ? "Rental started" : "Start booked rental"} subtitle={`${reservation.vehicle} · ${reservation.customer}`} close={startedHandover ? finishStartedRental : close} wide>
-    {startedHandover ? <div className="rental-started-whatsapp-success"><div className="rental-started-success-icon"><CheckCircle2 size={25} /></div><div className="rental-started-success-copy"><h3>Rental confirmed</h3><p>{startedHandover.vehicle} · {startedHandover.plate} is now on rent. Send the handover details to {reservation.customer} if required.</p></div><div className="rental-started-handover-grid"><span><small>Starting KM</small><strong>{startedHandover.startingKilometer.toLocaleString("en-IN")} km</strong></span><span><small>Fuel range</small><strong>{startedHandover.startingFuelRangeKm.toLocaleString("en-IN")} km</strong></span><span><small>Allowed / day</small><strong>{startedHandover.allowedKmPerDay.toLocaleString("en-IN")} km</strong></span><span><small>Expected return KM</small><strong>{startedHandover.expectedKm.toLocaleString("en-IN")} km</strong></span></div><div className="rental-started-success-actions"><button type="button" className="rental-started-whatsapp" onClick={sendRentalStartedWhatsApp}><MessageCircle size={19} />WhatsApp handover</button><button type="button" className="primary-button" onClick={finishStartedRental}><Check size={17} />Done</button></div></div> : <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}><div className="form-content">
+  return <DialogShell title={startedHandover ? "Rental started" : "Start booked rental"} subtitle={`${reservation.vehicle} · ${customerWithPlace(reservation.customer, reservation.city)}`} close={startedHandover ? finishStartedRental : close} wide>
+    {startedHandover ? <div className="rental-started-whatsapp-success"><div className="rental-started-success-icon"><CheckCircle2 size={25} /></div><div className="rental-started-success-copy"><h3>Rental confirmed</h3><p>{startedHandover.vehicle} · {startedHandover.plate} is now on rent. Send the handover details to {customerWithPlace(reservation.customer, reservation.city)} if required.</p></div><div className="rental-started-handover-grid"><span><small>Starting KM</small><strong>{startedHandover.startingKilometer.toLocaleString("en-IN")} km</strong></span><span><small>Fuel range</small><strong>{startedHandover.startingFuelRangeKm.toLocaleString("en-IN")} km</strong></span><span><small>Allowed / day</small><strong>{startedHandover.allowedKmPerDay.toLocaleString("en-IN")} km</strong></span><span><small>Expected return KM</small><strong>{startedHandover.expectedKm.toLocaleString("en-IN")} km</strong></span></div><div className="rental-started-success-actions"><button type="button" className="rental-started-whatsapp" onClick={sendRentalStartedWhatsApp}><MessageCircle size={19} />WhatsApp handover</button><button type="button" className="primary-button" onClick={finishStartedRental}><Check size={17} />Done</button></div></div> : <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName !== "TEXTAREA") event.preventDefault(); }}><div className="form-content">
       <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Booked schedule</h3><p>The reservation becomes an active rental only after this confirmation.</p></div></div><div className="timeline"><div><i /><span><small>Start</small><strong>{reservation.start}</strong></span></div><b /><div><i /><span><small>Return</small><strong>{reservation.returnDate}</strong></span></div></div></section>
       <section className={`booking-start-vehicle-lock ${needsReplacement ? "replacement-needed" : "booked-vehicle-ready"}`}><CarFront size={18} /><div><small>{needsReplacement ? "Booked vehicle unavailable at pickup" : "Starting vehicle locked to booking"}</small><strong>{needsReplacement ? "Choose a replacement below" : `${reservation.vehicle} — ${reservation.plate}`}</strong><span>{needsReplacement ? "No replacement is selected automatically. Choose the actual vehicle you will hand over." : "This rental will start with the exact vehicle reserved on this booking. A later schedule collision does not change the starting vehicle."}</span></div></section>
       {!needsReplacement && futureScheduleConflict && <section className="schedule-change-warning"><AlertTriangle size={18} /><div><strong>Start allowed — future vehicle change required</strong><p>{reservation.vehicle} is free at pickup, so this rental can start normally. {futureScheduleConflict.type === "booking" ? "Booking" : "Rental"} {futureScheduleConflict.label}{futureScheduleConflict.customer ? ` for ${futureScheduleConflict.customer}` : ""} overlaps later in this rental period. Use Change Vehicle before that collision if the customer still has this car.</p></div></section>}
@@ -3792,7 +3787,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
   const [replacementVehicleId, setReplacementVehicleId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [createdCustomer, setCreatedCustomer] = useState<{ name: string; phone: string } | null>(null);
+  const [createdCustomer, setCreatedCustomer] = useState<{ name: string; phone: string; city?: string } | null>(null);
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [newCustomerWhatsapp, setNewCustomerWhatsapp] = useState("");
@@ -3814,7 +3809,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
   const rentalAmount = days * rate;
   const total = Math.max(0, rentalAmount - discount);
   const selectedVehicle = selectableOriginalVehicles.find((item) => vehicle.includes(item.plate)) ?? null;
-  const selectedCustomer = customers.find((item) => item.phone === customerPhone) ?? (createdCustomer?.phone === customerPhone ? { name: createdCustomer.name } : null);
+  const selectedCustomer = customers.find((item) => item.phone === customerPhone) ?? (createdCustomer?.phone === customerPhone ? createdCustomer : null);
   const requestedStartAt = new Date(`${startDate}T${startTime}:00+05:30`);
   const requestedEndAt = new Date(`${returnDate}T${returnTime}:00+05:30`);
   const requestedConflict = selectedVehicle ? findVehiclePeriodConflict(selectedVehicle.id, requestedStartAt, requestedEndAt, bookings, rentals) : null;
@@ -3871,7 +3866,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
       if (!response.ok || !payload.rental) throw new Error(payload.error ?? "Could not save the rental.");
       const action = mode === "draft" ? "draft saved" : "created";
       const replacementNote = mode === "rented" && assignedVehicle && assignedVehicle.id !== selectedVehicle.id ? ` · ${assignedVehicle.name}${assignedVehicle.isGuest ? " (Guest Car)" : ""} assigned as replacement` : "";
-      done(`${selectedVehicle.name} rental ${payload.rental.bookingNumber} ${action} for ${selectedCustomer?.name ?? customerPhone}${replacementNote}`, selectedVehicle.plate);
+      done(`${selectedVehicle.name} rental ${payload.rental.bookingNumber} ${action} for ${selectedCustomer ? customerWithPlace(selectedCustomer.name, selectedCustomer.city) : customerPhone}${replacementNote}`, selectedVehicle.plate);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not save the rental.");
     } finally {
@@ -3889,7 +3884,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
     const phoneKey = customerPhoneKey(newCustomerPhone);
     const duplicateCustomer = phoneKey ? (customers.find((customer) => customerPhoneKey(customer.phone) === phoneKey) ?? (createdCustomer && customerPhoneKey(createdCustomer.phone) === phoneKey ? createdCustomer : null)) : null;
     if (duplicateCustomer) {
-      setError(`This phone number is already added for ${duplicateCustomer.name}. Please select the existing customer.`);
+      setError(`This phone number is already added for ${customerWithPlace(duplicateCustomer.name, duplicateCustomer.city)}. Please select the existing customer.`);
       return;
     }
     setSavingCustomer(true);
@@ -3899,7 +3894,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: newCustomerName, phone: newCustomerPhone, whatsappNumber: newCustomerWhatsapp, drivingLicence: newCustomerLicence, city: newCustomerCity }),
       });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string } }>(response);
+      const payload = await readApiResponse<{ ok: boolean; error?: string; customer?: { name: string; phone: string; city?: string } }>(response);
       if (!response.ok || !payload.customer) throw new Error(customerCreateError(payload.error));
       setCreatedCustomer(payload.customer);
       setCustomerPhone(payload.customer.phone);
@@ -3913,7 +3908,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
   return <DialogShell title="Create a new rental" subtitle="Customer → Vehicle → Rental details" close={close} wide>
     <div className="stepper"><span className="done"><i><Check size={13} /></i>Customer</span><b /><span className="active"><i>2</i>Vehicle & dates</span><b /><span><i>3</i>Handover</span></div>
     <form className="rental-form" onSubmit={submit} onKeyDown={(event) => { if (event.key === "Enter" && (event.target as HTMLElement).tagName === "INPUT") event.preventDefault(); }}>
-      <div className="form-content"><section className="form-section"><div className="form-section-title"><span><UserRound size={17} /></span><div><h3>Customer and vehicle</h3><p>Select the customer first. A vehicle is prefilled only when you started directly from that vehicle.</p></div></div><div className="field-grid"><label className="field"><span>Customer</span><select value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)}><option value="">Select customer</option>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{createdCustomer.name}</option>}{customers.map((item) => <option key={item.id} value={item.phone}>{item.name}</option>)}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((open) => !open)}><UserRoundPlus size={16} />{showCustomerForm ? "Close customer form" : "Add new customer"}</button><label className="field span-2"><span>Original requested vehicle</span><select value={vehicle} onChange={(event) => { const next = selectableOriginalVehicles.find((item) => event.target.value.includes(item.plate)); setVehicle(event.target.value); setReplacementVehicleId(""); setRate(next?.rate ?? 0); }} disabled={(!customerPhone && !initialVehicle) || !selectableOriginalVehicles.length}><option value="">Select vehicle</option>{selectableOriginalVehicles.map((item) => <option key={item.id}>{item.name} — {item.plate}</option>)}</select><small>{initialVehicle ? "Opened from this vehicle, so it was prefilled. Select the customer to continue." : customerPhone ? "Choose the vehicle the customer originally requested." : "Select the customer first to choose a vehicle."}</small></label></div></section>
+      <div className="form-content"><section className="form-section"><div className="form-section-title"><span><UserRound size={17} /></span><div><h3>Customer and vehicle</h3><p>Select the customer first. A vehicle is prefilled only when you started directly from that vehicle.</p></div></div><div className="field-grid"><label className="field"><span>Customer</span><select value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)}><option value="">Select customer</option>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{customerWithPlace(createdCustomer.name, createdCustomer.city)}</option>}{customers.map((item) => <option key={item.id} value={item.phone}>{customerWithPlace(item.name, item.city)}</option>)}</select></label><button type="button" className="new-customer" onClick={() => setShowCustomerForm((open) => !open)}><UserRoundPlus size={16} />{showCustomerForm ? "Close customer form" : "Add new customer"}</button><label className="field span-2"><span>Original requested vehicle</span><select value={vehicle} onChange={(event) => { const next = selectableOriginalVehicles.find((item) => event.target.value.includes(item.plate)); setVehicle(event.target.value); setReplacementVehicleId(""); setRate(next?.rate ?? 0); }} disabled={(!customerPhone && !initialVehicle) || !selectableOriginalVehicles.length}><option value="">Select vehicle</option>{selectableOriginalVehicles.map((item) => <option key={item.id}>{item.name} — {item.plate}</option>)}</select><small>{initialVehicle ? "Opened from this vehicle, so it was prefilled. Select the customer to continue." : customerPhone ? "Choose the vehicle the customer originally requested." : "Select the customer first to choose a vehicle."}</small></label></div></section>
         {showCustomerForm && <section className="form-section"><div className="form-section-title"><span><UserRoundPlus size={17} /></span><div><h3>Add new customer</h3><p>Save once and the customer is selected for this rental.</p></div></div><div className="simple-form"><div className="field-grid"><label className="field"><span>Customer name</span><input required value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input required inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} placeholder="Leave blank to use phone" /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} placeholder="Optional" /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={()=>setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer?"Saving…":"Save customer"}</button></div></div></section>}
         <section className="form-section"><div className="form-section-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>Enter rental days or choose the return date manually.</p></div></div><div className="field-grid rental-schedule-grid"><label className="field"><span>Start date</span><input required type="date" value={startDate} onChange={(event) => { const next = event.target.value; const count = Math.max(1, Number(rentalDaysInput) || days || 1); setStartDate(next); setReturnDate(rentalReturnDateFromDays(next, count)); }} /></label><label className="field"><span>Start time</span><input required type="time" value={startTime} onChange={(event) => { const next = event.target.value; setReturnTime((current) => current === startTime ? next : current); setStartTime(next); }} /></label><label className="field rental-days-field"><span>Rental days</span><input min="1" step="1" type="number" inputMode="numeric" placeholder="1" value={rentalDaysInput} onKeyDown={numericKeyOnly} onChange={(event) => { const raw = event.target.value.replace(/\D/g, ""); setRentalDaysInput(raw); if (raw) setReturnDate(rentalReturnDateFromDays(startDate, Number(raw))); }} onBlur={() => { if (!rentalDaysInput) setRentalDaysInput(String(days)); }} /></label><label className="field"><span>Expected return</span><input required type="date" value={returnDate} onChange={(event) => { const next = event.target.value; const [sy, sm, sd] = startDate.split("-").map(Number); const [ey, em, ed] = next.split("-").map(Number); const difference = Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86_400_000); const count = Math.max(1, difference); setRentalDaysInput(String(count)); setReturnDate(difference < 1 ? rentalReturnDateFromDays(startDate, 1) : next); }} /></label><label className="field"><span>Return time</span><input required type="time" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} /></label></div><div className="duration-note"><CalendarRange size={16} /><strong>{days} rental days</strong><span>{startDate} → {returnDate}</span></div></section>
         {needsReplacement && selectedVehicle && <section className="replacement-conflict-panel"><div className="replacement-conflict-head"><AlertTriangle size={18} /><div><strong>{selectedVehicle.name} has a date conflict</strong><p>{requestedConflict ? `${requestedConflict.type === "booking" ? "Booking" : "Rental"} ${requestedConflict.label}${requestedConflict.customer ? ` for ${requestedConflict.customer}` : ""} overlaps this period.` : "The original vehicle is not operational for this period."} You can continue this same rental with a temporary vehicle.</p></div></div><div className="original-booking-context compact"><strong>Original Booking: {selectedVehicle.name} — {days} Days</strong><span>{selectedVehicle.name} remains the original requested vehicle even while a replacement is being used.</span></div><label className="field"><span>Temporary / replacement vehicle</span><select required value={replacementVehicleId} onChange={(event) => setReplacementVehicleId(event.target.value)}><option value="">Select replacement</option>{ownReplacements.length > 0 && <optgroup label="Our available vehicles">{ownReplacements.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}</option>)}</optgroup>}{guestReplacements.length > 0 && <optgroup label="Guest Cars">{guestReplacements.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>{replacementChoices.length ? "Own vehicles are shown first. Guest Cars are listed separately below them." : "No replacement vehicle is available at the selected start time."}</small></label></section>}
@@ -3939,7 +3934,7 @@ function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp, addExpe
   return <DialogShell title={rental.id} subtitle={`${rental.vehicle} · ${rental.plate}${rental.isGuestCurrent ? " · Guest Car" : ""}`} close={close} wide>
     {showOriginalContext && <div className="original-booking-context rental-context-banner"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>{rental.originalVehicle} was unavailable for part of this rental, so a temporary/replacement vehicle is being used. The original booking remains connected throughout every vehicle change.</span><small>{formatOriginalPeriod}</small></div>}
     <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span>{rental.isGuestCurrent && <span className="guest-inline-badge">Guest Car</span>}<h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />WhatsApp</button></div></div>
-    <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Finalized from the actual return" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>{completed ? "Final rental days" : "Rental days"}</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>{completed ? "Final return KM" : "Current expected return KM"}</small><strong>{(completed && rental.returnKilometer !== null ? rental.returnKilometer : calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay)).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
+    <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Finalized from the actual return" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>{completed ? "Final rental days" : "Rental days"}</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>{completed ? "Final return KM" : "Current expected return KM"}</small><strong>{(completed && rental.returnKilometer !== null ? rental.returnKilometer : calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay)).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
       {(rental.segments.length > 1 || rental.replacementUsed) && <section className="detail-section"><div className="detail-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle usage</h3><p>All vehicles used within this same customer rental</p></div></div><div className="rental-segment-list">{rental.segments.map((segment) => <article key={segment.id} className={`rental-segment-card ${segment.status === "active" ? "active" : ""}`}><div className="segment-vehicle"><img src={segment.image} alt="" /><span><strong>{segment.vehicle}</strong><small>{segment.plate}{segment.isGuest ? " · Guest Car" : ""}</small></span><b>#{segment.sequence}</b></div><div className="segment-facts"><span><small>Used from</small><strong>{segment.start}</strong></span><span><small>Used to</small><strong>{segment.end}</strong></span><span><small>Start KM</small><strong>{segment.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>End KM</small><strong>{segment.endingKilometer === null ? "Current" : segment.endingKilometer.toLocaleString("en-IN")}</strong></span><span><small>Rental period</small><strong>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Vehicle charge</small><strong>{money(segment.rentalCharge + segment.extraKmCharge)}</strong></span></div></article>)}</div></section>}
       </div>{completed && rental.settlement ? <aside className="financial-card completed-settlement-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Final settlement bill</h3><p>Complete finalized return calculation</p></div></div><div className="completed-settlement-readings"><span><small>Return KM</small><strong>{rental.settlement.actualReturnKilometer.toLocaleString("en-IN")} km</strong></span><span><small>Extra KM used</small><strong>{rental.settlement.totalExtraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Return fuel</small><strong>{rental.settlement.returnFuelRangeKm} km</strong></span><span><small>Fuel price</small><strong>{money(rental.settlement.fuelPricePerLitre)}/L</strong></span></div><div className="financial-line"><span>Final rental · {rental.days} day{rental.days === 1 ? "" : "s"}</span><strong>{money(rental.settlement.rentalAmount)}</strong></div>{rental.settlement.existingCharges > 0 && <div className="financial-line"><span>Existing charges</span><strong>{money(rental.settlement.existingCharges)}</strong></div>}<div className="financial-line"><span>Extra KM charge · {rental.settlement.totalExtraKilometers} km</span><strong>{money(rental.settlement.totalExtraKmCharge)}</strong></div><div className="financial-line"><span>Fuel shortage · {rental.settlement.fuelRangeShortageKm} km</span><strong>{money(rental.settlement.fuelCharge)}</strong></div>{rental.settlement.lateFee > 0 && <div className="financial-line"><span>Late return charge</span><strong>{money(rental.settlement.lateFee)}</strong></div>}<div className="financial-line settlement-described-line"><span>Additional charge{rental.settlement.additionalDescription ? <small>{rental.settlement.additionalDescription}</small> : null}</span><strong>{money(rental.settlement.additionalCharge)}</strong></div><div className="financial-line settlement-subtotal"><span>Subtotal</span><strong>{money(rental.settlement.subtotal)}</strong></div><div className="financial-line settlement-described-line settlement-discount"><span>Discount{rental.settlement.discountRemark ? <small>{rental.settlement.discountRemark}</small> : null}</span><strong>− {money(rental.settlement.discountAmount)}</strong></div><div className="financial-total"><span>Final amount</span><strong>{money(rental.settlement.finalAmount)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button><button className="completed-settlement-whatsapp" onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />Send settlement on WhatsApp</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside> : <aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>Updated live</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside>}</div>
     {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions rental-workflow-footer"><button className="rental-expense-action" onClick={addExpense}><ReceiptIndianRupee size={16} />Add expense</button><div className="rental-workflow-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} /><span>Edit / extend date</span></button><button onClick={() => switchDialog("change-vehicle")}><RotateCcw size={16} /><span>Change vehicle</span></button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} /><span>Return car</span></button></div></footer>}
@@ -3964,7 +3959,7 @@ function PendingPaymentsDialog({ rentals, close, receive }: { rentals: Rental[];
           <div className="pending-payment-main">
             <strong>{rental.vehicle}</strong>
             <small>{rental.plate} · {rental.id}</small>
-            <b>{rental.customer}</b>
+            <b>{customerWithPlace(rental.customer, rental.city)}</b>
             <small>Returned: {rental.returnDate}</small>
           </div>
           <div className="pending-payment-money">
@@ -4008,8 +4003,7 @@ function PaymentDialog({ rental, rentals, close, done }: { rental: Rental; renta
   }
 
   const rentalOptionLabel = (item: Rental) => [
-    item.customer,
-    item.city && item.city !== "—" ? item.city : null,
+    customerWithPlace(item.customer, item.city),
     item.vehicle,
     customerReportDateOnly(item.startAt),
     `${money(item.balance)} pending`,
@@ -4024,7 +4018,7 @@ function PaymentDialog({ rental, rentals, close, done }: { rental: Rental; renta
       const response = await fetch("/api/payments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingNumber: selectedRental.id, amount, method, notes, receivedBy: CURRENT_USER_NAME }) });
       const payload = await readApiResponse<{ ok: boolean; error?: string; payment?: { paymentNumber: string; balance: number } }>(response);
       if (!response.ok || !payload.payment) throw new Error(payload.error ?? "Could not record payment.");
-      done(`${money(amount)} payment ${payload.payment.paymentNumber} recorded for ${selectedRental.customer}`);
+      done(`${money(amount)} payment ${payload.payment.paymentNumber} recorded for ${customerWithPlace(selectedRental.customer, selectedRental.city)}`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not record payment.");
     } finally {
@@ -4032,9 +4026,9 @@ function PaymentDialog({ rental, rentals, close, done }: { rental: Rental; renta
     }
   }
 
-  return <DialogShell title="Receive payment" subtitle={`${selectedRental.customer}${selectedRental.city && selectedRental.city !== "—" ? ` · ${selectedRental.city}` : ""} · ${selectedRental.vehicle}`} close={close}><form className="simple-form payment-rental-picker-form" onSubmit={submit}>
+  return <DialogShell title="Receive payment" subtitle={`${customerWithPlace(selectedRental.customer, selectedRental.city)} · ${selectedRental.vehicle}`} close={close}><form className="simple-form payment-rental-picker-form" onSubmit={submit}>
     <label className="field"><span>Rental / customer</span><select required value={rentalId} onChange={(event) => selectRental(event.target.value)}>{paymentRentals.map((item) => <option key={item.databaseId} value={item.databaseId}>{rentalOptionLabel(item)}</option>)}</select><small>Customer · place · car · starting date · pending balance</small></label>
-    <div className="payment-selected-rental"><div><small>Customer</small><strong>{selectedRental.customer}</strong></div><div><small>Place</small><strong>{selectedRental.city && selectedRental.city !== "—" ? selectedRental.city : "—"}</strong></div><div><small>Car</small><strong>{selectedRental.vehicle}</strong></div><div><small>Starting date</small><strong>{customerReportDateOnly(selectedRental.startAt)}</strong></div></div>
+    <div className="payment-selected-rental"><div><small>Customer</small><strong>{customerWithPlace(selectedRental.customer, selectedRental.city)}</strong></div><div><small>Place</small><strong>{selectedRental.city && selectedRental.city !== "—" ? selectedRental.city : "—"}</strong></div><div><small>Car</small><strong>{selectedRental.vehicle}</strong></div><div><small>Starting date</small><strong>{customerReportDateOnly(selectedRental.startAt)}</strong></div></div>
     <div className="amount-due"><span>Balance pending</span><strong>{money(selectedRental.balance)}</strong></div>
     <label className="field"><span>Amount received (₹)</span><input required min="0.01" max={selectedRental.balance} step="0.01" type="number" inputMode="decimal" value={amount} onKeyDown={numericKeyOnly} onChange={(event) => setAmount(numberFromInput(event.target.value))} /></label>
     <label className="field"><span>Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)}><option>Cash</option><option>UPI</option><option>Bank transfer</option><option>Other</option></select></label>
@@ -4070,7 +4064,7 @@ function ExtendDialog({ rental, close, done }: { rental: Rental; close: () => vo
     }
   }
 
-  return <DialogShell title="Extend rental" subtitle={`${rental.vehicle} · ${rental.customer}`} close={close}><form className="simple-form" onSubmit={submit}><div className="extension-summary"><div><span>Current return</span><strong>{rental.returnDate}</strong></div><ArrowRight size={18} /><div><span>New return</span><strong>{newReturnLabel}</strong></div></div><label className="field"><span>Additional rental days</span><div className="stepper-input"><button type="button" onClick={() => setDays(Math.max(1, days - 1))}>−</button><input min="1" max="365" type="number" value={days} onChange={(event) => setDays(Math.max(1, Math.min(365, Number(event.target.value))))} /><button type="button" onClick={() => setDays(Math.min(365, days + 1))}>+</button></div></label><label className="field"><span>Notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional extension note" /></label><div className="calculation-box"><div><span>{days} days × {money(rental.rate)}</span><strong>{money(extension)}</strong></div><div><span>Updated rental total</span><strong>{money(rental.total + extension)}</strong></div><div><span>Updated pending balance</span><strong>{money(rental.balance + extension)}</strong></div></div>{error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving}><CalendarRange size={16} />{saving ? "Extending…" : "Confirm extension"}</button></div></form></DialogShell>;
+  return <DialogShell title="Extend rental" subtitle={`${rental.vehicle} · ${customerWithPlace(rental.customer, rental.city)}`} close={close}><form className="simple-form" onSubmit={submit}><div className="extension-summary"><div><span>Current return</span><strong>{rental.returnDate}</strong></div><ArrowRight size={18} /><div><span>New return</span><strong>{newReturnLabel}</strong></div></div><label className="field"><span>Additional rental days</span><div className="stepper-input"><button type="button" onClick={() => setDays(Math.max(1, days - 1))}>−</button><input min="1" max="365" type="number" value={days} onChange={(event) => setDays(Math.max(1, Math.min(365, Number(event.target.value))))} /><button type="button" onClick={() => setDays(Math.min(365, days + 1))}>+</button></div></label><label className="field"><span>Notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional extension note" /></label><div className="calculation-box"><div><span>{days} days × {money(rental.rate)}</span><strong>{money(extension)}</strong></div><div><span>Updated rental total</span><strong>{money(rental.total + extension)}</strong></div><div><span>Updated pending balance</span><strong>{money(rental.balance + extension)}</strong></div></div>{error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving}><CalendarRange size={16} />{saving ? "Extending…" : "Confirm extension"}</button></div></form></DialogShell>;
 }
 
 function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rentals, close, done }: { rental: Rental; vehicles: Vehicle[]; guestVehicles: Vehicle[]; bookings: BookingRecord[]; rentals: Rental[]; close: () => void; done: (message: string) => void }) {
@@ -4332,7 +4326,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
         {(rental.segments.length > 1 || rental.replacementUsed) && <section className="return-segment-card"><div className="return-card-heading"><span><RotateCcw size={17} /></span><div><h3>Vehicle-wise settlement</h3><p>Every vehicle period stays inside this rental.</p></div></div><div className="settlement-segment-preview">{previewSegments.map((segment) => <article key={segment.id}><div><strong>Vehicle {segment.sequence} — {segment.vehicle}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.plate}</small></div><span><small>Used from</small><b>{segment.start}</b></span><span><small>Used to</small><b>{segment.end}</b></span><span><small>Rental period</small><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</b></span><span><small>Rental charge</small><b>{money(segment.rentalCharge)}</b></span>{segment.extraKmCharge > 0 && <span><small>Extra KM charge</small><b>{money(segment.extraKmCharge)}</b></span>}{segment.fuelCharge > 0 && <span className="segment-fuel-breakdown"><small>Fuel shortage</small><b>{segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</b></span>}<span className="segment-total-breakdown"><small>Vehicle total</small><b>{money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b></span></article>)}</div></section>}
       </div>
       <aside className="final-bill return-bill-panel">
-        <div className="return-bill-heading"><span><ReceiptIndianRupee size={19} /></span><div><small>Clean final bill</small><h3>{rental.customer}</h3><p>{rental.vehicle} · {rental.plate}</p></div></div>
+        <div className="return-bill-heading"><span><ReceiptIndianRupee size={19} /></span><div><small>Clean final bill</small><h3>{customerWithPlace(rental.customer, rental.city)}</h3><p>{rental.vehicle} · {rental.plate}</p></div></div>
         <div className="return-bill-facts"><span><small>Chargeable days</small><strong>{singleOriginalSegment ? legacyRentalCharge.chargeableRentalDays : previewSegments.reduce((sum, segment) => sum + segment.rentalDays, 0)}</strong></span><span><small>Start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>Return KM</small><strong>{actualReturnKilometer.toLocaleString("en-IN")}</strong></span><span><small>Allowed KM</small><strong>{calculation.allowedKilometers.toLocaleString("en-IN")}</strong></span><span><small>Extra KM used</small><strong>{calculation.extraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Fuel shortage</small><strong>{calculation.fuelRangeShortageKm.toLocaleString("en-IN")} km</strong></span></div>
         <div className="return-bill-breakdown">
           <div><span>{singleOriginalSegment ? `Rental (${legacyRentalCharge.chargeableRentalDays} day${legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"})` : "Combined vehicle rental"}</span><strong>{money(rentalBaseAmount)}</strong></div>
@@ -4417,7 +4411,7 @@ function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, do
   }
 
   const subtitle = rentalLocked && seededRental
-    ? `${seededRental.customer}${seededRental.city && seededRental.city !== "—" ? ` · ${seededRental.city}` : ""} · ${seededRental.vehicle}`
+    ? `${customerWithPlace(seededRental.customer, seededRental.city)} · ${seededRental.vehicle}`
     : "Link it to a rental, a vehicle, or record a general business expense";
 
   return <DialogShell title="Add expense" subtitle={subtitle} close={close}><form className={`simple-form expense-smart-form ${rentalLocked ? "expense-rental-locked" : ""}`} onSubmit={submit}>
@@ -4425,9 +4419,9 @@ function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, do
     <div className="field-grid"><label className="field"><span>Date</span><input required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} /></label><label className="field"><span>Category</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option>Vehicle service</option><option>Repair</option><option>Insurance</option><option>Fuel</option><option>Cleaning</option><option>Parking / toll</option><option>Office expense</option><option>Other</option></select></label></div>
 
     {rentalLocked && linkedRental ? <section className="expense-rental-lock-card">
-      <div className="expense-rental-lock-title"><CarFront size={17} /><div><small>Expense linked to this rental</small><strong>{linkedRental.customer}</strong></div><span>Locked</span></div>
+      <div className="expense-rental-lock-title"><CarFront size={17} /><div><small>Expense linked to this rental</small><strong>{customerWithPlace(linkedRental.customer, linkedRental.city)}</strong></div><span>Locked</span></div>
       <div className="expense-rental-lock-grid">
-        <div><small>Customer</small><strong>{linkedRental.customer}</strong></div>
+        <div><small>Customer</small><strong>{customerWithPlace(linkedRental.customer, linkedRental.city)}</strong></div>
         <div><small>Place</small><strong>{linkedRental.city && linkedRental.city !== "—" ? linkedRental.city : "—"}</strong></div>
         <div><small>Car</small><strong>{linkedRental.vehicle}</strong></div>
         <div><small>Starting date</small><strong>{customerReportDateOnly(linkedRental.startAt)}</strong></div>

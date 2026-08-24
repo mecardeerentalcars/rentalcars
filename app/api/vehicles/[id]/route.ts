@@ -159,7 +159,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         rentals: rentalRows.map(({ segment, booking, customer }) => ({
           id: segment.id,
           bookingNumber: booking.bookingNumber,
-          customer: customer.name,
+          customer: customer.city ? `${customer.name} · ${customer.city}` : customer.name,
           phone: customer.phone,
           startAt: segment.startAt.toISOString(),
           endAt: (segment.endAt ?? booking.endAt).toISOString(),

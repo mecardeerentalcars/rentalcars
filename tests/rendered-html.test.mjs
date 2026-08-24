@@ -63,6 +63,9 @@ test("reports vehicle replacements and excludes Guest Car finances", async () =>
   assert.match(page, /KM by vehicle/);
   assert.match(page, /if \(segments\.length <= 1\) return "—"/);
   assert.match(page, /const changedRentals/);
+  assert.match(page, /headers: \["Vehicle", "Registration", "Rentals", "Total KM", "Rental & KM details", "Change details", "Revenue"\]/);
+  assert.doesNotMatch(page, /headers: \["Vehicle", "Registration", "Type", "Customer \/ rental"/);
+  assert.match(page, /vehicle\.isGuest \? "\\nGuest Car"/);
   assert.match(page, /vehicle\.isGuest \? "Excluded"/);
   assert.match(snapshot, /segment\.rentalCharge \+ segment\.extraKmCharge \+ segment\.fuelCharge/);
 });
