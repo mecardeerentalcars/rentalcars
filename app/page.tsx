@@ -65,7 +65,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateRentalChargeForActualReturn, calculateSettlement } from "@/lib/rental-calculations";
+import { buildSettlementWhatsAppMessage, calculateExpectedReturnKilometer, calculateLateRentalCharge, calculateRentalChargeForActualReturn, calculateSettlement } from "@/lib/rental-calculations";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
 import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
@@ -156,6 +156,40 @@ type RentalSegmentRow = {
   status: string;
 };
 
+type RentalSettlementBreakdown = {
+  actualReturnAt: string;
+  actualReturnKilometer: number;
+  allowedKilometers: number;
+  expectedReturnKilometer: number;
+  extraKilometers: number;
+  extraKmRate: number;
+  extraKmCharge: number;
+  totalExtraKilometers: number;
+  totalExtraKmCharge: number;
+  startingFuelRangeKm: number;
+  returnFuelRangeKm: number;
+  fuelRangeShortageKm: number;
+  mileageKmPerLitre: number;
+  requiredFuelLitres: number;
+  fuelPricePerLitre: number;
+  fuelCharge: number;
+  existingCharges: number;
+  lateFee: number;
+  cleaningCharge: number;
+  damageCharge: number;
+  additionalCharge: number;
+  additionalDescription: string | null;
+  vehicleCondition: string | null;
+  rentalAmount: number;
+  subtotal: number;
+  bookingDiscount: number;
+  discountAmount: number;
+  discountRemark: string | null;
+  finalAmount: number;
+  sendToMaintenance: boolean;
+  confirmedAt: string;
+};
+
 type Rental = {
   id: string;
   databaseId: string;
@@ -187,6 +221,7 @@ type Rental = {
   rate: number;
   rentalAmount: number;
   bookingDiscount: number;
+  storedOtherCharges: number;
   otherCharges: number;
   lateRentalDays: number;
   lateRentalCharge: number;
@@ -202,6 +237,8 @@ type Rental = {
   statusText: string;
   progress: number;
   startingKilometer: number;
+  returnKilometer: number | null;
+  settlement: RentalSettlementBreakdown | null;
   startingFuelRangeKm: number;
   allowedKmPerDay: number;
   extraKmRate: number;
@@ -1069,6 +1106,56 @@ export default function Home() {
   function sendWhatsApp(rental: Rental, purpose = "rental reminder") {
     const digits = (rental.whatsappNumber || rental.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
+    if (rental.state === "completed" && rental.settlement) {
+      const settlement = rental.settlement;
+      const calculation = {
+        allowedKilometers: settlement.allowedKilometers,
+        expectedReturnKilometer: settlement.expectedReturnKilometer,
+        extraKilometers: settlement.extraKilometers,
+        extraKmCharge: settlement.extraKmCharge,
+        fuelRangeShortageKm: settlement.fuelRangeShortageKm,
+        requiredFuelLitres: settlement.requiredFuelLitres,
+        fuelCharge: settlement.fuelCharge,
+        additionalCharges: Math.max(0, settlement.subtotal - settlement.rentalAmount),
+        subtotal: settlement.subtotal,
+        discountAmount: settlement.discountAmount,
+        finalAmount: settlement.finalAmount,
+        amountDue: rental.balance,
+      };
+      const text = buildSettlementWhatsAppMessage({
+        customerName: rental.customer,
+        phone: rental.whatsappNumber || rental.phone,
+        vehicleName: rental.vehicle,
+        registrationNumber: rental.plate,
+        bookingNumber: rental.id,
+        bookingStart: rental.start,
+        bookingEnd: rental.returnDate,
+        rentalDays: rental.days,
+        startingKilometer: rental.startingKilometer,
+        actualReturnKilometer: settlement.actualReturnKilometer,
+        startingFuelRangeKm: settlement.startingFuelRangeKm,
+        returnFuelRangeKm: settlement.returnFuelRangeKm,
+        rentalAmount: settlement.rentalAmount,
+        discountAmount: settlement.discountAmount,
+        discountRemark: settlement.discountRemark,
+        calculation,
+        segments: rental.segments.map((segment) => ({
+          sequence: segment.sequence,
+          vehicleName: segment.vehicle,
+          registrationNumber: segment.plate,
+          isGuest: segment.isGuest,
+          bookingStart: segment.start,
+          bookingEnd: segment.end,
+          rentalDays: segment.rentalDays,
+          rentalCharge: segment.rentalCharge,
+          extraKmCharge: segment.extraKmCharge,
+          fuelRangeShortageKm: segment.fuelRangeShortageKm,
+          fuelCharge: segment.fuelCharge,
+        })),
+      });
+      openWhatsAppSafely(phone, text);
+      return;
+    }
     const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${rental.customer}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}\nBalance due: ${money(rental.balance)}`;
     openWhatsAppSafely(phone, text);
   }
@@ -1292,7 +1379,7 @@ export default function Home() {
           {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
           {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} />}
           {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={vehicleList} />}
-          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
+          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} customers={customerList} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
         </div>
       </main>
 
@@ -2567,7 +2654,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   </>;
 }
 
-function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSync, currentUser, onLogout }: { rentals: Rental[]; vehicles: Vehicle[]; bookings: BookingRecord[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void; currentUser: AuthUser; onLogout: () => void }) {
+function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, syncing, onSync, currentUser, onLogout }: { rentals: Rental[]; vehicles: Vehicle[]; customers: CustomerRow[]; bookings: BookingRecord[]; lastSyncedAt: Date | null; syncing: boolean; onSync: () => void; currentUser: AuthUser; onLogout: () => void }) {
 
   const [userAccessBusy, setUserAccessBusy] = useState(false);
   const [userAccessMessage, setUserAccessMessage] = useState("");
@@ -2642,7 +2729,7 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
     }
   };
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
-  const [tab, setTab] = useState<"bookings" | "rentals" | "payments" | "expenses" | "history">("rentals");
+  const [tab, setTab] = useState<"bookings" | "rentals" | "returns" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2652,7 +2739,13 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
   const [deleteTarget, setDeleteTarget] = useState<{ type: "payment" | "expense"; id: string; number: string; label: string } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   const [rentalEditTarget, setRentalEditTarget] = useState<Rental | null>(null);
-  const [rentalScheduleForm, setRentalScheduleForm] = useState({ startAt: "", endAt: "" });
+  const [rentalScheduleForm, setRentalScheduleForm] = useState({
+    customerId: "", startAt: "", endAt: "", dailyRate: 0, bookingDiscount: 0,
+    otherCharges: 0, securityDeposit: 0, startingKilometer: 0,
+    startingFuelRangeKm: 0, allowedKmPerDay: 0, extraKmRate: 0,
+  });
+  const [reopenTarget, setReopenTarget] = useState<Rental | null>(null);
+  const [reopenReason, setReopenReason] = useState("Accidental final settlement");
   // MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
   const [rentalVehicleTarget, setRentalVehicleTarget] = useState<Rental | null>(null);
   const [rentalVehicleForm, setRentalVehicleForm] = useState({ vehicleId: "", startingKilometer: 0, startingFuelRangeKm: 0 });
@@ -2757,13 +2850,25 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
 
   const editableBookings = useMemo(() => bookings.filter((booking) => booking.status === "booked").sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()), [bookings]);
   const editableRentals = rentals.filter((rental) => rental.state !== "completed");
+  const completedReturns = rentals
+    .filter((rental) => rental.state === "completed" && rental.actualReturnAt)
+    .sort((a, b) => new Date(b.actualReturnAt ?? b.endAt).getTime() - new Date(a.actualReturnAt ?? a.endAt).getTime());
 
   const openRentalScheduleEdit = (rental: Rental) => {
     setError("");
     setRentalEditTarget(rental);
     setRentalScheduleForm({
+      customerId: rental.customerId,
       startAt: toLocalDateTimeInput(rental.startAt),
       endAt: toLocalDateTimeInput(rental.endAt),
+      dailyRate: rental.rate,
+      bookingDiscount: rental.bookingDiscount,
+      otherCharges: rental.storedOtherCharges,
+      securityDeposit: rental.securityDeposit,
+      startingKilometer: rental.startingKilometer,
+      startingFuelRangeKm: rental.startingFuelRangeKm,
+      allowedKmPerDay: rental.allowedKmPerDay,
+      extraKmRate: rental.extraKmRate,
     });
   };
 
@@ -2780,7 +2885,21 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
       const response = await fetch("/api/settings/rentals", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: rentalEditTarget.databaseId, startAt: startAt.toISOString(), endAt: endAt.toISOString() }),
+        body: JSON.stringify({
+          action: "edit-details",
+          bookingId: rentalEditTarget.databaseId,
+          customerId: rentalScheduleForm.customerId,
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+          dailyRate: rentalScheduleForm.dailyRate,
+          bookingDiscount: rentalScheduleForm.bookingDiscount,
+          otherCharges: rentalScheduleForm.otherCharges,
+          securityDeposit: rentalScheduleForm.securityDeposit,
+          startingKilometer: rentalScheduleForm.startingKilometer,
+          startingFuelRangeKm: rentalScheduleForm.startingFuelRangeKm,
+          allowedKmPerDay: rentalScheduleForm.allowedKmPerDay,
+          extraKmRate: rentalScheduleForm.extraKmRate,
+        }),
       });
       const payload = await readApiResponse<{ ok: boolean; error?: string; rentalDays?: number; baseRentalAmount?: number; scheduleWarning?: string | null }>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not update rental schedule.");
@@ -2789,6 +2908,30 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
       onSync();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not update rental schedule.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reopenCompletedReturn = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!reopenTarget) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/settings/rentals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen-return", bookingId: reopenTarget.databaseId, reason: reopenReason }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; error?: string; reopened?: { bookingNumber: string; vehicle: string; plate: string } }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not reopen the completed return.");
+      setReopenTarget(null);
+      setReopenReason("Accidental final settlement");
+      setTab("rentals");
+      onSync();
+    } catch (reopenError) {
+      setError(reopenError instanceof Error ? reopenError.message : "Could not reopen the completed return.");
     } finally {
       setBusy(false);
     }
@@ -2865,7 +3008,7 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
     <PageHeading eyebrow="APP" title="Settings" description="Sync live data, edit active bookings, safely correct rentals, and manage transaction corrections without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className={`settings-card transaction-safety ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Active bookings can be edited here, including reserved vehicle and booking period. Active rental corrections stay protected, completed settlements stay locked, and payments/expenses keep their existing edit/delete history protection.</p></div></article>
+      <article className={`settings-card transaction-safety ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Edit active booking and rental details, reopen an accidental return with a full audit snapshot, and manage payments or expenses with correction history.</p></div></article>
     </section>
 
         <section className="data-panel user-access-manager">
@@ -2912,9 +3055,10 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
     </section>
 
 <section className={`data-panel transaction-manager ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}>
-      <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Active bookings + rental corrections + latest payments and expenses · completed records stay protected</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
+      <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Complete rental, return, booking, payment and expense corrections with protected links and audit history</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
       <div className="transaction-tabs">
-        <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Rental dates <span>{editableRentals.length}</span></button>
+        <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Active rentals <span>{editableRentals.length}</span></button>
+        <button className={tab === "returns" ? "active" : ""} onClick={() => setTab("returns")}><RotateCcw size={15} />Completed returns <span>{completedReturns.length}</span></button>
         <button className={tab === "bookings" ? "active" : ""} onClick={() => setTab("bookings")}><CalendarDays size={15} />Bookings <span>{editableBookings.length}</span></button>
         <button className={tab === "payments" ? "active" : ""} onClick={() => setTab("payments")}><WalletCards size={15} />Payments <span>{paymentRows.length}</span></button>
         <button className={tab === "expenses" ? "active" : ""} onClick={() => setTab("expenses")}><ReceiptIndianRupee size={15} />Expenses <span>{expenseRows.length}</span></button>
@@ -2923,7 +3067,8 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
       {error && <p className="form-error transaction-manager-error">{error}</p>}
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
         {tab === "bookings" && (editableBookings.length ? editableBookings.map((booking) => <article className="transaction-row settings-booking-row" key={booking.id}><div className="transaction-main"><span className="transaction-kind rental"><CalendarDays size={15} /></span><div><strong>{booking.vehicle} · {booking.plate}</strong><small>{booking.bookingNumber} · {booking.customer}</small><small>{formatWhen(booking.startAt)} → {formatWhen(booking.endAt)} · {booking.days} rental day{booking.days === 1 ? "" : "s"} · {money(booking.rate)}/day</small>{booking.vehicleId !== booking.requestedVehicleId && <small className="settings-booking-original">Original request: {booking.requestedVehicle} · {booking.requestedPlate}</small>}</div></div><div className="transaction-side"><span className="settings-booking-status">Booked</span><div className="transaction-actions"><button onClick={() => { setError(""); setBookingEditTarget(booking); }} disabled={busy}><Pencil size={14} />Edit booking</button></div></div></article>) : <div className="transaction-empty">No active bookings to edit.</div>)}
-        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><CalendarRange size={14} />Date & time</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
+        {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit details</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
+        {tab === "returns" && (completedReturns.length ? completedReturns.map((rental) => <article className="transaction-row rental-schedule-row completed-return-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind history"><CheckCircle2 size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {rental.customer}</small><small>Returned {formatWhen(rental.actualReturnAt!)} · Final total {money(rental.total)} · Paid {money(rental.paid)}</small></div></div><div className="transaction-side"><span className="rental-schedule-status completed">Completed</span><div className="transaction-actions"><button className="danger" onClick={() => { setError(""); setReopenReason("Accidental final settlement"); setReopenTarget(rental); }} disabled={busy}><RotateCcw size={14} />Reopen to on rent</button></div></div></article>) : <div className="transaction-empty">No completed returns are available.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Received by {payment.receivedBy}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
@@ -2944,11 +3089,29 @@ function SettingsView({ rentals, vehicles, bookings, lastSyncedAt, syncing, onSy
       {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalVehicleTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy || !rentalVehicleForm.vehicleId}><Check size={15} />{busy ? "Correcting…" : "Save vehicle correction"}</button></div>
     </form></DialogShell>}
 
-    {rentalEditTarget && <DialogShell title="Edit rental date & time" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.customer}`} close={() => !busy && setRentalEditTarget(null)}><form className="simple-form" onSubmit={saveRentalSchedule}>
-      <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Schedule-only correction</strong><small>Vehicle, customer, payments, kilometres and settlement data cannot be changed here. Completed rentals are locked.</small></span></div>
-      <div className="field-grid"><label className="field"><span>Rental start date / time</span><input required type="datetime-local" value={rentalScheduleForm.startAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startAt: event.target.value }))} /></label><label className="field"><span>Expected return date / time</span><input required type="datetime-local" value={rentalScheduleForm.endAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, endAt: event.target.value }))} /></label></div>
-      <div className="rental-edit-note"><CalendarDays size={16} /><span>Rental days and rental amount will recalculate automatically from the new schedule using the same daily rate and existing discount. A future booking overlap is allowed and will be marked as Change required in the calendar. Only an actual active-rental collision or an invalid payment total is blocked.</span></div>
-      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy}><Check size={15} />{busy ? "Saving…" : "Save rental schedule"}</button></div>
+    {rentalEditTarget && <DialogShell title="Edit active rental" subtitle={`${rentalEditTarget.vehicle} · ${rentalEditTarget.plate} · ${rentalEditTarget.id}`} close={() => !busy && setRentalEditTarget(null)} wide><form className="simple-form rental-admin-edit-form" onSubmit={saveRentalSchedule}>
+      <div className="protected-link-note"><ShieldCheck size={15} /><span><strong>Full active-rental correction</strong><small>Amounts recalculate from these values. Payments remain recorded and prevent edits that would create an overpayment.</small></span></div>
+      <div className="field-grid three">
+        <label className="field span-2"><span>Customer</span><select required value={rentalScheduleForm.customerId} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, customerId: event.target.value }))}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} — {customer.phone}</option>)}</select><small>Changing customer also keeps any linked payments on this rental consistent.</small></label>
+        <label className="field"><span>Daily rate (₹)</span><input required min="0.01" step="0.01" type="number" value={blankZero(rentalScheduleForm.dailyRate)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, dailyRate: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Rental start date / time</span><input required disabled={rentalEditTarget.segments.length > 1} type="datetime-local" value={rentalScheduleForm.startAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startAt: event.target.value }))} />{rentalEditTarget.segments.length > 1 && <small>Locked because vehicle history already exists.</small>}</label>
+        <label className="field"><span>Expected return date / time</span><input required type="datetime-local" value={rentalScheduleForm.endAt} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, endAt: event.target.value }))} /></label>
+        <label className="field"><span>Booking discount (₹)</span><input required min="0" step="0.01" type="number" value={blankZero(rentalScheduleForm.bookingDiscount)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, bookingDiscount: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Other charges (₹)</span><input required min="0" step="0.01" type="number" value={blankZero(rentalScheduleForm.otherCharges)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, otherCharges: numberFromInput(event.target.value) }))} /><small>Stored manual/previous-segment charges only.</small></label>
+        <label className="field"><span>Security deposit (₹)</span><input required min="0" step="0.01" type="number" value={blankZero(rentalScheduleForm.securityDeposit)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, securityDeposit: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Current segment starting KM</span><input required min="0" type="number" value={blankZero(rentalScheduleForm.startingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startingKilometer: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Starting fuel range (KM)</span><input required min="0" type="number" value={blankZero(rentalScheduleForm.startingFuelRangeKm)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, startingFuelRangeKm: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Allowed KM per day</span><input required min="0" type="number" value={blankZero(rentalScheduleForm.allowedKmPerDay)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, allowedKmPerDay: numberFromInput(event.target.value) }))} /></label>
+        <label className="field"><span>Extra KM rate (₹)</span><input required min="0" step="0.01" type="number" value={blankZero(rentalScheduleForm.extraKmRate)} onKeyDown={numericKeyOnly} onChange={(event) => setRentalScheduleForm((current) => ({ ...current, extraKmRate: numberFromInput(event.target.value) }))} /></label>
+      </div>
+      <div className="rental-edit-note"><CalendarDays size={16} /><span>Rental days, rent, and expected return KM are recalculated automatically. Future booking overlaps stay visible as planning warnings; another active rental on the same vehicle is blocked.</span></div>
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy || !rentalScheduleForm.customerId || rentalScheduleForm.dailyRate <= 0}><Check size={15} />{busy ? "Saving…" : "Save all rental details"}</button></div>
+    </form></DialogShell>}
+
+    {reopenTarget && <DialogShell title="Reopen completed return" subtitle={`${reopenTarget.id} · ${reopenTarget.customer}`} close={() => !busy && setReopenTarget(null)}><form className="simple-form" onSubmit={reopenCompletedReturn}>
+      <div className="delete-warning correction-warning"><AlertTriangle size={18} /><div><strong>Put {reopenTarget.vehicle} ({reopenTarget.plate}) back on rent?</strong><p>The Final Settlement will be removed, the last vehicle segment will become active, and the vehicle will be marked Rented. Existing payments stay untouched. A complete snapshot is written to rental reopen history first.</p></div></div>
+      <label className="field"><span>Reason for reopening</span><textarea required minLength={3} value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} placeholder="Example: Return was settled by mistake" /></label>
+      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setReopenTarget(null)} disabled={busy}>Cancel</button><button className="danger-button" type="submit" disabled={busy || reopenReason.trim().length < 3}><RotateCcw size={15} />{busy ? "Reopening safely…" : "Reopen to on rent"}</button></div>
     </form></DialogShell>}
 
     {editTarget && <DialogShell title={`Edit ${editTarget.type}`} subtitle="Linked rental/customer/vehicle stays locked for workflow safety" close={() => !busy && setEditTarget(null)}><form className="simple-form" onSubmit={saveEdit}>
@@ -3715,11 +3878,11 @@ function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp, addExpe
   const formatOriginalPeriod = `${formatIndiaWhen(rental.originalStartAt)} → ${formatIndiaWhen(rental.originalEndAt)}`;
   return <DialogShell title={rental.id} subtitle={`${rental.vehicle} · ${rental.plate}${rental.isGuestCurrent ? " · Guest Car" : ""}`} close={close} wide>
     {showOriginalContext && <div className="original-booking-context rental-context-banner"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>{rental.originalVehicle} was unavailable for part of this rental, so a temporary/replacement vehicle is being used. The original booking remains connected throughout every vehicle change.</span><small>{formatOriginalPeriod}</small></div>}
-    <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span>{rental.isGuestCurrent && <span className="guest-inline-badge">Guest Car</span>}<h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental, completed ? "completed rental payment reminder" : "rental reminder")}><MessageCircle size={16} />WhatsApp</button></div></div>
-    <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Settlement completed — return details are locked" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>Rental days</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>Current expected return KM</small><strong>{calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
+    <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span>{rental.isGuestCurrent && <span className="guest-inline-badge">Guest Car</span>}<h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />WhatsApp</button></div></div>
+    <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{rental.customer}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Finalized from the actual return" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>{completed ? "Final rental days" : "Rental days"}</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>{completed ? "Final return KM" : "Current expected return KM"}</small><strong>{(completed && rental.returnKilometer !== null ? rental.returnKilometer : calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay)).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
       {(rental.segments.length > 1 || rental.replacementUsed) && <section className="detail-section"><div className="detail-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle usage</h3><p>All vehicles used within this same customer rental</p></div></div><div className="rental-segment-list">{rental.segments.map((segment) => <article key={segment.id} className={`rental-segment-card ${segment.status === "active" ? "active" : ""}`}><div className="segment-vehicle"><img src={segment.image} alt="" /><span><strong>{segment.vehicle}</strong><small>{segment.plate}{segment.isGuest ? " · Guest Car" : ""}</small></span><b>#{segment.sequence}</b></div><div className="segment-facts"><span><small>Used from</small><strong>{segment.start}</strong></span><span><small>Used to</small><strong>{segment.end}</strong></span><span><small>Start KM</small><strong>{segment.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>End KM</small><strong>{segment.endingKilometer === null ? "Current" : segment.endingKilometer.toLocaleString("en-IN")}</strong></span><span><small>Rental period</small><strong>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Vehicle charge</small><strong>{money(segment.rentalCharge + segment.extraKmCharge)}</strong></span></div></article>)}</div></section>}
-      </div><aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>{completed ? "Final settlement — payment only" : "Updated live"}</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside></div>
-    {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} />Extend rental</button><button onClick={() => switchDialog("change-vehicle")}><RotateCcw size={16} />Change Vehicle</button><button onClick={addExpense}><ReceiptIndianRupee size={16} />Add expense</button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} />Return vehicle</button></footer>}
+      </div>{completed && rental.settlement ? <aside className="financial-card completed-settlement-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Final settlement bill</h3><p>Complete finalized return calculation</p></div></div><div className="completed-settlement-readings"><span><small>Return KM</small><strong>{rental.settlement.actualReturnKilometer.toLocaleString("en-IN")} km</strong></span><span><small>Extra KM used</small><strong>{rental.settlement.totalExtraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Return fuel</small><strong>{rental.settlement.returnFuelRangeKm} km</strong></span><span><small>Fuel price</small><strong>{money(rental.settlement.fuelPricePerLitre)}/L</strong></span></div><div className="financial-line"><span>Final rental · {rental.days} day{rental.days === 1 ? "" : "s"}</span><strong>{money(rental.settlement.rentalAmount)}</strong></div>{rental.settlement.existingCharges > 0 && <div className="financial-line"><span>Existing charges</span><strong>{money(rental.settlement.existingCharges)}</strong></div>}<div className="financial-line"><span>Extra KM charge · {rental.settlement.totalExtraKilometers} km</span><strong>{money(rental.settlement.totalExtraKmCharge)}</strong></div><div className="financial-line"><span>Fuel shortage · {rental.settlement.fuelRangeShortageKm} km</span><strong>{money(rental.settlement.fuelCharge)}</strong></div>{rental.settlement.lateFee > 0 && <div className="financial-line"><span>Late return charge</span><strong>{money(rental.settlement.lateFee)}</strong></div>}<div className="financial-line settlement-described-line"><span>Additional charge{rental.settlement.additionalDescription ? <small>{rental.settlement.additionalDescription}</small> : null}</span><strong>{money(rental.settlement.additionalCharge)}</strong></div><div className="financial-line settlement-subtotal"><span>Subtotal</span><strong>{money(rental.settlement.subtotal)}</strong></div><div className="financial-line settlement-described-line settlement-discount"><span>Discount{rental.settlement.discountRemark ? <small>{rental.settlement.discountRemark}</small> : null}</span><strong>− {money(rental.settlement.discountAmount)}</strong></div><div className="financial-total"><span>Final amount</span><strong>{money(rental.settlement.finalAmount)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button><button className="completed-settlement-whatsapp" onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />Send settlement on WhatsApp</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside> : <aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>Updated live</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside>}</div>
+    {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions rental-workflow-footer"><button className="rental-expense-action" onClick={addExpense}><ReceiptIndianRupee size={16} />Add expense</button><div className="rental-workflow-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} /><span>Edit / extend date</span></button><button onClick={() => switchDialog("change-vehicle")}><RotateCcw size={16} /><span>Change vehicle</span></button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} /><span>Return car</span></button></div></footer>}
   </DialogShell>;
 }
 
@@ -3856,7 +4019,8 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
   const [changeDate, setChangeDate] = useState(nowParts.date);
   const [changeTime, setChangeTime] = useState(nowParts.time);
   const [endingKilometer, setEndingKilometer] = useState(currentSegment?.startingKilometer ?? rental.startingKilometer);
-  const [returnFuelRangeKm, setReturnFuelRangeKm] = useState(currentSegment?.startingFuelRangeKm ?? rental.startingFuelRangeKm);
+  const [returnFuelRangeInput, setReturnFuelRangeInput] = useState(String(currentSegment?.startingFuelRangeKm ?? rental.startingFuelRangeKm));
+  const returnFuelRangeKm = numberFromInput(returnFuelRangeInput);
   const fuelPricePerLitre = 105;
   const [nextVehicleId, setNextVehicleId] = useState("");
   const [nextStartingKilometer, setNextStartingKilometer] = useState(0);
@@ -3932,7 +4096,7 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
   return <DialogShell title="Change Vehicle" subtitle={`${rental.id} · same customer rental continues`} close={close} wide>
     <form className="simple-form change-vehicle-form" onSubmit={submit}>
       <div className="original-booking-context"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>The current vehicle segment will close, but this rental and the original booking remain open.</span></div>
-      {currentSegment && <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Finish current vehicle</h3><p>{currentSegment.vehicle} · {currentSegment.plate}{currentSegment.isGuest ? " · Guest Car" : ""}</p></div></div><div className="field-grid four"><label className="field"><span>Change date</span><input required type="date" min={dateInputValue(new Date(currentSegment.startAt))} value={changeDate} onChange={(event) => setChangeDate(event.target.value)} /></label><label className="field"><span>Change time</span><input required type="time" value={changeTime} onChange={(event) => setChangeTime(event.target.value)} /></label><label className="field"><span>Ending KM</span><input required type="number" min={currentSegment.startingKilometer} value={blankZero(endingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setEndingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Return fuel range (KM)</span><input required type="number" min="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /><small>Defaults to starting range: {currentSegment.startingFuelRangeKm} km</small></label></div>{currentCharge && <div className="segment-charge-preview change-segment-preview-v43"><span><small>Usage period</small><strong>{currentCharge.rentalDays} rental day{currentCharge.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Allowed KM</small><strong>{currentAllowedKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Rental charge</small><strong>{money(currentCharge.rentalCharge)}</strong></span><span><small>Extra KM</small><strong>{currentCharge.extraKilometers} km · {money(currentCharge.extraKmCharge)}</strong></span><span><small>Fuel shortage</small><strong>{currentFuelShortageKm} km · {money(currentFuelCharge)}</strong></span><span className="segment-total-preview"><small>Current segment total</small><strong>{money(currentSegmentTotal)}</strong></span></div>}</section>}
+      {currentSegment && <section className="form-section"><div className="form-section-title"><span><CarFront size={17} /></span><div><h3>Finish current vehicle</h3><p>{currentSegment.vehicle} · {currentSegment.plate}{currentSegment.isGuest ? " · Guest Car" : ""}</p></div></div><div className="field-grid four"><label className="field"><span>Change date</span><input required type="date" min={dateInputValue(new Date(currentSegment.startAt))} value={changeDate} onChange={(event) => setChangeDate(event.target.value)} /></label><label className="field"><span>Change time</span><input required type="time" value={changeTime} onChange={(event) => setChangeTime(event.target.value)} /></label><label className="field"><span>Ending KM</span><input required type="number" min={currentSegment.startingKilometer} value={blankZero(endingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setEndingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Return fuel range (KM)</span><input required type="number" min="0" value={returnFuelRangeInput} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeInput(event.target.value)} /><small>Zero is allowed when the dashboard shows no remaining range. Defaults to starting range: {currentSegment.startingFuelRangeKm} km</small></label></div>{currentCharge && <div className="segment-charge-preview change-segment-preview-v43"><span><small>Usage period</small><strong>{currentCharge.rentalDays} rental day{currentCharge.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Allowed KM</small><strong>{currentAllowedKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Rental charge</small><strong>{money(currentCharge.rentalCharge)}</strong></span><span><small>Extra KM</small><strong>{currentCharge.extraKilometers} km · {money(currentCharge.extraKmCharge)}</strong></span><span><small>Fuel shortage</small><strong>{currentFuelShortageKm} km · {money(currentFuelCharge)}</strong></span><span className="segment-total-preview"><small>Current segment total</small><strong>{money(currentSegmentTotal)}</strong></span></div>}</section>}
       <section className="form-section"><div className="form-section-title"><span><RotateCcw size={17} /></span><div><h3>Select next vehicle</h3><p>Our available vehicles are listed first, then Guest Cars. A vehicle with a later booking can be used now and changed again before that booking; future bookings stay protected.</p></div></div><label className="field"><span>Next vehicle</span><select required value={nextVehicleId} onChange={(event) => setNextVehicleId(event.target.value)}><option value="">Select vehicle</option>{ownChoices.length > 0 && <optgroup label="Our available vehicles">{ownChoices.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} — {vehicle.plate}</option>)}</optgroup>}{guestChoices.length > 0 && <optgroup label="Guest Cars">{guestChoices.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name} — {vehicle.plate} · Guest Car</option>)}</optgroup>}</select>{!choices.length && <small className="red-text">No alternative vehicle is available at this change time.</small>}</label>{nextVehicle && <div className="field-grid three"><label className="field"><span>Starting KM — {nextVehicle.name}</span><input required type="number" min="0" value={blankZero(nextStartingKilometer)} onKeyDown={numericKeyOnly} onChange={(event) => setNextStartingKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Starting fuel range (KM)</span><input required type="number" min="0" value={blankZero(nextStartingFuelRangeKm)} onKeyDown={numericKeyOnly} onChange={(event) => setNextStartingFuelRangeKm(numberFromInput(event.target.value))} /></label><label className="field"><span>Daily rate</span><input readOnly value={money(nextVehicle.rate)} /></label></div>}</section>
       {error && <p className="form-error">{error}</p>}
       <div className="form-actions"><button type="button" onClick={close} disabled={saving}>Cancel</button><button type="submit" className="primary-button" disabled={saving || !currentSegment || !nextVehicle}><RotateCcw size={16} />{saving ? "Changing…" : "Confirm vehicle change"}</button></div>
@@ -3947,15 +4111,16 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   const [actualReturnDate, setActualReturnDate] = useState(() => dateInputValue(new Date()));
   const [actualReturnTime, setActualReturnTime] = useState(() => indiaDateTimeParts(new Date().toISOString()).time);
   const [actualReturnKilometer, setActualReturnKilometer] = useState(expectedReturnKilometer);
-  const [returnFuelRangeKm, setReturnFuelRangeKm] = useState(Math.max(0, rental.startingFuelRangeKm - 50));
+  const [returnFuelRangeInput, setReturnFuelRangeInput] = useState(String(Math.max(0, rental.startingFuelRangeKm - 50)));
+  const returnFuelRangeKm = numberFromInput(returnFuelRangeInput);
   const [fuelPricePerLitre, setFuelPricePerLitre] = useState(105);
-  const [cleaning, setCleaning] = useState(0);
-  const [damage, setDamage] = useState(0);
+  const [additionalCharge, setAdditionalCharge] = useState(0);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountRemark, setDiscountRemark] = useState("");
   const [returnNotes, setReturnNotes] = useState("");
   const [vehicleCondition, setVehicleCondition] = useState("Good — no new damage");
   const [sendToMaintenance, setSendToMaintenance] = useState(false);
+  const [physicalReturnConfirmed, setPhysicalReturnConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<SettlementResult | null>(null);
@@ -3988,7 +4153,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   }) : null;
 
   const bookedBaseRentalAmount = Math.max(0, rental.rentalAmount - rental.bookingDiscount);
-  const legacyBookingOtherCharges = Math.max(0, rental.otherCharges - rental.lateRentalCharge);
+  const legacyBookingOtherCharges = rental.storedOtherCharges;
   const legacyRentalCharge = calculateRentalChargeForActualReturn(rental.startAt, rental.endAt, actualReturnIso, rental.rate, rental.days, bookedBaseRentalAmount);
   const legacyLateRental = calculateLateRentalCharge(rental.endAt, actualReturnIso, rental.rate, 3);
 
@@ -3997,11 +4162,14 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   // snapshot otherCharges already includes completed segment extra-KM + live late charge.
   // Strip those derived values back to the booking's stored other charges, then add
   // the completed segment extra-KM exactly once, matching the settlement API.
-  const storedBookingOtherCharges = Math.max(0, rental.otherCharges - completedExtraKmCharge - rental.lateRentalCharge);
+  const storedBookingOtherCharges = rental.storedOtherCharges;
   const rentalBaseAmount = singleOriginalSegment ? legacyRentalCharge.baseRentalAmount : multiRentalBaseAmount;
   const lateRental = singleOriginalSegment ? legacyLateRental : { extraRentalDays: 0, charge: 0 };
   const settlementExistingOtherCharges = singleOriginalSegment ? legacyBookingOtherCharges : storedBookingOtherCharges + completedExtraKmCharge;
-  const currentRentalDays = singleOriginalSegment ? rental.days : Math.max(1, liveCurrentSegmentCharge?.rentalDays ?? 1);
+  // The kilometer allowance must follow the actual chargeable return period.
+  // Using the originally booked days here made an early return preview disagree
+  // with the server (for example, 4 booked days versus 3 finalized days).
+  const currentRentalDays = Math.max(1, liveCurrentSegmentCharge?.rentalDays ?? 1);
 
   const calculationRaw = calculateSettlement({
     baseRentalAmount: rentalBaseAmount,
@@ -4016,8 +4184,8 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
     mileageKmPerLitre: rental.mileageKmPerLitre,
     fuelPricePerLitre,
     lateFee: lateRental.charge,
-    cleaningCharge: cleaning,
-    damageCharge: damage,
+    cleaningCharge: 0,
+    damageCharge: additionalCharge,
     discountAmount,
     amountAlreadyPaid: rental.paid,
   });
@@ -4041,12 +4209,16 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
 
   async function confirmSettlement(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!physicalReturnConfirmed) {
+      setError("Confirm that the vehicle has physically returned before creating the Final Settlement.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const response = await fetch("/api/settlements", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ bookingNumber: rental.id, actualReturnAt: actualReturnIso, actualReturnKilometer, returnFuelRangeKm, fuelPricePerLitre, cleaningCharge: cleaning, damageCharge: damage, discountAmount, discountRemark, returnNotes, vehicleCondition, sendToMaintenance: rental.isGuestCurrent ? false : sendToMaintenance }),
+        body: JSON.stringify({ bookingNumber: rental.id, actualReturnAt: actualReturnIso, actualReturnKilometer, returnFuelRangeKm, fuelPricePerLitre, cleaningCharge: 0, damageCharge: additionalCharge, discountAmount, discountRemark, returnNotes, vehicleCondition, sendToMaintenance: rental.isGuestCurrent ? false : sendToMaintenance }),
       });
       const payload = await readApiResponse<{ ok: boolean; error?: string; settlement?: SettlementResult }>(response);
       if (!response.ok || !payload.settlement) throw new Error(payload.error ?? "Could not confirm the return settlement.");
@@ -4070,18 +4242,55 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   }
 
   return <DialogShell title="Return vehicle" subtitle={`${rental.vehicle} · ${rental.plate}${rental.isGuestCurrent ? " · Guest Car" : ""}`} close={close} wide>
-    <form className="return-form" onSubmit={confirmSettlement}>
-      <div className="return-fields">
+    <form className="return-form return-form-redesign" onSubmit={confirmSettlement}>
+      <div className="return-entry-column">
         {(rental.replacementUsed || rental.segments.length > 1) && <div className="original-booking-context rental-context-banner"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>This final settlement closes the complete customer rental after all vehicle segments are included.</span></div>}
-        <section className="form-section"><div className="form-section-title"><span><Gauge size={17} /></span><div><h3>Return inspection</h3><p>Actual return date and time default to now. Change them if the handover happened at a different time.</p></div></div>
-          <div className="return-deadline-card"><div><span>Expected return</span><strong>{expectedReturnLabel}</strong></div><ArrowRight size={18} /><div className="grace-deadline"><span>3-hour grace deadline</span><strong>{graceReturnLabel}</strong><small>{singleOriginalSegment ? "Extra-day rent starts only after this time." : "The current segment follows the same daily cooling rule."}</small></div></div>
-          <div className="field-grid three"><label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(currentSegment?.startAt ?? rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label><label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label><label className="field"><span>Actual Return Kilometer</span><input required min={rental.startingKilometer} type="number" placeholder="0" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label><label className="field"><span>Starting Kilometer</span><input readOnly value={`${rental.startingKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Expected Return Kilometer</span><input readOnly value={`${calculation.expectedReturnKilometer.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Total Allowed Kilometers</span><input readOnly value={`${calculation.allowedKilometers.toLocaleString("en-IN")} km`} /></label><label className="field"><span>Starting Fuel Range (KM)</span><input readOnly value={rental.startingFuelRangeKm} /></label><label className="field"><span>Return Fuel Range (KM)</span><input required min="0" type="number" placeholder="0" value={blankZero(returnFuelRangeKm)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeKm(numberFromInput(event.target.value))} /></label><label className="field"><span>Current Fuel Price Per Litre (₹)</span><input required min="0" step="0.01" type="number" placeholder="0" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label><label className="field span-2"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label></div>
-          {returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the current vehicle segment started.</p>}{earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: approximately {earlyReturnDays} day{earlyReturnDays === 1 ? "" : "s"} before the expected return. Settlement rent is recalculated live to {legacyRentalCharge.chargeableRentalDays} chargeable day{legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(legacyRentalCharge.baseRentalAmount)}. A 3-hour cooling period applies at each daily rent boundary. The original booking stays unchanged.</span></div>}{withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}
+        <section className="return-entry-card">
+          <div className="return-card-heading"><span><Gauge size={18} /></span><div><h3>Enter return details</h3><p>Enter the readings and adjustments first. The complete bill updates beside them.</p></div></div>
+          <div className="return-primary-fields">
+            <label className="field"><span>Return KM</span><input required min={rental.startingKilometer} type="number" inputMode="numeric" placeholder="Enter odometer" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label>
+            <label className="field"><span>Return fuel range (KM)</span><input required min="0" type="number" inputMode="numeric" placeholder="Enter dashboard range" value={returnFuelRangeInput} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeInput(event.target.value)} /><small>Enter 0 when the dashboard shows no remaining fuel range.</small></label>
+            <label className="field"><span>Today&apos;s fuel price / litre (₹)</span><input required min="0" step="0.01" type="number" inputMode="decimal" placeholder="Enter fuel price" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
+            <label className="field"><span>Additional charge amount (₹)</span><input min="0" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(additionalCharge)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setAdditionalCharge(numberFromInput(event.target.value))} /></label>
+            <label className="field return-wide-field"><span>Additional charge description</span><textarea required={additionalCharge > 0} value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Why is this charge being added?" /></label>
+            <label className="field"><span>Discount amount (₹)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label>
+            <label className="field"><span>Discount description</span><input required={discountAmount > 0} value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular customer" /></label>
+          </div>
+          <div className="return-timing-fields">
+            <label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(currentSegment?.startAt ?? rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label>
+            <label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label>
+            <label className="field"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
+          </div>
+          <div className="return-deadline-card compact"><div><span>Booked return</span><strong>{expectedReturnLabel}</strong></div><ArrowRight size={18} /><div className="grace-deadline"><span>Grace deadline</span><strong>{graceReturnLabel}</strong><small>Daily rent changes only after this 3-hour cooling period.</small></div></div>
+          {returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the current vehicle segment started.</p>}
+          {earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: the final rent is {legacyRentalCharge.chargeableRentalDays} day{legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(legacyRentalCharge.baseRentalAmount)}, based on the actual return time. The booked end date remains in history.</span></div>}
+          {withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}
         </section>
-        {(rental.segments.length > 1 || rental.replacementUsed) && <section className="form-section"><div className="form-section-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle-wise settlement</h3><p>Every vehicle period stays inside this one rental.</p></div></div><div className="settlement-segment-preview">{previewSegments.map((segment) => <article key={segment.id}><div><strong>Vehicle {segment.sequence} — {segment.vehicle}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.plate}</small></div><span><small>Used from</small><b>{segment.start}</b></span><span><small>Used to</small><b>{segment.end}</b></span><span><small>Rental period</small><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</b></span><span><small>Rental charge</small><b>{money(segment.rentalCharge)}</b></span>{segment.extraKmCharge > 0 && <span><small>Extra KM charge</small><b>{money(segment.extraKmCharge)}</b></span>}{segment.fuelCharge > 0 && <span className="segment-fuel-breakdown"><small>Fuel shortage</small><b>{segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</b></span>}<span className="segment-total-breakdown"><small>Vehicle total</small><b>{money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b></span></article>)}</div></section>}
-        <section className="form-section"><div className="form-section-title"><span><IndianRupee size={17} /></span><div><h3>Additional charges</h3><p>Extra KM and fuel shortage use the current vehicle&apos;s existing rules. Existing charges are preserved.</p></div></div><div className="charge-grid"><label><span>Extra KM ({calculation.extraKilometers} km)</span><input readOnly value={calculation.extraKmCharge} /></label><label><span>Fuel shortage ({calculation.fuelRangeShortageKm} km)</span><input readOnly value={calculation.fuelCharge} /></label><label><span>Late return charge ({lateRental.extraRentalDays} extra day{lateRental.extraRentalDays === 1 ? "" : "s"})</span><input readOnly value={lateRental.charge} /></label><label><span>Cleaning</span><input min="0" type="number" placeholder="0" value={blankZero(cleaning)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setCleaning(numberFromInput(event.target.value))} /></label><label><span>Damage</span><input min="0" type="number" placeholder="0" value={blankZero(damage)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDamage(numberFromInput(event.target.value))} /></label></div><p className="calculation-note">Rent rule: each 24-hour rental-day boundary gets a 3-hour cooling period. Fuel needed: {calculation.requiredFuelLitres.toFixed(3)} L · Mileage: {rental.mileageKmPerLitre} km/L · Extra KM rate: {money(rental.extraKmRate)}/km</p><label className="field"><span>Return notes</span><textarea value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Condition, damage or payment notes" /></label></section>
+        {(rental.segments.length > 1 || rental.replacementUsed) && <section className="return-segment-card"><div className="return-card-heading"><span><RotateCcw size={17} /></span><div><h3>Vehicle-wise settlement</h3><p>Every vehicle period stays inside this rental.</p></div></div><div className="settlement-segment-preview">{previewSegments.map((segment) => <article key={segment.id}><div><strong>Vehicle {segment.sequence} — {segment.vehicle}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.plate}</small></div><span><small>Used from</small><b>{segment.start}</b></span><span><small>Used to</small><b>{segment.end}</b></span><span><small>Rental period</small><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</b></span><span><small>Rental charge</small><b>{money(segment.rentalCharge)}</b></span>{segment.extraKmCharge > 0 && <span><small>Extra KM charge</small><b>{money(segment.extraKmCharge)}</b></span>}{segment.fuelCharge > 0 && <span className="segment-fuel-breakdown"><small>Fuel shortage</small><b>{segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</b></span>}<span className="segment-total-breakdown"><small>Vehicle total</small><b>{money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b></span></article>)}</div></section>}
       </div>
-      <aside className="final-bill"><h3>Final bill</h3><div><span>{singleOriginalSegment ? `Rental amount (${legacyRentalCharge.chargeableRentalDays} day${legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"})` : `Combined vehicle rental (${previewSegments.reduce((sum, segment) => sum + segment.rentalDays, 0)} segment-days)`}</span><strong>{money(rentalBaseAmount)}</strong></div>{settlementExistingOtherCharges > 0 && <div><span>Previous-segment extra KM / fuel & other charges</span><strong>{money(settlementExistingOtherCharges)}</strong></div>}<div><span>Current vehicle extra kilometer</span><strong>{money(calculation.extraKmCharge)}</strong></div><div><span>Fuel shortage charge</span><strong>{money(calculation.fuelCharge)}</strong></div>{lateRental.charge > 0 && <div><span>Late rental charge</span><strong>{money(lateRental.charge)}</strong></div>}<div><span>Cleaning / damage</span><strong>{money(cleaning + damage)}</strong></div><div className="final-total"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div><label className="field"><span>Discount Amount (optional)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label><label className="field"><span>Discount Remark (optional)</span><input value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular Customer" /></label><div className="final-total"><span>Final amount</span><strong>{money(calculation.finalAmount)}</strong><small>Rounded to nearest whole rupee</small></div><div className="paid"><span>Already recorded</span><strong>− {money(rental.paid)}</strong></div><div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div>{!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>}{rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}{error && <p className="form-error">{error}</p>}<button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart}>{saving ? "Confirming…" : "Confirm Settlement"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></aside>
+      <aside className="final-bill return-bill-panel">
+        <div className="return-bill-heading"><span><ReceiptIndianRupee size={19} /></span><div><small>Clean final bill</small><h3>{rental.customer}</h3><p>{rental.vehicle} · {rental.plate}</p></div></div>
+        <div className="return-bill-facts"><span><small>Chargeable days</small><strong>{singleOriginalSegment ? legacyRentalCharge.chargeableRentalDays : previewSegments.reduce((sum, segment) => sum + segment.rentalDays, 0)}</strong></span><span><small>Start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>Return KM</small><strong>{actualReturnKilometer.toLocaleString("en-IN")}</strong></span><span><small>Allowed KM</small><strong>{calculation.allowedKilometers.toLocaleString("en-IN")}</strong></span><span><small>Extra KM used</small><strong>{calculation.extraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Fuel shortage</small><strong>{calculation.fuelRangeShortageKm.toLocaleString("en-IN")} km</strong></span></div>
+        <div className="return-bill-breakdown">
+          <div><span>{singleOriginalSegment ? `Rental (${legacyRentalCharge.chargeableRentalDays} day${legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"})` : "Combined vehicle rental"}</span><strong>{money(rentalBaseAmount)}</strong></div>
+          {settlementExistingOtherCharges > 0 && <div><span>Existing charges</span><strong>{money(settlementExistingOtherCharges)}</strong></div>}
+          <div><span>Extra KM charge · {calculation.extraKilometers} km × {money(rental.extraKmRate)}</span><strong>{money(calculation.extraKmCharge)}</strong></div>
+          <div><span>Fuel · {calculation.requiredFuelLitres.toFixed(3)} L × {money(fuelPricePerLitre)}</span><strong>{money(calculation.fuelCharge)}</strong></div>
+          {lateRental.charge > 0 && <div><span>Late return · {lateRental.extraRentalDays} day{lateRental.extraRentalDays === 1 ? "" : "s"}</span><strong>{money(lateRental.charge)}</strong></div>}
+          <div><span>Additional charge</span><strong>{money(additionalCharge)}</strong></div>
+          <div className="return-subtotal"><span>Subtotal</span><strong>{money(calculation.subtotal)}</strong></div>
+          <div className="return-discount"><span>Discount{discountRemark ? ` · ${discountRemark}` : ""}</span><strong>− {money(discountAmount)}</strong></div>
+          <div className="final-total"><span>Final amount<small>Rounded to nearest rupee</small></span><strong>{money(calculation.finalAmount)}</strong></div>
+          <div className="paid"><span>Already paid</span><strong>− {money(rental.paid)}</strong></div>
+          <div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div>
+        </div>
+        <p className="calculation-note return-rule-note">Allowance: {currentRentalDays} day{currentRentalDays === 1 ? "" : "s"} × {rental.allowedKmPerDay} km. Fuel mileage: {rental.mileageKmPerLitre} km/L.</p>
+        {!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span></span></label>}
+        {rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}
+        <label className="maintenance-check final-return-confirm"><input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} /><span><ShieldCheck size={16} /><span><strong>Vehicle has physically returned</strong><small>Required before completing this rental.</small></span></span></label>
+        {error && <p className="form-error">{error}</p>}
+        <div className="return-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart || !physicalReturnConfirmed}>{saving ? "Confirming…" : "Confirm final return"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></div>
+      </aside>
     </form>
   </DialogShell>;
 }
@@ -4173,4 +4382,3 @@ function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, do
     {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={saving || amount <= 0}><Check size={16} />{saving ? "Saving…" : "Save expense"}</button></div>
   </form></DialogShell>;
 }
-

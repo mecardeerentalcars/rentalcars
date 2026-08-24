@@ -4,6 +4,7 @@ import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "
 import { and, eq, gt, lt } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, rentalSegments, vehicles } from "@/db/schema";
+import { nextSimpleBookingNumber } from "@/lib/simple-booking-number";
 
 type CreateBookingBody = {
   requestedVehicleRegistration?: unknown;
@@ -38,8 +39,6 @@ const whole = (value: unknown, field: string, minimum = 1) => {
   if (!Number.isInteger(number) || number < minimum) throw new RequestError(`${field} must be at least ${minimum}.`);
   return number;
 };
-const numberId = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
-
 export async function POST(request: Request) {
   const __mecardeeAuth = await requireWriteAccess();
   if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
@@ -88,7 +87,7 @@ export async function POST(request: Request) {
       const [customer] = await tx.select().from(customers).where(eq(customers.phone, customerPhone)).limit(1);
       if (!customer) throw new RequestError("Customer was not found.", 404);
 
-      const bookingNumber = numberId("BKG");
+      const bookingNumber = await nextSimpleBookingNumber(tx, "BKG");
       const [booking] = await tx.insert(bookings).values({
         bookingNumber,
         requestedVehicleId: requestedVehicle.id,

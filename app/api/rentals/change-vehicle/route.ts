@@ -1,5 +1,5 @@
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireWriteAccess } from "@/lib/mecardee-auth";
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 // MECARDEE_CHANGE_VEHICLE_USAGE_FUEL_PREVIEW_V8_9_43
 import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
@@ -96,6 +96,10 @@ export async function POST(request: Request) {
       await tx.update(rentalSegments).set({
         endAt: changeAt,
         endingKilometer,
+        returnFuelRangeKm,
+        fuelRangeShortageKm,
+        fuelPricePerLitre,
+        fuelCharge,
         rentalDays: charge.rentalDays,
         rentalCharge: charge.rentalCharge,
         extraKilometers: charge.extraKilometers,

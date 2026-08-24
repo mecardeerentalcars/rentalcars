@@ -4,6 +4,7 @@ import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "
 import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
+import { nextSimpleBookingNumber } from "@/lib/simple-booking-number";
 import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
 
 type CreateRentalBody = {
@@ -114,7 +115,7 @@ export async function POST(request: Request) {
       if (!customer) throw new RequestError("Customer was not found.", 404);
 
       const expectedReturnKilometer = calculateExpectedReturnKilometer(startingKilometer, rentalDays, assignedVehicle.allowedKmPerDay);
-      const bookingNumber = numberId(mode === "draft" ? "DRF" : "RNT");
+      const bookingNumber = await nextSimpleBookingNumber(tx, mode === "draft" ? "DRF" : "RNT");
       const [booking] = await tx.insert(bookings).values({
         bookingNumber,
         requestedVehicleId: requestedVehicle.id,

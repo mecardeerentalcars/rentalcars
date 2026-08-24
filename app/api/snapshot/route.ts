@@ -1,7 +1,7 @@
 // MECARDEE_LOCKED_RENTAL_EXPENSE_UI_V8_9_82
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireReadAccess } from "@/lib/mecardee-auth";
 // MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import { asc, desc, eq } from "drizzle-orm";
@@ -266,6 +266,26 @@ export async function GET() {
           const replacementFlow = segmentDtos.length > 1 || segmentDtos.some((segment) => segment.vehicleId !== booking.requestedVehicleId);
           const segmentGross = roundMoney(segmentDtos.reduce((sum, segment) => sum + segment.rentalCharge, 0));
           const segmentExtraKm = roundMoney(segmentDtos.reduce((sum, segment) => sum + segment.extraKmCharge, 0));
+          const settledRentalDays = booking.status === "completed" && settlement
+            ? Math.max(1, segmentDtos.reduce((sum, segment) => sum + segment.rentalDays, 0))
+            : booking.rentalDays;
+          const displayedRentalAmount = booking.status === "completed" && settlement
+            ? segmentGross
+            : replacementFlow
+              ? segmentGross
+              : booking.baseRentalAmount + booking.bookingDiscount;
+          const displayedDiscount = roundMoney(booking.bookingDiscount + (settlement?.discountAmount ?? 0));
+          const settlementRentalAmount = settlement
+            ? roundMoney(Math.max(0,
+                settlement.subtotal
+                - booking.otherCharges
+                - segmentExtraKm
+                - settlement.fuelCharge
+                - settlement.lateFee
+                - settlement.cleaningCharge
+                - settlement.damageCharge,
+              ))
+            : null;
           const guestRentalAmount = roundMoney(segmentDtos.filter((segment) => segment.isGuest).reduce((sum, segment) => sum + segment.rentalCharge + segment.extraKmCharge, 0));
 
           const chargeableLateMs = booking.status === "completed"
@@ -341,10 +361,11 @@ export async function GET() {
             startAt: booking.startAt.toISOString(),
             endAt: booking.endAt.toISOString(),
             actualReturnAt: settlement?.actualReturnAt?.toISOString() ?? null,
-            days: booking.rentalDays,
+            days: settledRentalDays,
             rate: currentRate,
-            rentalAmount: replacementFlow ? segmentGross : booking.baseRentalAmount + booking.bookingDiscount,
-            bookingDiscount: booking.bookingDiscount,
+            rentalAmount: displayedRentalAmount,
+            bookingDiscount: displayedDiscount,
+            storedOtherCharges: booking.otherCharges,
             otherCharges: settlement
               ? booking.otherCharges + segmentExtraKm + settlement.fuelCharge + settlement.lateFee + settlement.cleaningCharge + settlement.damageCharge
               : booking.otherCharges + segmentExtraKm + liveLateRentalCharge,
@@ -360,6 +381,40 @@ export async function GET() {
             statusText,
             progress,
             startingKilometer: actualSegment?.startingKilometer ?? booking.startingKilometer ?? actualVehicle.odometerKm,
+            returnKilometer: settlement?.actualReturnKilometer ?? actualSegment?.endingKilometer ?? null,
+            settlement: settlement ? {
+              actualReturnAt: settlement.actualReturnAt.toISOString(),
+              actualReturnKilometer: settlement.actualReturnKilometer,
+              allowedKilometers: settlement.allowedKilometers,
+              expectedReturnKilometer: settlement.expectedReturnKilometer,
+              extraKilometers: settlement.extraKilometers,
+              extraKmRate: settlement.extraKmRate,
+              extraKmCharge: settlement.extraKmCharge,
+              totalExtraKilometers: segmentDtos.reduce((sum, segment) => sum + segment.extraKilometers, 0),
+              totalExtraKmCharge: segmentExtraKm,
+              startingFuelRangeKm: settlement.startingFuelRangeKm,
+              returnFuelRangeKm: settlement.returnFuelRangeKm,
+              fuelRangeShortageKm: settlement.fuelRangeShortageKm,
+              mileageKmPerLitre: settlement.mileageKmPerLitre,
+              requiredFuelLitres: settlement.requiredFuelLitres,
+              fuelPricePerLitre: settlement.fuelPricePerLitre,
+              fuelCharge: settlement.fuelCharge,
+              existingCharges: booking.otherCharges,
+              lateFee: settlement.lateFee,
+              cleaningCharge: settlement.cleaningCharge,
+              damageCharge: settlement.damageCharge,
+              additionalCharge: roundMoney(settlement.cleaningCharge + settlement.damageCharge),
+              additionalDescription: settlement.returnNotes,
+              vehicleCondition: settlement.vehicleCondition,
+              rentalAmount: settlementRentalAmount ?? 0,
+              subtotal: settlement.subtotal,
+              bookingDiscount: booking.bookingDiscount,
+              discountAmount: settlement.discountAmount,
+              discountRemark: settlement.discountRemark,
+              finalAmount: settlement.finalAmount,
+              sendToMaintenance: settlement.sendToMaintenance,
+              confirmedAt: settlement.confirmedAt.toISOString(),
+            } : null,
             startingFuelRangeKm: actualSegment?.startingFuelRangeKm ?? booking.startingFuelRangeKm ?? 0,
             allowedKmPerDay: actualSegment?.allowedKmPerDay ?? actualVehicle.allowedKmPerDay,
             extraKmRate: actualSegment?.extraKmRate ?? actualVehicle.extraKmRate,
@@ -457,7 +512,7 @@ export async function GET() {
             endAt: booking.endAt.toISOString(),
             start: formatDateTime(booking.startAt, today),
             returnDate: formatDateTime(booking.status === "completed" && settlement?.actualReturnAt ? settlement.actualReturnAt : booking.endAt, today),
-            days: booking.rentalDays,
+            days: booking.status === "completed" && rental ? rental.days : booking.rentalDays,
             rate: booking.dailyRate,
             amount: totalAmount,
             advancePaid: roundMoney(booking.advancePaid ?? 0),

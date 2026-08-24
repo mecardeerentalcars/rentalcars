@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateExpectedReturnKilometer, calculateSettlement } from "../lib/rental-calculations";
+import {
+  calculateExpectedReturnKilometer,
+  calculateLateRentalCharge,
+  calculateRentalChargeForActualReturn,
+  calculateSettlement,
+} from "../lib/rental-calculations";
+import { calculateSegmentCharge, roundFinalPayable } from "../lib/rental-segments";
+import { formatSimpleBookingNumber } from "../lib/simple-booking-number";
+
+test("booking and rental number series both start from a compact 001", () => {
+  assert.equal(formatSimpleBookingNumber("BKG", 1), "BKG-001");
+  assert.equal(formatSimpleBookingNumber("RNT", 1), "RNT-001");
+  assert.equal(formatSimpleBookingNumber("DRF", 1), "DRF-001");
+  assert.equal(formatSimpleBookingNumber("BKG", 12), "BKG-012");
+});
 
 test("expected return kilometer uses rental days and the vehicle allowance", () => {
   assert.equal(calculateExpectedReturnKilometer(50_000, 5, 100), 50_500);
@@ -52,4 +66,83 @@ test("unused kilometers and extra fuel never create a refund", () => {
   assert.equal(result.fuelRangeShortageKm, 0);
   assert.equal(result.fuelCharge, 0);
   assert.equal(result.finalAmount, 10_000);
+});
+
+test("early return uses one chargeable day per started 24 hours after the cooling period", () => {
+  const result = calculateRentalChargeForActualReturn(
+    "2026-08-21T10:00:00+05:30",
+    "2026-08-25T10:00:00+05:30",
+    "2026-08-24T11:59:00+05:30",
+    1_400,
+    4,
+    5_100,
+  );
+
+  assert.equal(result.isEarlyReturn, true);
+  assert.equal(result.chargeableRentalDays, 3);
+  assert.equal(result.baseRentalAmount, 3_700);
+  assert.equal(result.amountSaved, 1_400);
+});
+
+test("late fee starts only after the complete three-hour grace period", () => {
+  const expected = "2026-08-25T10:00:00+05:30";
+  assert.deepEqual(calculateLateRentalCharge(expected, "2026-08-25T13:00:00+05:30", 1_400), {
+    graceHours: 3,
+    lateMilliseconds: 0,
+    extraRentalDays: 0,
+    charge: 0,
+  });
+  assert.equal(calculateLateRentalCharge(expected, "2026-08-25T13:01:00+05:30", 1_400).charge, 1_400);
+});
+
+test("vehicle segment calculation keeps rental days, kilometer allowance, and extra charge aligned", () => {
+  const result = calculateSegmentCharge({
+    startAt: "2026-08-21T10:00:00+05:30",
+    endAt: "2026-08-24T12:00:00+05:30",
+    dailyRate: 1_300,
+    startingKilometer: 18_165,
+    endingKilometer: 18_531,
+    allowedKmPerDay: 100,
+    extraKmRate: 8,
+  });
+
+  assert.deepEqual(result, {
+    rentalDays: 3,
+    rentalCharge: 3_900,
+    allowedKilometers: 300,
+    extraKilometers: 66,
+    extraKmCharge: 528,
+  });
+});
+
+test("Reji early return finalizes three days and uses the same three-day KM allowance", () => {
+  const rental = calculateRentalChargeForActualReturn(
+    "2026-08-21T13:00:00+05:30",
+    "2026-08-25T13:00:00+05:30",
+    "2026-08-24T14:37:00+05:30",
+    1_300,
+    4,
+    5_200,
+  );
+  const segment = calculateSegmentCharge({
+    startAt: "2026-08-21T13:00:00+05:30",
+    endAt: "2026-08-24T14:37:00+05:30",
+    dailyRate: 1_300,
+    startingKilometer: 18_165,
+    endingKilometer: 18_529,
+    allowedKmPerDay: 100,
+    extraKmRate: 8,
+  });
+
+  assert.equal(rental.chargeableRentalDays, 3);
+  assert.equal(rental.baseRentalAmount, 3_900);
+  assert.equal(segment.rentalDays, 3);
+  assert.equal(segment.allowedKilometers, 300);
+  assert.equal(segment.extraKilometers, 64);
+  assert.equal(segment.extraKmCharge, 512);
+});
+
+test("only the final payable is rounded to the nearest whole rupee", () => {
+  assert.equal(roundFinalPayable(5_599.49), 5_599);
+  assert.equal(roundFinalPayable(5_599.5), 5_600);
 });
