@@ -5,6 +5,7 @@ import {
   calculateLateRentalCharge,
   calculateRentalChargeForActualReturn,
   calculateSettlement,
+  buildSettlementWhatsAppMessage,
 } from "../lib/rental-calculations";
 import { calculateSegmentCharge, roundFinalPayable } from "../lib/rental-segments";
 import { formatSimpleBookingNumber } from "../lib/simple-booking-number";
@@ -145,4 +146,61 @@ test("Reji early return finalizes three days and uses the same three-day KM allo
 test("only the final payable is rounded to the nearest whole rupee", () => {
   assert.equal(roundFinalPayable(5_599.49), 5_599);
   assert.equal(roundFinalPayable(5_599.5), 5_600);
+});
+
+test("customer settlement names every vehicle without exposing Guest Car classification", () => {
+  const calculation = calculateSettlement({
+    baseRentalAmount: 1_300,
+    rentalDays: 1,
+    startingKilometer: 18_165,
+    actualReturnKilometer: 18_526,
+    allowedKmPerDay: 100,
+    extraKmRate: 8,
+    startingFuelRangeKm: 110,
+    returnFuelRangeKm: 1,
+    mileageKmPerLitre: 10,
+    fuelPricePerLitre: 115,
+  });
+  const message = buildSettlementWhatsAppMessage({
+    customerName: "Customer",
+    phone: "9999999999",
+    vehicleName: "Toyota Taisor",
+    registrationNumber: "KL 35 N 6181",
+    bookingNumber: "BKG-999",
+    bookingStart: "21 Aug, 1:00 pm",
+    bookingEnd: "24 Aug, 2:37 pm",
+    rentalDays: 1,
+    startingKilometer: 18_165,
+    actualReturnKilometer: 18_526,
+    startingFuelRangeKm: 110,
+    returnFuelRangeKm: 1,
+    rentalAmount: 1_300,
+    discountAmount: 0,
+    calculation,
+    segments: [{
+      sequence: 1,
+      vehicleName: "Toyota Taisor",
+      registrationNumber: "KL 35 N 6181",
+      isGuest: true,
+      bookingStart: "21 Aug, 1:00 pm",
+      bookingEnd: "24 Aug, 2:37 pm",
+      rentalDays: 1,
+      startingKilometer: 18_165,
+      endingKilometer: 18_526,
+      rentalCharge: 1_300,
+      extraKilometers: calculation.extraKilometers,
+      extraKmCharge: calculation.extraKmCharge,
+      startingFuelRangeKm: 110,
+      returnFuelRangeKm: 1,
+      fuelRangeShortageKm: calculation.fuelRangeShortageKm,
+      fuelPricePerLitre: 115,
+      fuelCharge: calculation.fuelCharge,
+    }],
+  });
+
+  assert.match(message, /Vehicle 1: Toyota Taisor \(KL 35 N 6181\)/);
+  assert.match(message, /Odometer: 18165 km to 18526 km \(361 km used\)/);
+  assert.match(message, /Extra kilometers: 261 km/);
+  assert.match(message, /Fuel range: 110 km to 1 km/);
+  assert.doesNotMatch(message, /Guest Car/i);
 });

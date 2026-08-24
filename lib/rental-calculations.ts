@@ -203,9 +203,15 @@ type WhatsAppSettlement = {
     bookingStart: string;
     bookingEnd: string;
     rentalDays: number;
+    startingKilometer?: number;
+    endingKilometer?: number | null;
     rentalCharge: number;
+    extraKilometers?: number;
     extraKmCharge?: number;
+    startingFuelRangeKm?: number;
+    returnFuelRangeKm?: number | null;
     fuelRangeShortageKm?: number;
+    fuelPricePerLitre?: number;
     fuelCharge?: number;
   }[];
 };
@@ -243,19 +249,28 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     `Rental days: ${input.rentalDays}`,
   ];
 
-  if (input.segments && input.segments.length > 1) {
-    lines.push("", "Vehicle usage:");
+  if (input.segments && input.segments.length > 0) {
+    lines.push("", "Vehicle-wise details:");
     for (const segment of input.segments) {
-      lines.push(`Vehicle ${segment.sequence}${segment.isGuest ? " — Guest Car" : ""}: ${segment.vehicleName} (${segment.registrationNumber})`);
+      lines.push(`Vehicle ${segment.sequence}: ${segment.vehicleName} (${segment.registrationNumber})`);
       lines.push(`Used: ${segment.bookingStart} to ${segment.bookingEnd}`);
+      if (segment.startingKilometer !== undefined) {
+        const endingKilometer = segment.endingKilometer ?? segment.startingKilometer;
+        const travelled = Math.max(0, endingKilometer - segment.startingKilometer);
+        lines.push(`Odometer: ${segment.startingKilometer} km to ${endingKilometer} km (${travelled} km used)`);
+      }
       lines.push(`Rental days: ${segment.rentalDays}`);
       lines.push(`Rental charge: ${formatMoney(segment.rentalCharge)}`);
-      if ((segment.extraKmCharge ?? 0) > 0) lines.push(`Segment extra KM charge: ${formatMoney(segment.extraKmCharge ?? 0)}`);
-      if ((segment.fuelCharge ?? 0) > 0) {
-        lines.push(`Segment fuel shortage: ${segment.fuelRangeShortageKm ?? 0} km`);
-        lines.push(`Segment fuel charge: ${formatMoney(segment.fuelCharge ?? 0)}`);
+      if ((segment.extraKilometers ?? 0) > 0) lines.push(`Extra kilometers: ${segment.extraKilometers} km`);
+      if ((segment.extraKmCharge ?? 0) > 0) lines.push(`Extra KM charge: ${formatMoney(segment.extraKmCharge ?? 0)}`);
+      if (segment.startingFuelRangeKm !== undefined && segment.returnFuelRangeKm !== null && segment.returnFuelRangeKm !== undefined) {
+        lines.push(`Fuel range: ${segment.startingFuelRangeKm} km to ${segment.returnFuelRangeKm} km`);
       }
-      lines.push(`Segment total: ${formatMoney(segment.rentalCharge + (segment.extraKmCharge ?? 0) + (segment.fuelCharge ?? 0))}`);
+      if ((segment.fuelCharge ?? 0) > 0) {
+        lines.push(`Fuel shortage: ${segment.fuelRangeShortageKm ?? 0} km`);
+        lines.push(`Fuel charge: ${formatMoney(segment.fuelCharge ?? 0)}${segment.fuelPricePerLitre !== undefined ? ` at ${formatMoney(segment.fuelPricePerLitre)}/L` : ""}`);
+      }
+      lines.push(`Vehicle total: ${formatMoney(segment.rentalCharge + (segment.extraKmCharge ?? 0) + (segment.fuelCharge ?? 0))}`);
       lines.push("");
     }
   }

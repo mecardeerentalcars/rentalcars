@@ -320,6 +320,7 @@ export async function POST(request: Request) {
           fuelCharge: isCurrent ? calculation.fuelCharge : row.segment.fuelCharge,
           rentalDays,
           rentalCharge,
+          extraKilometers: isCurrent ? calculation.extraKilometers : row.segment.extraKilometers,
           extraKmCharge,
         };
       });
