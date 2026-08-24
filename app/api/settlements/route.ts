@@ -52,8 +52,8 @@ const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100)
 const displayDate = (value: Date) =>
   new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(value);
 
-export async function POST(request: Request) {
-  const __mecardeeAuth = await requireWriteAccess();
+async function saveSettlement(request: Request, editCompleted: boolean) {
+  const __mecardeeAuth = editCompleted ? await requireSuperAdminAccess() : await requireWriteAccess();
   if (!__mecardeeAuth.ok) return __mecardeeAuth.response;
   try {
     const body = (await request.json()) as SettlementBody;
@@ -82,7 +82,8 @@ export async function POST(request: Request) {
         .for("update");
 
       if (!record) throw new RequestError("Rental booking was not found.", 404);
-      if (record.booking.status === "completed") throw new RequestError("This rental has already been completed.", 409);
+      if (editCompleted && record.booking.status !== "completed") throw new RequestError("Only a completed rental settlement can be edited.", 409);
+      if (!editCompleted && record.booking.status === "completed") throw new RequestError("This rental has already been completed.", 409);
       if (record.booking.status === "draft") throw new RequestError("A draft rental cannot be returned.", 409);
       if (actualReturnAt.getTime() < record.booking.startAt.getTime()) {
         throw new RequestError("Actual return date/time cannot be before the rental start date/time.");
@@ -90,6 +91,15 @@ export async function POST(request: Request) {
       if (record.booking.startingFuelRangeKm === null) {
         throw new RequestError("Starting fuel range must be saved at handover.", 409);
       }
+
+      const [existingSettlement] = await tx
+        .select()
+        .from(returnSettlements)
+        .where(eq(returnSettlements.bookingId, record.booking.id))
+        .limit(1)
+        .for("update");
+      if (editCompleted && !existingSettlement) throw new RequestError("This completed rental has no settlement to edit.", 409);
+      if (!editCompleted && existingSettlement) throw new RequestError("This rental already has a settlement.", 409);
 
       let segmentRows = await tx
         .select({ segment: rentalSegments, vehicle: vehicles })
@@ -119,10 +129,12 @@ export async function POST(request: Request) {
         segmentRows = [{ segment: created, vehicle: record.originalVehicle }];
       }
 
-      const activeRow = [...segmentRows].reverse().find((row) => row.segment.status === "active");
-      if (!activeRow) throw new RequestError("The active vehicle segment could not be found.", 409);
-      const currentSegment = activeRow.segment;
-      const currentVehicle = activeRow.vehicle;
+      const currentRow = editCompleted
+        ? [...segmentRows].reverse().find((row) => row.segment.status === "completed")
+        : [...segmentRows].reverse().find((row) => row.segment.status === "active");
+      if (!currentRow) throw new RequestError(`The ${editCompleted ? "final completed" : "active"} vehicle segment could not be found.`, 409);
+      const currentSegment = currentRow.segment;
+      const currentVehicle = currentRow.vehicle;
       if (actualReturnAt.getTime() < currentSegment.startAt.getTime()) {
         throw new RequestError("Actual return date/time cannot be before the current vehicle segment started.");
       }
@@ -228,10 +240,15 @@ export async function POST(request: Request) {
         : currentSegmentCharge.rentalCharge;
 
       const sendToMaintenance = requestedMaintenance && !currentVehicle.isGuest;
+      const vehicleCanBeSynchronized = !editCompleted || (
+        ["available", "maintenance"].includes(currentVehicle.status) &&
+        currentVehicle.odometerKm === existingSettlement!.actualReturnKilometer
+      );
+      if (editCompleted && existingSettlement!.sendToMaintenance !== sendToMaintenance && !vehicleCanBeSynchronized) {
+        throw new RequestError("This vehicle has newer activity. Its maintenance status cannot be changed from this historical settlement.", 409);
+      }
 
-      const [settlement] = await tx
-        .insert(returnSettlements)
-        .values({
+      const settlementValues = {
           bookingId: record.booking.id,
           actualReturnAt,
           actualReturnKilometer,
@@ -257,8 +274,10 @@ export async function POST(request: Request) {
           finalAmount: roundedFinalAmount,
           returnNotes,
           sendToMaintenance,
-        })
-        .returning();
+        };
+      const [settlement] = editCompleted
+        ? await tx.update(returnSettlements).set(settlementValues).where(eq(returnSettlements.id, existingSettlement!.id)).returning()
+        : await tx.insert(returnSettlements).values(settlementValues).returning();
 
       await tx.update(rentalSegments).set({
         endAt: actualReturnAt,
@@ -283,13 +302,15 @@ export async function POST(request: Request) {
         updatedAt: new Date(),
       }).where(eq(bookings.id, record.booking.id));
 
-      await tx.update(vehicles).set({
-        status: sendToMaintenance ? "maintenance" : "available",
-        odometerKm: actualReturnKilometer,
-        updatedAt: new Date(),
-      }).where(eq(vehicles.id, currentVehicle.id));
+      if (vehicleCanBeSynchronized) {
+        await tx.update(vehicles).set({
+          status: sendToMaintenance ? "maintenance" : "available",
+          odometerKm: actualReturnKilometer,
+          updatedAt: new Date(),
+        }).where(eq(vehicles.id, currentVehicle.id));
+      }
 
-      if (sendToMaintenance) {
+      if (sendToMaintenance && (!editCompleted || !existingSettlement!.sendToMaintenance)) {
         await tx.insert(maintenanceRecords).values({
           vehicleId: currentVehicle.id,
           title: "Return inspection — maintenance",
@@ -297,6 +318,12 @@ export async function POST(request: Request) {
           status: "open",
           amount: 0,
         });
+      } else if (editCompleted && existingSettlement!.sendToMaintenance && !sendToMaintenance && vehicleCanBeSynchronized) {
+        await tx.update(maintenanceRecords).set({ status: "completed", completedAt: new Date(), updatedAt: new Date() }).where(and(
+          eq(maintenanceRecords.vehicleId, currentVehicle.id),
+          eq(maintenanceRecords.title, "Return inspection — maintenance"),
+          eq(maintenanceRecords.status, "open"),
+        ));
       }
 
       const finalSegments = segmentRows.map((row) => {
@@ -369,11 +396,19 @@ export async function POST(request: Request) {
       };
     }));
 
-    return Response.json({ ok: true, settlement: saved }, { status: 201 });
+    return Response.json({ ok: true, settlement: saved }, { status: editCompleted ? 200 : 201 });
   } catch (error) {
     if (error instanceof RequestError) return Response.json({ ok: false, error: error.message }, { status: error.status });
     if (error instanceof DatabaseConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });
-    console.error("Could not confirm return settlement", error);
-    return Response.json({ ok: false, error: "Could not confirm the return settlement." }, { status: 500 });
+    console.error(`Could not ${editCompleted ? "update" : "confirm"} return settlement`, error);
+    return Response.json({ ok: false, error: `Could not ${editCompleted ? "update" : "confirm"} the return settlement.` }, { status: 500 });
   }
+}
+
+export async function POST(request: Request) {
+  return saveSettlement(request, false);
+}
+
+export async function PATCH(request: Request) {
+  return saveSettlement(request, true);
 }

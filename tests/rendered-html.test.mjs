@@ -40,7 +40,10 @@ test("keeps the frontend product-specific and starter-free", async () => {
   assert.match(page, /function NewRentalDialog/);
   assert.match(page, /function ReturnDialog/);
   assert.match(page, /function AccountsView/);
-  assert.match(page, /Reopen completed return/);
+  assert.match(page, /Edit settlement/);
+  assert.match(page, /Update settlement/);
+  assert.doesNotMatch(page, /Reopen to on rent/);
+  assert.match(page, /dashboard-status-line/);
   assert.match(page, /Vehicle has physically returned/);
   assert.match(page, /Enter return details/);
   assert.match(page, /Extra KM used/);
@@ -84,6 +87,11 @@ test("keeps settlement, schedule, and report corrections wired through every ent
   assert.match(page, /const segmentStart = indiaDateKey\(segment\.startAt\)/);
   assert.match(snapshot, /const balance = normalisePendingBalance\(total - paid\)/);
   assert.match(settlement, /storedCurrentRentalDays/);
+  assert.match(settlement, /export async function PATCH\(request: Request\)/);
+  assert.match(settlement, /Only a completed rental settlement can be edited/);
+  assert.match(page, /method: editCompleted \? "PATCH" : "POST"/);
+  assert.match(page, /confirmed\.calculation\.amountDue/);
+  assert.match(page, /aria-pressed=\{physicalReturnConfirmed\}/);
   assert.match(extension, /activeSegmentProjection\?\.rentalDays/);
   assert.match(paymentAdmin, /const replacementFlow/);
 });
@@ -105,7 +113,8 @@ test("mobile return controls, vehicle image navigation, and payment report field
   assert.doesNotMatch(page, /dashboard-calendar-more/);
   assert.doesNotMatch(page, /booking-more/);
   assert.match(styles, /\.vehicle-photo > \.vehicle-image-open/);
-  assert.match(styles, /\.final-return-confirm input:checked/);
+  assert.match(styles, /\.final-return-confirm\.is-checked > span/);
+  assert.match(styles, /touch-action: manipulation/);
   assert.match(vehicleEditor, /operationalStatusEditor/);
   assert.match(snapshot, /place: customer\.city/);
   assert.match(snapshot, /vehicle: vehicleLabels\.join/);

@@ -1514,15 +1514,15 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
     return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).format(new Date(booking.startAt));
   };
   const stats = [
-    { label: "Total cars", shortLabel: "Cars", value: String(metrics.totalCars), note: "Registered fleet", icon: CarFront, tone: "neutral" },
-    { label: "Available", shortLabel: "Free", value: String(metrics.availableCars), note: "Ready to rent", icon: CheckCircle2, tone: "green" },
-    { label: "On rent", shortLabel: "Rent", value: String(metrics.onRentCars), note: "With customers", icon: CalendarDays, tone: "blue" },
-    { label: "Returning today", shortLabel: "Return", value: String(metrics.returningToday), note: metrics.returningToday ? "Due today" : "Nothing due today", icon: Clock3, tone: "amber" },
-    { label: "Overdue", shortLabel: "Late", value: String(metrics.overdue), note: metrics.overdue ? "Follow up now" : "No overdue rentals", icon: AlertTriangle, tone: "red" },
-    { label: "Current rental amount", shortLabel: "Rental ₹", value: money(currentRentalAmount), note: `${activeBusinessRentals.length} active rental${activeBusinessRentals.length === 1 ? "" : "s"}`, icon: IndianRupee, tone: "money" },
+    { shortLabel: "Cars", value: String(metrics.totalCars) },
+    { shortLabel: "Free", value: String(metrics.availableCars) },
+    { shortLabel: "Rent", value: String(metrics.onRentCars) },
+    { shortLabel: "Return", value: String(metrics.returningToday) },
+    { shortLabel: "Late", value: String(metrics.overdue) },
+    { shortLabel: "Rental", value: money(currentRentalAmount) },
   ];
   return <>
-    <div className="dashboard-greeting"><PageHeading eyebrow={dateLabel} title={dashboardGreeting} description="Here’s what needs your attention today." action={<button type="button" className="dashboard-calendar-button" onClick={() => setDashboardCalendarOpen(true)} title="Open booking calendar"><CalendarDays size={15} /><span>Calendar</span></button>} /></div>
+    <div className="dashboard-greeting"><PageHeading eyebrow={dateLabel} title={dashboardGreeting} description="Here’s what needs your attention today." action={<button type="button" className="dashboard-calendar-button" onClick={() => setDashboardCalendarOpen(true)} title="Open booking calendar"><CalendarDays size={17} /><span>Calendar</span></button>} /></div>
     {dashboardCalendarOpen && <DashboardBookingCalendar bookings={bookings} rentals={rentals} close={() => setDashboardCalendarOpen(false)} />}
     <section className="ai-brief-card booking-brief-card">
       <div className="ai-glow ai-glow-one" /><div className="ai-glow ai-glow-two" />
@@ -1556,7 +1556,7 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
           {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} type={reminder.type} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
           {reminders.length > 3 && <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>}
         </section>
-    <section className="stats-grid" aria-label="Fleet summary">{stats.map((stat) => { const Icon = stat.icon; return <article className={`stat-card ${stat.tone}`} key={stat.label}><div className="stat-top"><span className="stat-label-full">{stat.label}</span><span className="stat-label-mobile">{stat.shortLabel}</span><i><Icon size={15} /></i></div><strong>{stat.value}</strong><small>{stat.note}</small></article>; })}</section>
+    <section className="dashboard-status-line" aria-label="Fleet summary">{stats.map((stat) => <span key={stat.shortLabel}><small>{stat.shortLabel}</small><strong>{stat.value}</strong></span>)}</section>
     <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
     <div className="dashboard-layout">
       <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} sendBookingWhatsApp={sendBookingWhatsApp} />
@@ -2798,8 +2798,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     otherCharges: 0, securityDeposit: 0, startingKilometer: 0,
     startingFuelRangeKm: 0, allowedKmPerDay: 0, extraKmRate: 0,
   });
-  const [reopenTarget, setReopenTarget] = useState<Rental | null>(null);
-  const [reopenReason, setReopenReason] = useState("Accidental final settlement");
+  const [settlementEditTarget, setSettlementEditTarget] = useState<Rental | null>(null);
   // MECARDEE_RENTAL_CORRECTION_UNDO_START_V8_9_47
   const [rentalVehicleTarget, setRentalVehicleTarget] = useState<Rental | null>(null);
   const [rentalVehicleForm, setRentalVehicleForm] = useState({ vehicleId: "", startingKilometer: 0, startingFuelRangeKm: 0 });
@@ -2967,30 +2966,6 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     }
   };
 
-  const reopenCompletedReturn = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!reopenTarget) return;
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch("/api/settings/rentals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reopen-return", bookingId: reopenTarget.databaseId, reason: reopenReason }),
-      });
-      const payload = await readApiResponse<{ ok: boolean; error?: string; reopened?: { bookingNumber: string; vehicle: string; plate: string } }>(response);
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not reopen the completed return.");
-      setReopenTarget(null);
-      setReopenReason("Accidental final settlement");
-      setTab("rentals");
-      onSync();
-    } catch (reopenError) {
-      setError(reopenError instanceof Error ? reopenError.message : "Could not reopen the completed return.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const openRentalVehicleCorrection = (rental: Rental) => {
     setError("");
     setRentalVehicleTarget(rental);
@@ -3062,7 +3037,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     <PageHeading eyebrow="APP" title="Settings" description="Sync live data, edit active bookings, safely correct rentals, and manage transaction corrections without touching the database directly." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
-      <article className={`settings-card transaction-safety ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Edit active booking and rental details, reopen an accidental return with a full audit snapshot, and manage payments or expenses with correction history.</p></div></article>
+      <article className={`settings-card transaction-safety ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Edit active booking and rental details, update completed settlements without reopening rentals, and manage payments or expenses with correction history.</p></div></article>
     </section>
 
         <section className="data-panel user-access-manager">
@@ -3122,7 +3097,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       {loading ? <div className="transaction-empty"><RefreshCw className="spin" size={18} />Loading transactions…</div> : <div className="transaction-list">
         {tab === "bookings" && (editableBookings.length ? editableBookings.map((booking) => <article className="transaction-row settings-booking-row" key={booking.id}><div className="transaction-main"><span className="transaction-kind rental"><CalendarDays size={15} /></span><div><strong>{booking.vehicle} · {booking.plate}</strong><small>{booking.bookingNumber} · {customerWithPlace(booking.customer, booking.city)}</small><small>{formatWhen(booking.startAt)} → {formatWhen(booking.endAt)} · {booking.days} rental day{booking.days === 1 ? "" : "s"} · {money(booking.rate)}/day</small>{booking.vehicleId !== booking.requestedVehicleId && <small className="settings-booking-original">Original request: {booking.requestedVehicle} · {booking.requestedPlate}</small>}</div></div><div className="transaction-side"><span className="settings-booking-status">Booked</span><div className="transaction-actions"><button onClick={() => { setError(""); setBookingEditTarget(booking); }} disabled={busy}><Pencil size={14} />Edit booking</button></div></div></article>) : <div className="transaction-empty">No active bookings to edit.</div>)}
         {tab === "rentals" && (editableRentals.length ? editableRentals.map((rental) => <article className="transaction-row rental-schedule-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind rental"><CalendarRange size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {customerWithPlace(rental.customer, rental.city)}</small><small>{formatWhen(rental.startAt)} → {formatWhen(rental.endAt)} · {rental.days} rental day{rental.days === 1 ? "" : "s"}</small>{rental.segments.length === 1 && rental.vehicleId !== rental.originalVehicleId && <small className="rental-correction-warning">Started on a different vehicle · original booking: {rental.originalVehicle} · {rental.originalPlate}</small>}</div></div><div className="transaction-side"><span className={`rental-schedule-status ${rental.state}`}>{rental.state === "overdue" ? "Overdue / on rent" : rental.state === "today" ? "On rent · due today" : "On rent"}</span><div className="transaction-actions rental-correction-actions"><button onClick={() => openRentalScheduleEdit(rental)} disabled={busy}><Pencil size={14} />Edit details</button>{rental.segments.length === 1 && <button onClick={() => openRentalVehicleCorrection(rental)} disabled={busy}><CarFront size={14} />Correct vehicle</button>}{rental.segments.length === 1 && <button className="danger" onClick={() => void undoRentalStart(rental)} disabled={busy}><RotateCcw size={14} />Undo start</button>}</div></div></article>) : <div className="transaction-empty">No active rentals to edit.</div>)}
-        {tab === "returns" && (completedReturns.length ? completedReturns.map((rental) => <article className="transaction-row rental-schedule-row completed-return-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind history"><CheckCircle2 size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {customerWithPlace(rental.customer, rental.city)}</small><small>Returned {formatWhen(rental.actualReturnAt!)} · Final total {money(rental.total)} · Paid {money(rental.paid)}</small></div></div><div className="transaction-side"><span className="rental-schedule-status completed">Completed</span><div className="transaction-actions"><button className="danger" onClick={() => { setError(""); setReopenReason("Accidental final settlement"); setReopenTarget(rental); }} disabled={busy}><RotateCcw size={14} />Reopen to on rent</button></div></div></article>) : <div className="transaction-empty">No completed returns are available.</div>)}
+        {tab === "returns" && (completedReturns.length ? completedReturns.map((rental) => <article className="transaction-row rental-schedule-row completed-return-row" key={rental.databaseId}><div className="transaction-main"><span className="transaction-kind history"><CheckCircle2 size={15} /></span><div><strong>{rental.vehicle} · {rental.plate}</strong><small>{rental.id} · {customerWithPlace(rental.customer, rental.city)}</small><small>Returned {formatWhen(rental.actualReturnAt!)} · Final total {money(rental.total)} · Paid {money(rental.paid)}</small></div></div><div className="transaction-side"><span className="rental-schedule-status completed">Completed</span><div className="transaction-actions"><button onClick={() => { setError(""); setSettlementEditTarget(rental); }} disabled={busy || !rental.settlement}><Pencil size={14} />Edit settlement</button></div></div></article>) : <div className="transaction-empty">No completed returns are available.</div>)}
         {tab === "payments" && (paymentRows.length ? paymentRows.map((payment) => <article className="transaction-row" key={payment.id}><div className="transaction-main"><span className="transaction-kind payment"><WalletCards size={15} /></span><div><strong>{payment.customer}</strong><small>{payment.number} · Rental {payment.bookingNumber}</small><small>{formatWhen(payment.receivedAt)} · {payment.method} · Entered by {displayUserName(payment.receivedBy)}</small>{payment.notes && <small>{payment.notes}</small>}</div></div><div className="transaction-side"><strong>{money(payment.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("payment", payment)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "payment", id: payment.id, number: payment.number, label: `${payment.customer} · ${money(payment.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No payment transactions.</div>)}
         {tab === "expenses" && (expenseRows.length ? expenseRows.map((expense) => <article className="transaction-row" key={expense.id}><div className="transaction-main"><span className="transaction-kind expense"><ReceiptIndianRupee size={15} /></span><div><strong>{expense.category}</strong><small>{expense.number}{expense.plate ? ` · ${expense.plate}` : " · General expense"}</small><small>{expense.expenseDate} · {expense.method} · Added by {expense.createdBy}</small>{expense.description && <small>{expense.description}</small>}</div></div><div className="transaction-side"><strong>{money(expense.amount)}</strong><div className="transaction-actions"><button onClick={() => openEdit("expense", expense)} disabled={busy}><Pencil size={14} />Edit</button><button className="danger" onClick={() => { setDeleteReason(""); setDeleteTarget({ type: "expense", id: expense.id, number: expense.number, label: `${expense.category} · ${money(expense.amount)}` }); }} disabled={busy}><Trash2 size={14} />Delete</button></div></div></article>) : <div className="transaction-empty">No expense transactions.</div>)}
         {tab === "history" && (historyRows.length ? historyRows.map((history) => <article className={`transaction-row transaction-history-row ${history.restoredAt ? "restored" : ""}`} key={history.id}><div className="transaction-main"><span className="transaction-kind history"><History size={15} /></span><div><strong>{history.transactionNumber || `${history.transactionType} transaction`}</strong><small>{history.displayLabel}</small><small>Deleted {formatWhen(history.deletedAt)} by {history.deletedBy} · Reason: {history.reason}</small>{history.restoredAt && <small className="restored-note">Restored {formatWhen(history.restoredAt)}{history.restoredBy ? ` by ${history.restoredBy}` : ""}</small>}</div></div><div className="transaction-side"><span className={`history-status ${history.restoredAt ? "restored" : "deleted"}`}>{history.restoredAt ? "Restored" : "Deleted"}</span>{!history.restoredAt && <div className="transaction-actions"><button onClick={() => void restoreDeleted(history)} disabled={busy}><RotateCcw size={14} />Restore</button></div>}</div></article>) : <div className="transaction-empty">Nothing has been deleted from Transaction Manager.</div>)}
@@ -3162,11 +3137,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setRentalEditTarget(null)} disabled={busy}>Cancel</button><button className="primary-button" type="submit" disabled={busy || !rentalScheduleForm.customerId || rentalScheduleForm.dailyRate <= 0}><Check size={15} />{busy ? "Saving…" : "Save all rental details"}</button></div>
     </form></DialogShell>}
 
-    {reopenTarget && <DialogShell title="Reopen completed return" subtitle={`${reopenTarget.id} · ${reopenTarget.customer}`} close={() => !busy && setReopenTarget(null)}><form className="simple-form" onSubmit={reopenCompletedReturn}>
-      <div className="delete-warning correction-warning"><AlertTriangle size={18} /><div><strong>Put {reopenTarget.vehicle} ({reopenTarget.plate}) back on rent?</strong><p>The Final Settlement will be removed, the last vehicle segment will become active, and the vehicle will be marked Rented. Existing payments stay untouched. A complete snapshot is written to rental reopen history first.</p></div></div>
-      <label className="field"><span>Reason for reopening</span><textarea required minLength={3} value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} placeholder="Example: Return was settled by mistake" /></label>
-      {error && <p className="form-error">{error}</p>}<div className="form-actions"><button type="button" onClick={() => setReopenTarget(null)} disabled={busy}>Cancel</button><button className="danger-button" type="submit" disabled={busy || reopenReason.trim().length < 3}><RotateCcw size={15} />{busy ? "Reopening safely…" : "Reopen to on rent"}</button></div>
-    </form></DialogShell>}
+    {settlementEditTarget && <ReturnDialog rental={settlementEditTarget} editCompleted close={() => setSettlementEditTarget(null)} onConfirmed={(result) => { setSettlementEditTarget(null); onSync(); window.setTimeout(() => window.alert(`Settlement ${result.bookingNumber} updated successfully.`), 60); }} sendSettlementWhatsApp={() => undefined} />}
 
     {editTarget && <DialogShell title={`Edit ${editTarget.type}`} subtitle="Linked rental/customer/vehicle stays locked for workflow safety" close={() => !busy && setEditTarget(null)}><form className="simple-form" onSubmit={saveEdit}>
       {editTarget.type === "payment" ? <>
@@ -4161,23 +4132,25 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
   </DialogShell>;
 }
 
-function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { rental: Rental; close: () => void; onConfirmed: (result: SettlementResult) => void; sendSettlementWhatsApp: (phone: string, text: string) => void }) {
+function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, editCompleted = false }: { rental: Rental; close: () => void; onConfirmed: (result: SettlementResult) => void; sendSettlementWhatsApp: (phone: string, text: string) => void; editCompleted?: boolean }) {
   const currentSegment = [...rental.segments].reverse().find((segment) => segment.status === "active") ?? rental.segments.at(-1) ?? null;
   const singleOriginalSegment = rental.segments.length <= 1 && (!currentSegment || currentSegment.vehicleId === rental.originalVehicleId);
   const expectedReturnKilometer = calculateExpectedReturnKilometer(rental.startingKilometer, Math.max(1, currentSegment?.rentalDays ?? rental.days), rental.allowedKmPerDay);
-  const [actualReturnDate, setActualReturnDate] = useState(() => dateInputValue(new Date()));
-  const [actualReturnTime, setActualReturnTime] = useState(() => indiaDateTimeParts(new Date().toISOString()).time);
-  const [actualReturnKilometer, setActualReturnKilometer] = useState(expectedReturnKilometer);
-  const [returnFuelRangeInput, setReturnFuelRangeInput] = useState(String(Math.max(0, rental.startingFuelRangeKm - 50)));
+  const savedSettlement = editCompleted ? rental.settlement : null;
+  const initialReturnAt = savedSettlement?.actualReturnAt ?? new Date().toISOString();
+  const [actualReturnDate, setActualReturnDate] = useState(() => indiaDateTimeParts(initialReturnAt).date);
+  const [actualReturnTime, setActualReturnTime] = useState(() => indiaDateTimeParts(initialReturnAt).time);
+  const [actualReturnKilometer, setActualReturnKilometer] = useState(savedSettlement?.actualReturnKilometer ?? expectedReturnKilometer);
+  const [returnFuelRangeInput, setReturnFuelRangeInput] = useState(String(savedSettlement?.returnFuelRangeKm ?? Math.max(0, rental.startingFuelRangeKm - 50)));
   const returnFuelRangeKm = numberFromInput(returnFuelRangeInput);
-  const [fuelPricePerLitre, setFuelPricePerLitre] = useState(105);
-  const [additionalCharge, setAdditionalCharge] = useState(0);
-  const [discountAmount, setDiscountAmount] = useState(0);
-  const [discountRemark, setDiscountRemark] = useState("");
-  const [returnNotes, setReturnNotes] = useState("");
-  const [vehicleCondition, setVehicleCondition] = useState("Good — no new damage");
-  const [sendToMaintenance, setSendToMaintenance] = useState(false);
-  const [physicalReturnConfirmed, setPhysicalReturnConfirmed] = useState(false);
+  const [fuelPricePerLitre, setFuelPricePerLitre] = useState(savedSettlement?.fuelPricePerLitre ?? 105);
+  const [additionalCharge, setAdditionalCharge] = useState(savedSettlement?.additionalCharge ?? 0);
+  const [discountAmount, setDiscountAmount] = useState(savedSettlement?.discountAmount ?? 0);
+  const [discountRemark, setDiscountRemark] = useState(savedSettlement?.discountRemark ?? "");
+  const [returnNotes, setReturnNotes] = useState(savedSettlement?.additionalDescription ?? "");
+  const [vehicleCondition, setVehicleCondition] = useState(savedSettlement?.vehicleCondition ?? "Good — no new damage");
+  const [sendToMaintenance, setSendToMaintenance] = useState(savedSettlement?.sendToMaintenance ?? false);
+  const [physicalReturnConfirmed, setPhysicalReturnConfirmed] = useState(editCompleted);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<SettlementResult | null>(null);
@@ -4267,21 +4240,21 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   async function confirmSettlement(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!physicalReturnConfirmed) {
-      setError("Confirm that the vehicle has physically returned before creating the Final Settlement.");
+      setError(`Confirm that the vehicle has physically returned before ${editCompleted ? "updating" : "creating"} the Final Settlement.`);
       return;
     }
     setSaving(true); setError(null);
     try {
       const response = await fetch("/api/settlements", {
-        method: "POST",
+        method: editCompleted ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ bookingNumber: rental.id, actualReturnAt: actualReturnIso, actualReturnKilometer, returnFuelRangeKm, fuelPricePerLitre, cleaningCharge: 0, damageCharge: additionalCharge, discountAmount, discountRemark, returnNotes, vehicleCondition, sendToMaintenance: rental.isGuestCurrent ? false : sendToMaintenance }),
       });
       const payload = await readApiResponse<{ ok: boolean; error?: string; settlement?: SettlementResult }>(response);
-      if (!response.ok || !payload.settlement) throw new Error(payload.error ?? "Could not confirm the return settlement.");
+      if (!response.ok || !payload.settlement) throw new Error(payload.error ?? `Could not ${editCompleted ? "update" : "confirm"} the return settlement.`);
       setConfirmed(payload.settlement);
       onConfirmed(payload.settlement);
-    } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Could not confirm the return settlement."); }
+    } catch (submitError) { setError(submitError instanceof Error ? submitError.message : `Could not ${editCompleted ? "update" : "confirm"} the return settlement.`); }
     finally { setSaving(false); }
   }
 
@@ -4293,12 +4266,12 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
   };
 
   if (confirmed) {
-    return <DialogShell title="Settlement confirmed" subtitle={`${rental.id} · final customer bill`} close={close} wide>
-      <div className="settlement-success"><span><CheckCircle2 size={25} /></span><h3>Return settlement saved</h3><p>{rental.id} is completed and the final vehicle is {confirmed.vehicleStatus === "available" ? "available for future use" : "marked for maintenance"}.</p>{confirmed.segments && confirmed.segments.length > 1 && <div className="settlement-segment-summary">{confirmed.segments.map((segment) => <article key={`${segment.sequence}-${segment.vehicleId}`}><div><strong>{segment.vehicleName}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.registrationNumber}</small></div><span>{segment.bookingStart} → {segment.bookingEnd}</span><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"} · {money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b>{segment.fuelCharge > 0 && <small className="segment-fuel-note">Fuel {segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</small>}</article>)}</div>}<div><small>Final amount</small><strong>{money(confirmed.calculation.finalAmount)}</strong></div><button type="button" className="whatsapp-button" onClick={sendConfirmedWhatsApp}><MessageCircle size={17} />Send Details via WhatsApp</button><small>WhatsApp opens with the existing settlement message plus vehicle-wise usage. Review it and press Send yourself.</small><button type="button" className="save-draft" onClick={close}>Close</button></div>
+    return <DialogShell title={editCompleted ? "Settlement updated" : "Settlement confirmed"} subtitle={`${rental.id} · final customer bill`} close={close} wide>
+      <div className="settlement-success"><span><CheckCircle2 size={25} /></span><h3>Return settlement {editCompleted ? "updated" : "saved"}</h3><p>{rental.id} remains completed and its corrected final bill is saved.</p>{confirmed.segments && confirmed.segments.length > 1 && <div className="settlement-segment-summary">{confirmed.segments.map((segment) => <article key={`${segment.sequence}-${segment.vehicleId}`}><div><strong>{segment.vehicleName}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.registrationNumber}</small></div><span>{segment.bookingStart} → {segment.bookingEnd}</span><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"} · {money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b>{segment.fuelCharge > 0 && <small className="segment-fuel-note">Fuel {segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</small>}</article>)}</div>}<div><small>Balance due</small><strong>{money(confirmed.calculation.amountDue)}</strong></div>{!editCompleted && <><button type="button" className="whatsapp-button" onClick={sendConfirmedWhatsApp}><MessageCircle size={17} />Send Details via WhatsApp</button><small>WhatsApp opens with the same balance due and the complete vehicle-wise settlement. Review it and press Send yourself.</small></>}<button type="button" className="save-draft" onClick={close}>Close</button></div>
     </DialogShell>;
   }
 
-  return <DialogShell title="Return vehicle" subtitle={`${rental.vehicle} · ${rental.plate}${rental.isGuestCurrent ? " · Guest Car" : ""}`} close={close} wide>
+  return <DialogShell title={editCompleted ? "Edit settlement" : "Return vehicle"} subtitle={`${rental.vehicle} · ${rental.plate}${rental.isGuestCurrent ? " · Guest Car" : ""}`} close={close} wide>
     <form className="return-form return-form-redesign" onSubmit={confirmSettlement}>
       <div className="return-entry-column">
         {(rental.replacementUsed || rental.segments.length > 1) && <div className="original-booking-context rental-context-banner"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>This final settlement closes the complete customer rental after all vehicle segments are included.</span></div>}
@@ -4342,11 +4315,11 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp }: { 
           <div className="due"><span>Balance due</span><strong>{money(calculation.amountDue)}</strong></div>
         </div>
         <p className="calculation-note return-rule-note">Allowance: {currentRentalDays} day{currentRentalDays === 1 ? "" : "s"} × {rental.allowedKmPerDay} km. Fuel mileage: {rental.mileageKmPerLitre} km/L.</p>
-        {!rental.isGuestCurrent && <label className="maintenance-check"><input type="checkbox" checked={sendToMaintenance} onChange={(event) => setSendToMaintenance(event.target.checked)} /><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span><span className="maintenance-check-state"><Check size={13} />{sendToMaintenance ? "Selected" : "Tap to select"}</span></span></label>}
+        {!rental.isGuestCurrent && <button type="button" className={`maintenance-check ${sendToMaintenance ? "is-checked" : ""}`} aria-pressed={sendToMaintenance} onClick={() => setSendToMaintenance((selected) => !selected)}><span><Wrench size={16} /><span><strong>Send to maintenance</strong><small>Vehicle will not become available</small></span><span className="maintenance-check-state"><Check size={13} />{sendToMaintenance ? "Selected" : "Tap to select"}</span></span></button>}
         {rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}
-        <label className="maintenance-check final-return-confirm"><input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} /><span><ShieldCheck size={16} /><span><strong>Vehicle has physically returned</strong><small>Required before completing this rental.</small></span><span className="maintenance-check-state"><Check size={13} />{physicalReturnConfirmed ? "Confirmed" : "Tap to confirm"}</span></span></label>
+        <button type="button" className={`maintenance-check final-return-confirm ${physicalReturnConfirmed ? "is-checked" : ""}`} aria-pressed={physicalReturnConfirmed} onClick={() => setPhysicalReturnConfirmed((confirmedReturn) => !confirmedReturn)}><span><ShieldCheck size={16} /><span><strong>Vehicle has physically returned</strong><small>Required before completing this rental.</small></span><span className="maintenance-check-state"><Check size={13} />{physicalReturnConfirmed ? "Confirmed" : "Tap to confirm"}</span></span></button>
         {error && <p className="form-error">{error}</p>}
-        <div className="return-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart || !physicalReturnConfirmed}>{saving ? "Confirming…" : "Confirm final return"} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></div>
+        <div className="return-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart || !physicalReturnConfirmed}>{saving ? (editCompleted ? "Updating…" : "Confirming…") : (editCompleted ? "Update settlement" : "Confirm final return")} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></div>
       </aside>
     </form>
   </DialogShell>;
