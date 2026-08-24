@@ -208,6 +208,23 @@ test("only the final payable is rounded to the nearest whole rupee", () => {
   assert.equal(roundFinalPayable(5_599.5), 5_600);
 });
 
+test("default return kilometer follows the allowance for the selected return time", () => {
+  const startKilometer = 53_508;
+  const projection = calculateSegmentCharge({
+    startAt: "2026-08-20T13:00:00+05:30",
+    endAt: "2026-08-24T18:00:00+05:30",
+    dailyRate: 1_400,
+    startingKilometer: startKilometer,
+    endingKilometer: startKilometer,
+    allowedKmPerDay: 100,
+    extraKmRate: 10,
+  });
+
+  assert.equal(projection.rentalDays, 5);
+  assert.equal(projection.allowedKilometers, 500);
+  assert.equal(calculateExpectedReturnKilometer(startKilometer, projection.rentalDays, 100), 54_008);
+});
+
 test("customer settlement names every vehicle without exposing Guest Car classification", () => {
   const calculation = calculateSettlement({
     baseRentalAmount: 1_300,

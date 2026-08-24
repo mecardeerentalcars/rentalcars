@@ -93,6 +93,8 @@ test("keeps settlement, schedule, and report corrections wired through every ent
   assert.match(page, /method: editCompleted \? "PATCH" : "POST"/);
   assert.match(page, /confirmed\.calculation\.amountDue/);
   assert.match(page, /aria-pressed=\{physicalReturnConfirmed\}/);
+  assert.match(page, /manualActualReturnKilometer \?\? automaticReturnKilometer/);
+  assert.match(page, /setManualActualReturnKilometer\(null\)/);
   assert.match(extension, /activeSegmentProjection\?\.rentalDays/);
   assert.match(paymentAdmin, /const replacementFlow/);
 });

@@ -4135,12 +4135,25 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
 function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, editCompleted = false }: { rental: Rental; close: () => void; onConfirmed: (result: SettlementResult) => void; sendSettlementWhatsApp: (phone: string, text: string) => void; editCompleted?: boolean }) {
   const currentSegment = [...rental.segments].reverse().find((segment) => segment.status === "active") ?? rental.segments.at(-1) ?? null;
   const singleOriginalSegment = rental.segments.length <= 1 && (!currentSegment || currentSegment.vehicleId === rental.originalVehicleId);
-  const expectedReturnKilometer = calculateExpectedReturnKilometer(rental.startingKilometer, Math.max(1, currentSegment?.rentalDays ?? rental.days), rental.allowedKmPerDay);
   const savedSettlement = editCompleted ? rental.settlement : null;
   const initialReturnAt = savedSettlement?.actualReturnAt ?? new Date().toISOString();
   const [actualReturnDate, setActualReturnDate] = useState(() => indiaDateTimeParts(initialReturnAt).date);
   const [actualReturnTime, setActualReturnTime] = useState(() => indiaDateTimeParts(initialReturnAt).time);
-  const [actualReturnKilometer, setActualReturnKilometer] = useState(savedSettlement?.actualReturnKilometer ?? expectedReturnKilometer);
+  const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
+  const automaticReturnStartKilometer = currentSegment?.startingKilometer ?? rental.startingKilometer;
+  const automaticReturnAllowedPerDay = currentSegment?.allowedKmPerDay ?? rental.allowedKmPerDay;
+  const automaticReturnDays = currentSegment ? calculateSegmentCharge({
+    startAt: currentSegment.startAt,
+    endAt: actualReturnIso,
+    dailyRate: currentSegment.dailyRate,
+    startingKilometer: currentSegment.startingKilometer,
+    endingKilometer: currentSegment.startingKilometer,
+    allowedKmPerDay: currentSegment.allowedKmPerDay,
+    extraKmRate: currentSegment.extraKmRate,
+  }).rentalDays : Math.max(1, rental.days);
+  const automaticReturnKilometer = calculateExpectedReturnKilometer(automaticReturnStartKilometer, automaticReturnDays, automaticReturnAllowedPerDay);
+  const [manualActualReturnKilometer, setManualActualReturnKilometer] = useState<number | null>(savedSettlement?.actualReturnKilometer ?? null);
+  const actualReturnKilometer = manualActualReturnKilometer ?? automaticReturnKilometer;
   const [returnFuelRangeInput, setReturnFuelRangeInput] = useState(String(savedSettlement?.returnFuelRangeKm ?? Math.max(0, rental.startingFuelRangeKm - 50)));
   const returnFuelRangeKm = numberFromInput(returnFuelRangeInput);
   const [fuelPricePerLitre, setFuelPricePerLitre] = useState(savedSettlement?.fuelPricePerLitre ?? 105);
@@ -4155,7 +4168,6 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<SettlementResult | null>(null);
 
-  const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
   const actualReturnMs = new Date(actualReturnIso).getTime();
   const scheduledReturnMs = new Date(rental.endAt).getTime();
   const graceReturnMs = scheduledReturnMs + 3 * 60 * 60 * 1000;
@@ -4278,7 +4290,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
         <section className="return-entry-card">
           <div className="return-card-heading"><span><Gauge size={18} /></span><div><h3>Enter return details</h3><p>Enter the readings and adjustments first. The complete bill updates beside them.</p></div></div>
           <div className="return-primary-fields">
-            <label className="field"><span>Return KM</span><input required min={rental.startingKilometer} type="number" inputMode="numeric" placeholder="Enter odometer" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setActualReturnKilometer(numberFromInput(event.target.value))} /></label>
+            <label className="field"><span>Return KM</span><input required min={automaticReturnStartKilometer} type="number" inputMode="numeric" placeholder="Enter odometer" value={blankZero(actualReturnKilometer)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setManualActualReturnKilometer(numberFromInput(event.target.value))} /><small>Auto: {automaticReturnDays} day{automaticReturnDays === 1 ? "" : "s"} × {automaticReturnAllowedPerDay} km allowance. You can replace this reading manually.</small></label>
             <label className="field"><span>Return fuel range (KM)</span><input required min="0" type="number" inputMode="numeric" placeholder="Enter dashboard range" value={returnFuelRangeInput} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeInput(event.target.value)} /><small>Enter 0 when the dashboard shows no remaining fuel range.</small></label>
             <label className="field"><span>Today&apos;s fuel price / litre (₹)</span><input required min="0" step="0.01" type="number" inputMode="decimal" placeholder="Enter fuel price" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
             <label className="field"><span>Additional charge amount (₹)</span><input min="0" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(additionalCharge)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setAdditionalCharge(numberFromInput(event.target.value))} /></label>
@@ -4287,8 +4299,8 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
             <label className="field"><span>Discount description</span><input required={discountAmount > 0} value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular customer" /></label>
           </div>
           <div className="return-timing-fields">
-            <label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(currentSegment?.startAt ?? rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => setActualReturnDate(event.target.value)} /></label>
-            <label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => setActualReturnTime(event.target.value)} /></label>
+            <label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(currentSegment?.startAt ?? rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => { setActualReturnDate(event.target.value); setManualActualReturnKilometer(null); }} /></label>
+            <label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => { setActualReturnTime(event.target.value); setManualActualReturnKilometer(null); }} /></label>
             <label className="field"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
           </div>
           <div className="return-deadline-card compact"><div><span>Booked return</span><strong>{expectedReturnLabel}</strong></div><ArrowRight size={18} /><div className="grace-deadline"><span>Grace deadline</span><strong>{graceReturnLabel}</strong><small>Daily rent changes only after this 3-hour cooling period.</small></div></div>
