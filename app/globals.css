@@ -7125,3 +7125,157 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   }
   .booking-form .booking-vehicle-schedule-empty { min-height: 40px; font-size: 11px; }
 }
+
+
+/* MECARDEE_PROFESSIONAL_USER_ACCESS_CSS_V8_9_92
+   Compact User Access:
+   - two action buttons by default
+   - only the selected form expands
+   - API errors/success messages appear inside the active form */
+.user-access-manager {
+  overflow: hidden;
+}
+
+.user-access-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.user-access-actions > :only-child {
+  grid-column: 1 / -1;
+}
+
+.user-access-action {
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #dedee9;
+  border-radius: 12px;
+  background: #fff;
+  color: #2f3039;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.user-access-action svg {
+  flex: 0 0 auto;
+  color: #6656d8;
+}
+
+.user-access-action:hover {
+  border-color: #c9c4ee;
+  background: #faf9ff;
+}
+
+.user-access-action:active {
+  transform: translateY(1px);
+}
+
+.user-access-action.active {
+  border-color: #7565df;
+  background: #f5f2ff;
+  color: #4d3fc1;
+  box-shadow: 0 0 0 3px rgba(107, 88, 220, .08);
+}
+
+.user-access-expand {
+  margin: 0 16px 16px;
+  padding: 18px;
+  border: 1px solid #e5e3ee;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(34, 31, 68, .045);
+}
+
+.user-access-expand-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 16px;
+}
+
+.user-access-expand-head .settings-icon {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.user-access-expand-head h3 {
+  margin: 0 0 3px;
+  color: #24252d;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.user-access-expand-head p {
+  margin: 0;
+  color: #74727e;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.user-access-expand .user-access-feedback {
+  margin: 0 0 14px;
+  border: 1px solid transparent;
+}
+
+.user-access-expand .user-access-feedback.error {
+  border-color: #ffd7d7;
+}
+
+.user-access-expand .user-access-feedback.success {
+  border-color: #ceeedd;
+}
+
+.user-access-expand .user-access-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-access-expand .user-access-form > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-width: 150px;
+}
+
+@media (max-width: 720px) {
+  .user-access-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 0 10px 12px;
+  }
+
+  .user-access-action {
+    min-height: 46px;
+    padding: 0 8px;
+    gap: 6px;
+    border-radius: 11px;
+    font-size: 10.5px;
+    white-space: normal;
+    line-height: 1.15;
+    text-align: center;
+  }
+
+  .user-access-expand {
+    margin: 0 10px 12px;
+    padding: 14px;
+    border-radius: 13px;
+  }
+
+  .user-access-expand .user-access-form {
+    grid-template-columns: 1fr;
+  }
+
+  .user-access-expand .user-access-form > button {
+    grid-column: 1;
+    width: 100%;
+    justify-self: stretch;
+  }
+}

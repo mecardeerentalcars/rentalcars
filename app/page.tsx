@@ -1712,6 +1712,20 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
     return `${month} ${day}`.trim();
   };
 
+  // MECARDEE_RETURN_TODAY_TOMORROW_V8_9_91
+  const fleetReturnRelativeDay = (value: string) => {
+    const returnKey = indiaDateKey(new Date(value));
+    const now = new Date();
+    const todayKey = indiaDateKey(now);
+    const tomorrowKey = indiaDateKey(new Date(now.getTime() + 86_400_000));
+    if (returnKey === todayKey) return "Today";
+    if (returnKey === tomorrowKey) return "Tomorrow";
+    return null;
+  };
+
+  const fleetReturnPrefix = (value: string) => fleetReturnRelativeDay(value) ? "Returns" : "Returns on";
+  const fleetReturnDayLabel = (value: string) => fleetReturnRelativeDay(value) ?? fleetDayLabel(value);
+
   const fleetMomentLabel = (value: string) => {
     const date = new Date(value);
     const dayKey = indiaDateKey(date);
@@ -1766,8 +1780,8 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
             {rental ? <>
               <span className="fleet-card-customer">{customerWithPlace(rental.customer, rental.city)}</span>
               <span className="fleet-return-highlight">
-                <small>Returns on</small>
-                <strong>{fleetDayLabel(rental.endAt)}</strong>
+                <small>{fleetReturnPrefix(rental.endAt)}</small>
+                <strong>{fleetReturnDayLabel(rental.endAt)}</strong>
                 <em>{fleetTimeLabel(rental.endAt)}</em>
               </span>
             </> : reservation ? <>
@@ -2720,6 +2734,14 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
   const [userAccessBusy, setUserAccessBusy] = useState(false);
   const [userAccessMessage, setUserAccessMessage] = useState("");
   const [userAccessError, setUserAccessError] = useState("");
+  // MECARDEE_PROFESSIONAL_USER_ACCESS_V8_9_92
+  const [userAccessMode, setUserAccessMode] = useState<"password" | "create" | null>(null);
+
+  const toggleUserAccessMode = (mode: "password" | "create") => {
+    setUserAccessMode((current) => current === mode ? null : mode);
+    setUserAccessError("");
+    setUserAccessMessage("");
+  };
 
   const changeOwnPassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3051,46 +3073,64 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       <div className="panel-heading user-access-heading">
         <div>
           <h2>User access</h2>
-          <p>Signed in as <strong>{currentUser.username}</strong> - {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "owner" ? "Owner" : "Viewer"}</p>
+          <p>Signed in as <strong>{currentUser.username}</strong> · {currentUser.role === "superadmin" ? "Super Admin" : currentUser.role === "owner" ? "Owner" : "Viewer"}</p>
         </div>
         <button className="secondary-button" type="button" onClick={onLogout}>Log out</button>
       </div>
 
-      {(userAccessMessage || userAccessError) && <div className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
+      <div className="user-access-actions">
+        <button
+          className={`user-access-action ${userAccessMode === "password" ? "active" : ""}`}
+          type="button"
+          aria-expanded={userAccessMode === "password"}
+          onClick={() => toggleUserAccessMode("password")}
+        >
+          <ShieldCheck size={17} />
+          <span>Change password</span>
+        </button>
 
-      <div className="user-access-grid">
-        <article className="user-access-card">
-          <span className="settings-icon"><ShieldCheck size={19} /></span>
-          <div className="user-access-copy">
-            <h3>Change password</h3>
-            <p>Update the password for your own account.</p>
-          </div>
-          <form className="user-access-form" onSubmit={changeOwnPassword}>
-            <label><span>Current password</span><input name="currentPassword" type="password" autoComplete="current-password" required /></label>
-            <label><span>New password</span><input name="newPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-            <label><span>Confirm new password</span><input name="confirmPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Saving..." : "Change password"}</button>
-          </form>
-        </article>
-
-        {currentUser.role === "superadmin" && <article className="user-access-card">
-          <span className="settings-icon"><UserRoundPlus size={19} /></span>
-          <div className="user-access-copy">
-            <h3>Create new user</h3>
-            <p>Create an Owner or Viewer. Super Admin is reserved for the admin account.</p>
-          </div>
-          <form className="user-access-form" onSubmit={createUser}>
-            <label><span>Username</span><input name="newUsername" minLength={3} maxLength={80} pattern="[a-zA-Z0-9._-]+" autoComplete="off" required /></label>
-            <label><span>Role</span><select name="newUserRole" defaultValue="owner" required><option value="owner">Owner</option><option value="viewer">Viewer</option></select></label>
-            <label><span>Password</span><input name="newUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-            <label><span>Confirm password</span><input name="confirmNewUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-            <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Creating..." : "Create user"}</button>
-          </form>
-        </article>}
+        {currentUser.role === "superadmin" && <button
+          className={`user-access-action ${userAccessMode === "create" ? "active" : ""}`}
+          type="button"
+          aria-expanded={userAccessMode === "create"}
+          onClick={() => toggleUserAccessMode("create")}
+        >
+          <UserRoundPlus size={17} />
+          <span>Create new user</span>
+        </button>}
       </div>
+
+      {userAccessMode === "password" && <div className="user-access-expand">
+        <div className="user-access-expand-head">
+          <span className="settings-icon"><ShieldCheck size={18} /></span>
+          <div><h3>Change password</h3><p>Update the password for your account.</p></div>
+        </div>
+        {(userAccessMessage || userAccessError) && <div role="status" className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
+        <form className="user-access-form" onSubmit={changeOwnPassword}>
+          <label><span>Current password</span><input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+          <label><span>New password</span><input name="newPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+          <label><span>Confirm new password</span><input name="confirmPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+          <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Saving…" : "Save new password"}</button>
+        </form>
+      </div>}
+
+      {currentUser.role === "superadmin" && userAccessMode === "create" && <div className="user-access-expand">
+        <div className="user-access-expand-head">
+          <span className="settings-icon"><UserRoundPlus size={18} /></span>
+          <div><h3>Create new user</h3><p>Create an Owner or Viewer account.</p></div>
+        </div>
+        {(userAccessMessage || userAccessError) && <div role="status" className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
+        <form className="user-access-form" onSubmit={createUser}>
+          <label><span>Username</span><input name="newUsername" minLength={3} maxLength={80} pattern="[a-zA-Z0-9._-]+" autoComplete="off" required /></label>
+          <label><span>Role</span><select name="newUserRole" defaultValue="owner" required><option value="owner">Owner</option><option value="viewer">Viewer</option></select></label>
+          <label><span>Password</span><input name="newUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+          <label><span>Confirm password</span><input name="confirmNewUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
+          <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Creating…" : "Create user"}</button>
+        </form>
+      </div>}
     </section>
 
-<section className={`data-panel transaction-manager ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}>
+    <section className={`data-panel transaction-manager ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}>
       <div className="panel-heading transaction-manager-head"><div><h2>Correction manager</h2><p>Complete rental, return, booking, payment and expense corrections with protected links and audit history</p></div><button className="secondary-button" onClick={() => void loadTransactions()} disabled={loading || busy}><RefreshCw size={15} className={loading ? "spin" : ""} />Refresh</button></div>
       <div className="transaction-tabs">
         <button className={tab === "rentals" ? "active" : ""} onClick={() => setTab("rentals")}><CalendarRange size={15} />Active rentals <span>{editableRentals.length}</span></button>
