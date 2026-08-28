@@ -7021,3 +7021,107 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   .rental-workflow-actions { grid-template-columns: 1fr; }
   .rental-workflow-actions button { width: 100%; }
 }
+
+
+/* MECARDEE_BOOKING_VEHICLE_SCHEDULE_CSS_V8_9_89 */
+.booking-vehicle-schedule {
+  margin: 1px 0 2px;
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+  border: 1px solid #dce5e2;
+  border-radius: 12px;
+  background: #f8faf9;
+}
+.booking-vehicle-schedule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.booking-vehicle-schedule-head strong { color: #26312f; font-size: 11px; }
+.booking-vehicle-schedule-head small { color: #65716e; font-size: 9px; }
+.booking-vehicle-schedule-head small.available { color: #17765e; font-weight: 800; }
+.booking-vehicle-schedule-list {
+  max-height: 178px;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+  scrollbar-width: thin;
+}
+.booking-vehicle-schedule-row {
+  min-width: 0;
+  padding: 8px 9px;
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+.booking-vehicle-schedule-row > b {
+  font-size: 9px;
+  letter-spacing: .18px;
+  text-transform: uppercase;
+}
+.booking-vehicle-schedule-row.rented > b { color: #b15f18; }
+.booking-vehicle-schedule-row.booked > b { color: #5d51ca; }
+.booking-vehicle-schedule-period {
+  min-width: 0;
+  color: #34413e;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.booking-vehicle-schedule-period i { color: #8b9592; font-style: normal; font-weight: 500; }
+.booking-vehicle-schedule-row > strong {
+  padding: 4px 7px;
+  color: #53605d;
+  background: #f1f4f3;
+  border-radius: 999px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.booking-vehicle-schedule-empty {
+  min-height: 34px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #17765e;
+  background: #f1f8f5;
+  border: 1px solid #d7ebe3;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+@media (max-width: 720px) {
+  .booking-form .booking-vehicle-schedule {
+    padding: 9px;
+    gap: 7px;
+    border-radius: 12px;
+  }
+  .booking-form .booking-vehicle-schedule-head strong { font-size: 12px; }
+  .booking-form .booking-vehicle-schedule-head small { font-size: 10px; }
+  .booking-form .booking-vehicle-schedule-list { max-height: 166px; }
+  .booking-form .booking-vehicle-schedule-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 8px;
+    padding: 9px;
+  }
+  .booking-form .booking-vehicle-schedule-row > b { font-size: 10px; }
+  .booking-form .booking-vehicle-schedule-period {
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+  .booking-form .booking-vehicle-schedule-row > strong {
+    grid-column: 2;
+    justify-self: start;
+    padding: 3px 7px;
+    font-size: 10px;
+  }
+  .booking-form .booking-vehicle-schedule-empty { min-height: 40px; font-size: 11px; }
+}

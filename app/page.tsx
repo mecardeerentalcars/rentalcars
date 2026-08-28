@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_RENTAL_SEGMENT_RETURN_TYPE_FIX_V8_9_89
+
 // MECARDEE_AUTO_LATEST_DEPLOY_V8_9_84
 
 // MECARDEE_PAYMENT_RENTAL_DROPDOWN_V8_9_83
@@ -159,6 +161,8 @@ type RentalSegmentRow = {
   fuelPricePerLitre: number;
   fuelCharge: number;
   dailyRate: number;
+  allowedKmPerDay: number;
+  extraKmRate: number;
   rentalDays: number;
   rentalCharge: number;
   extraKilometers: number;
@@ -3427,6 +3431,47 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
   const [returnDate, setReturnDate] = useState(() => addDays(seed?.date ?? dateInputValue(new Date()), 1));
   const [returnTime, setReturnTime] = useState("10:00");
   const selectedVehicle = bookableVehicles.find((item) => item.id === vehicleId) ?? null;
+  // MECARDEE_BOOKING_VEHICLE_SCHEDULE_V8_9_89
+  const selectedVehicleSchedule = useMemo(() => {
+    if (!selectedVehicle) return [];
+
+    const rentalRows = rentals
+      .filter((rental) => rental.vehicleId === selectedVehicle.id && rental.state !== "completed")
+      .map((rental) => ({
+        key: `rental-${rental.databaseId}`,
+        kind: "Rented" as const,
+        startAt: rental.startAt,
+        endAt: rental.endAt,
+        days: Math.max(1, Number(rental.days) || 1),
+      }));
+
+    const bookingRows = bookings
+      .filter((booking) => booking.vehicleId === selectedVehicle.id && booking.status === "booked")
+      .map((booking) => ({
+        key: `booking-${booking.id}`,
+        kind: "Booked" as const,
+        startAt: booking.startAt,
+        endAt: booking.endAt,
+        days: Math.max(1, Number(booking.days) || 1),
+      }));
+
+    return [...rentalRows, ...bookingRows].sort((left, right) => {
+      const startDifference = new Date(left.startAt).getTime() - new Date(right.startAt).getTime();
+      if (startDifference !== 0) return startDifference;
+      return new Date(left.endAt).getTime() - new Date(right.endAt).getTime();
+    });
+  }, [selectedVehicle?.id, rentals, bookings]);
+
+  const bookingScheduleDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date).replace(/\//g, ".");
+  };
   const [rate, setRate] = useState(initialVehicle?.rate ?? 0);
   const [replacementVehicleId, setReplacementVehicleId] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -3525,7 +3570,7 @@ function NewBookingDialog({ vehicles, guestVehicles, customers, bookings, rental
         <section className="form-section"><div className="form-section-title"><span><UserRound size={17} /></span><div><h3>Customer & vehicle</h3><p>Choose the customer first. A vehicle is prefilled only when booking directly from that vehicle.</p></div></div><div className="field-grid">
           <label className="field"><span>Customer</span><select value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}><option value="">Select customer</option>{createdCustomer && !customers.some((item) => item.phone === createdCustomer.phone) && <option value={createdCustomer.phone}>{customerWithPlace(createdCustomer.name, createdCustomer.city)} — {createdCustomer.phone}</option>}{customers.map((item) => <option value={item.phone} key={item.id}>{customerWithPlace(item.name, item.city)} — {item.phone}</option>)}</select></label>
           <button type="button" className="new-customer" onClick={() => setShowCustomerForm((value) => !value)}><UserRoundPlus size={16} />{showCustomerForm ? "Close" : "Add new customer"}</button>
-          <label className="field span-2"><span>Requested vehicle</span><select value={vehicleId} disabled={!customerPhone && !initialVehicle} onChange={(e) => { setVehicleId(e.target.value); setReplacementVehicleId(""); const v = bookableVehicles.find((item) => item.id === e.target.value); setRate(v?.rate ?? 0); }}><option value="">Select vehicle</option>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate} · {item.status}</option>)}</select><small>{initialVehicle ? "Opened from this vehicle, so it was prefilled. Select the customer to continue." : customerPhone ? "Choose the vehicle the customer originally requested." : "Select the customer first to choose a vehicle."}</small></label>
+          <label className="field span-2"><span>Requested vehicle</span>{selectedVehicle && <div className="booking-vehicle-schedule" aria-label={`${selectedVehicle.name} current and upcoming schedule`}><div className="booking-vehicle-schedule-head"><strong>Vehicle schedule</strong>{selectedVehicleSchedule.length > 0 ? <small>{selectedVehicleSchedule.length} blocked period{selectedVehicleSchedule.length === 1 ? "" : "s"}</small> : <small className="available">Available</small>}</div>{selectedVehicleSchedule.length > 0 ? <div className="booking-vehicle-schedule-list">{selectedVehicleSchedule.map((item) => <div key={item.key} className={`booking-vehicle-schedule-row ${item.kind.toLowerCase()}`}><b>{item.kind}</b><span className="booking-vehicle-schedule-period">{bookingScheduleDate(item.startAt)} <i>→</i> {bookingScheduleDate(item.endAt)}</span><strong>{item.days} day{item.days === 1 ? "" : "s"}</strong></div>)}</div> : <div className="booking-vehicle-schedule-empty"><CheckCircle2 size={14} />No current rental or booking</div>}</div>}<select value={vehicleId} disabled={!customerPhone && !initialVehicle} onChange={(e) => { setVehicleId(e.target.value); setReplacementVehicleId(""); const v = bookableVehicles.find((item) => item.id === e.target.value); setRate(v?.rate ?? 0); }}><option value="">Select vehicle</option>{bookableVehicles.map((item) => <option value={item.id} key={item.id}>{item.name} — {item.plate} · {item.status}</option>)}</select><small>{initialVehicle ? "Opened from this vehicle, so it was prefilled. Select the customer to continue." : customerPhone ? "Choose the vehicle the customer originally requested." : "Select the customer first to choose a vehicle."}</small></label>
         </div></section>
         {requestedConflict && selectedVehicle && <section className="replacement-conflict-panel soft-schedule-conflict"><div className="replacement-conflict-head"><AlertTriangle size={18} /><div><strong>Schedule overlap — vehicle change required</strong><p>{requestedConflict.type === "booking" ? "Booking" : "Rental"} {requestedConflict.label}{requestedConflict.customer ? ` for ${requestedConflict.customer}` : ""} overlaps this period. You may keep {selectedVehicle.name} on this booking. The vehicle only has to be physically available when the rental starts; arrange a Change Vehicle before the collision if needed.</p></div></div><div className="original-booking-context compact"><strong>Keep original booking: {selectedVehicle.name} — {days} Days</strong><span>The existing booking is protected. This new booking will be marked as needing a vehicle change on the overlapping calendar date.</span></div><label className="field"><span>Optional replacement now</span><select value={replacementVehicleId} onChange={(event) => setReplacementVehicleId(event.target.value)}><option value="">Continue with {selectedVehicle.name}</option>{ownAlternatives.length > 0 && <optgroup label="Our available vehicles">{ownAlternatives.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate}</option>)}</optgroup>}{guestAlternatives.length > 0 && <optgroup label="Guest Cars">{guestAlternatives.map((item) => <option key={item.id} value={item.id}>{item.name} — {item.plate} · Guest Car</option>)}</optgroup>}</select><small>{replacementChoices.length ? "Optional: reserve a conflict-free replacement for the complete period now, or continue with the requested vehicle and arrange the change later." : "No complete-period replacement is free now. You can still keep the requested vehicle booking and arrange a change later."}</small></label></section>}
         {showCustomerForm && <section className="form-section"><div className="field-grid"><label className="field"><span>Name</span><input value={newCustomerName} onChange={(e)=>setNewCustomerName(e.target.value)} /></label><label className="field"><span>Phone</span><input inputMode="tel" value={newCustomerPhone} onChange={(e)=>setNewCustomerPhone(e.target.value)} /></label><label className="field"><span>WhatsApp</span><input inputMode="tel" value={newCustomerWhatsapp} onChange={(e)=>setNewCustomerWhatsapp(e.target.value)} /></label><label className="field"><span>Driving licence (optional)</span><input value={newCustomerLicence} onChange={(e)=>setNewCustomerLicence(e.target.value.toUpperCase())} /></label><label className="field span-2"><span>City / place</span><input value={newCustomerCity} onChange={(e)=>setNewCustomerCity(e.target.value)} /></label></div><div className="form-actions"><button type="button" onClick={() => setShowCustomerForm(false)}>Cancel</button><button type="button" className="primary-button" disabled={savingCustomer || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void addCustomerHere()}>{savingCustomer ? "Saving…" : "Save customer"}</button></div></section>}
