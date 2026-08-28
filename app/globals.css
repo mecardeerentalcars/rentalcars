@@ -7292,3 +7292,28 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 .fleet-return-highlight strong.return-tomorrow {
   color: #d46a12 !important;
 }
+
+
+/* MECARDEE_RETURN_PRIORITY_TINT_CSS_V8_9_94
+   Subtle urgency tint for immediate returns only.
+   Today = soft green box, Tomorrow = soft orange box.
+   Normal future dates keep the existing blue/neutral box. */
+.fleet-return-highlight.return-today {
+  border-color: #bfe7d5 !important;
+  background: linear-gradient(180deg, #f2fcf7 0%, #eaf8f1 100%) !important;
+  box-shadow: inset 3px 0 0 rgba(21, 128, 92, .18);
+}
+
+.fleet-return-highlight.return-tomorrow {
+  border-color: #f3d2b4 !important;
+  background: linear-gradient(180deg, #fffaf4 0%, #fff4e8 100%) !important;
+  box-shadow: inset 3px 0 0 rgba(212, 106, 18, .16);
+}
+
+.fleet-return-highlight.return-today small {
+  color: #4c7567 !important;
+}
+
+.fleet-return-highlight.return-tomorrow small {
+  color: #8a6648 !important;
+}

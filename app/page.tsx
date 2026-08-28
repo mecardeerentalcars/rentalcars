@@ -1786,7 +1786,7 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
           <div className={`fleet-card-detail ${key}`}>
             {rental ? <>
               <span className="fleet-card-customer">{customerWithPlace(rental.customer, rental.city)}</span>
-              <span className="fleet-return-highlight">
+              /* MECARDEE_RETURN_PRIORITY_TINT_V8_9_94 */<span className={`fleet-return-highlight ${fleetReturnTone(rental.endAt)}`}>
                 <small>{fleetReturnPrefix(rental.endAt)}</small>
                 <strong className={fleetReturnTone(rental.endAt)}>{fleetReturnDayLabel(rental.endAt)}</strong>
                 <em>{fleetTimeLabel(rental.endAt)}</em>
