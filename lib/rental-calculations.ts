@@ -295,7 +295,11 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     `Rental days: ${input.rentalDays}`,
   ];
 
-  if (input.segments && input.segments.length > 0) {
+  // MECARDEE_SETTLEMENT_MULTI_CAR_ONLY_WHATSAPP_V8_9_98
+  const distinctVehicleCount = new Set(
+    (input.segments ?? []).map((segment) => segment.registrationNumber.trim().toLowerCase()),
+  ).size;
+  if (input.segments && distinctVehicleCount > 1) {
     lines.push("", "Vehicle-wise details:");
     for (const segment of input.segments) {
       lines.push(`Vehicle ${segment.sequence}: ${segment.vehicleName} (${segment.registrationNumber})`);
