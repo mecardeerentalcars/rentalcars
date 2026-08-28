@@ -1725,6 +1725,13 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
 
   const fleetReturnPrefix = (value: string) => fleetReturnRelativeDay(value) ? "Returns" : "Returns on";
   const fleetReturnDayLabel = (value: string) => fleetReturnRelativeDay(value) ?? fleetDayLabel(value);
+  // MECARDEE_RETURN_COLOR_LABELS_V8_9_93
+  const fleetReturnTone = (value: string) => {
+    const relativeDay = fleetReturnRelativeDay(value);
+    if (relativeDay === "Today") return "return-today";
+    if (relativeDay === "Tomorrow") return "return-tomorrow";
+    return "";
+  };
 
   const fleetMomentLabel = (value: string) => {
     const date = new Date(value);
@@ -1781,7 +1788,7 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
               <span className="fleet-card-customer">{customerWithPlace(rental.customer, rental.city)}</span>
               <span className="fleet-return-highlight">
                 <small>{fleetReturnPrefix(rental.endAt)}</small>
-                <strong>{fleetReturnDayLabel(rental.endAt)}</strong>
+                <strong className={fleetReturnTone(rental.endAt)}>{fleetReturnDayLabel(rental.endAt)}</strong>
                 <em>{fleetTimeLabel(rental.endAt)}</em>
               </span>
             </> : reservation ? <>

@@ -7279,3 +7279,16 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
     justify-self: stretch;
   }
 }
+
+
+/* MECARDEE_RETURN_COLOR_LABELS_CSS_V8_9_93
+   Visual priority for immediate vehicle returns:
+   Today = green, Tomorrow = orange.
+   All other return-date styling remains unchanged. */
+.fleet-return-highlight strong.return-today {
+  color: #15805c !important;
+}
+
+.fleet-return-highlight strong.return-tomorrow {
+  color: #d46a12 !important;
+}
