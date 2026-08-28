@@ -481,14 +481,17 @@ function findVehiclePeriodConflict(
   );
   if (booking) return { type: "booking" as const, label: booking.bookingNumber, customer: customerWithPlace(booking.customer, booking.city) };
 
-  const requestedEnd = new Date(endAt).getTime();
+  // MECARDEE_DATE_AWARE_BOOKING_OVERLAP_V8_9_90
+  // A current rental is a conflict only when its scheduled occupancy
+  // actually overlaps the dates currently selected in the booking form.
+  // Back-to-back periods remain valid.
   const rental = rentals.find((item) =>
     item.state !== "completed" &&
     item.databaseId !== excludeBookingId &&
     item.segments.some((segment) =>
       segment.status === "active" &&
       segment.vehicleId === vehicleId &&
-      new Date(segment.startAt).getTime() < requestedEnd
+      periodsOverlap(segment.startAt, item.endAt, startAt, endAt)
     )
   );
   if (rental) return { type: "rental" as const, label: rental.id, customer: customerWithPlace(rental.customer, rental.city) };
