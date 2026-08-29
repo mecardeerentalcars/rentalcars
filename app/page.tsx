@@ -576,6 +576,33 @@ function bookingNeedsVehicleChangeOnDate(booking: BookingRecord, dayKey: string,
   );
 }
 
+// MECARDEE_CALENDAR_ACTIVE_SEGMENT_VEHICLE_V8_9_99
+function rentalCalendarSegmentForDay(booking: BookingRecord, rentals: Rental[], dayKey: string) {
+  if (!["rented", "completed"].includes(booking.status)) return null;
+
+  const rental = rentals.find((item) => item.databaseId === booking.id);
+  if (!rental || !rental.segments.length) return null;
+
+  const dayStart = new Date(`${dayKey}T00:00:00+05:30`).getTime();
+  const dayEndExclusive = dayStart + 86_400_000;
+  const fallbackEndAt = effectiveBookingCalendarEndAt(
+    rental.endAt,
+    booking.status,
+    rental.actualReturnAt,
+  );
+
+  return [...rental.segments]
+    .filter((segment) => {
+      const segmentStart = new Date(segment.startAt).getTime();
+      const segmentEnd = new Date(segment.endAt ?? fallbackEndAt).getTime();
+      return Number.isFinite(segmentStart) &&
+        Number.isFinite(segmentEnd) &&
+        segmentStart < dayEndExclusive &&
+        segmentEnd > dayStart;
+    })
+    .sort((left, right) => new Date(right.startAt).getTime() - new Date(left.startAt).getTime())[0] ?? null;
+}
+
 const blankZero = (value: number) => value === 0 ? "" : value;
 const numberFromInput = (value: string) => value === "" ? 0 : Number(value);
 const selectZeroOnFocus = (event: React.FocusEvent<HTMLInputElement>) => {
@@ -1672,8 +1699,10 @@ function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: Book
               <div className="dashboard-calendar-events">
                 {dayBookings.map((booking) => {
                   const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals);
+                  const calendarSegment = rentalCalendarSegmentForDay(booking, rentals, key);
+                  const calendarVehicle = calendarSegment?.vehicle ?? booking.vehicle;
                   return <span className={`dashboard-calendar-entry ${statusClass(booking)} ${changeRequired ? "change-required" : ""}`} key={booking.id}>
-                    <b>{booking.vehicle}</b>
+                    <b>{calendarVehicle}</b>
                     <small>{customerWithPlace(booking.customer, booking.city)}</small>
                     {changeRequired ? <em>Change</em> : booking.status === "rented" ? <em>Rented</em> : null}
                   </span>;
@@ -1964,7 +1993,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
           const outside = date.getMonth() !== monthStart.getMonth();
           return <div className={`booking-calendar-day ${outside ? "outside" : ""} ${key === today ? "today" : ""}`} key={key}>
             <strong>{date.getDate()}</strong>
-            <div>{dayBookings.map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${booking.vehicle} · ${customerWithPlace(booking.customer, booking.city)}`}><span>{booking.vehicle}</span><small>{customerWithPlace(booking.customer, booking.city)}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}</div>
+            <div>{dayBookings.map((booking) => { const changeRequired = bookingNeedsVehicleChangeOnDate(booking, key, bookings, rentals); const calendarSegment = rentalCalendarSegmentForDay(booking, rentals, key); const calendarVehicle = calendarSegment?.vehicle ?? booking.vehicle; return <button key={booking.id} className={`${bucket(booking).toLowerCase()} ${booking.status === "rented" ? "calendar-rented" : "calendar-booking"} ${changeRequired ? "calendar-change-required" : ""}`} onClick={() => openBooking(booking)} title={`${changeRequired ? "Change required" : booking.status === "rented" ? "Rented" : "Booking"} · ${calendarVehicle} · ${customerWithPlace(booking.customer, booking.city)}`}><span>{calendarVehicle}</span><small>{customerWithPlace(booking.customer, booking.city)}</small>{changeRequired ? <b className="calendar-change-required-tag">Change</b> : booking.status === "rented" ? <b className="calendar-rented-tag">Rented</b> : null}</button>; })}</div>
           </div>;
         })}
       </div>
