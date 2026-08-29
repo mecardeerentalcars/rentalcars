@@ -65,8 +65,9 @@ test("reports vehicle replacements and excludes Guest Car finances", async () =>
   assert.match(page, /Vehicle usage \/ changes/);
   assert.match(page, /KM by vehicle/);
   assert.match(page, /if \(segments\.length <= 1\) return "—"/);
-  assert.match(page, /const changedRentals/);
-  assert.match(page, /headers: \["Vehicle", "Registration", "Rentals", "Total KM", "Rental & KM details", "Change details", "Revenue"\]/);
+  assert.match(page, /const entriesByRental/);
+  assert.match(page, /customerWithPlace\(rental\.customer, rental\.city\)/);
+  assert.match(page, /headers: \["Vehicle", "Registration", "Rental", "Customer", "Rental dates", "KM run", "Change details", "Revenue"\]/);
   assert.doesNotMatch(page, /headers: \["Vehicle", "Registration", "Type", "Customer \/ rental"/);
   assert.match(page, /vehicle\.isGuest \? "\\nGuest Car"/);
   assert.match(page, /vehicle\.isGuest \? "Excluded"/);
@@ -93,8 +94,8 @@ test("keeps settlement, schedule, and report corrections wired through every ent
   assert.match(page, /method: editCompleted \? "PATCH" : "POST"/);
   assert.match(page, /confirmed\.calculation\.amountDue/);
   assert.match(page, /aria-pressed=\{physicalReturnConfirmed\}/);
-  assert.match(page, /manualActualReturnKilometer \?\? automaticReturnKilometer/);
-  assert.match(page, /setManualActualReturnKilometer\(null\)/);
+  assert.match(page, /useState<number>\(savedSettlement\?\.actualReturnKilometer \?\? 0\)/);
+  assert.match(page, /setManualActualReturnKilometer\(0\)/);
   assert.match(extension, /activeSegmentProjection\?\.rentalDays/);
   assert.match(paymentAdmin, /const replacementFlow/);
 });
@@ -130,4 +131,23 @@ test("mobile return controls, vehicle image navigation, and payment report field
   assert.match(page, /async function manualSync\(\).*await refreshData\(\);.*window\.location\.reload\(\);/s);
   assert.match(styles, /MECARDEE_STICKY_COMPACT_MOBILE_DASHBOARD/);
   assert.match(styles, /\.mobile-search-slot \{.*position: sticky/s);
+});
+
+test("change-vehicle KM, rate, and Guest Car report controls stay connected", async () => {
+  const [page, styles, changeVehicle] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/rentals/change-vehicle/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /const \[endingKilometer, setEndingKilometer\] = useState\(0\)/);
+  assert.match(page, /Total run KM/);
+  assert.match(page, /nextStartingFuelRangeKm, nextDailyRate/);
+  assert.match(page, /setNextDailyRate\(nextVehicle\.rate\)/);
+  assert.match(changeVehicle, /dailyRate: nextDailyRate/);
+  assert.match(changeVehicle, /New vehicle daily rate must be greater than zero/);
+  const guestReport = page.match(/function GuestCarsView[\s\S]*?function customerPhoneKey/)?.[0] ?? "";
+  assert.doesNotMatch(guestReport, /View rental/);
+  assert.match(guestReport, /guest-return-value/);
+  assert.match(styles, /\.guest-usage-values \.guest-return-value/);
 });

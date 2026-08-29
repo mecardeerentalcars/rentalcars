@@ -1,6 +1,7 @@
 // MECARDEE_LOCKED_RENTAL_EXPENSE_UI_V8_9_82
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
+// MECARDEE_SMART_REMINDERS_SETTLEMENT_DUE_V8_9_100
 import { requireReadAccess } from "@/lib/mecardee-auth";
 // MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
@@ -754,6 +755,8 @@ export async function GET() {
       // Customer-facing rental.balance remains the real amount due and is still used by settlement/reminders.
       const businessOutstandingRentals = rentals.filter((rental) => rental.businessBalance > 0);
       const outstanding = roundMoney(businessOutstandingRentals.reduce((sum, rental) => sum + rental.businessBalance, 0));
+      const settledBusinessOutstandingRentals = businessOutstandingRentals.filter((rental) => rental.state === "completed");
+      const settledOutstanding = roundMoney(settledBusinessOutstandingRentals.reduce((sum, rental) => sum + rental.businessBalance, 0));
       const availableCars = ownVehicleDtos.filter((vehicle) => vehicle.statusKey === "available").length;
       const maintenanceCars = ownVehicleDtos.filter((vehicle) => vehicle.statusKey === "maintenance").length;
       const onRentCars = ownVehicleDtos.filter((vehicle) => ["rented", "today", "overdue"].includes(vehicle.statusKey)).length;
@@ -801,6 +804,38 @@ export async function GET() {
       for (const rental of returningToday) {
         reminders.push({ key: `today:${rental.id}`, tone: "upcoming", type: "today", title: `${rental.vehicle} returns today`, text: rental.returnDate, rentalId: rental.id });
       }
+      // MECARDEE_SMART_REMINDERS_SETTLEMENT_DUE_V8_9_100
+      const settledPaymentDue = rentals
+        .filter((rental) => rental.state === "completed" && rental.balance > 0)
+        .sort((a, b) => b.balance - a.balance);
+      for (const rental of settledPaymentDue) {
+        const place = rental.city && rental.city !== "—" ? ` · ${rental.city}` : "";
+        reminders.push({
+          key: `settled-payment:${rental.databaseId}`,
+          tone: "normal",
+          type: "payment",
+          title: `Payment pending · ${rental.customer}`,
+          text: `${rental.id}${place} · ₹${rental.balance.toLocaleString("en-IN")} due after settlement`,
+          rentalId: rental.id,
+        });
+      }
+
+      for (const rental of activeRentals) {
+        if (!rental.isGuestCurrent || !rental.replacementUsed) continue;
+        const originalVehicle = ownVehicleDtos.find(
+          (vehicle) => vehicle.id === rental.originalVehicleId && vehicle.statusKey === "available",
+        );
+        if (!originalVehicle) continue;
+        const place = rental.city && rental.city !== "—" ? ` · ${rental.city}` : "";
+        reminders.push({
+          key: `replacement-ready:${rental.databaseId}:${originalVehicle.id}`,
+          tone: "upcoming",
+          type: "replacement",
+          title: `${originalVehicle.name} is available to replace Guest Car`,
+          text: `${rental.customer}${place} · currently using ${rental.vehicle}`,
+          rentalId: rental.id,
+        });
+      }
       for (const reservation of reservations) {
         const pickupAt = new Date(reservation.startAt);
         const daysUntilBooking = calendarDayDistance(today, dateKey(pickupAt));
@@ -829,8 +864,7 @@ export async function GET() {
           reservationId: reservation.id,
         });
       }
-      // Current active rental amounts are operational values, not reminder "dues".
-      // Payment-pending reminders are intentionally omitted from Dashboard reminders.
+      // Active rental balances are not treated as payment reminders. Only completed settlements with a remaining customer balance are payment-due reminders.
       for (const document of documentRows) {
         if (!document.expiryDate) continue;
         const vehicle = vehicleRows.find((row) => row.id === document.vehicleId);
@@ -854,7 +888,7 @@ export async function GET() {
         customers: customerDtos,
         payments: paymentDtos,
         expenses: expenseDtos,
-        reminders: reminders.slice(0, 8),
+        reminders: reminders.slice(0, 12),
         metrics: {
           totalCars: ownVehicleDtos.length,
           availableCars,
@@ -867,6 +901,9 @@ export async function GET() {
           outstanding,
           outstandingRentals: businessOutstandingRentals.length,
           outstandingCustomers: new Set(businessOutstandingRentals.map((rental) => rental.customerId)).size,
+          settledOutstanding,
+          settledOutstandingRentals: settledBusinessOutstandingRentals.length,
+          settledOutstandingCustomers: new Set(settledBusinessOutstandingRentals.map((rental) => rental.customerId)).size,
           totalCustomers: customerDtos.length,
           newCustomersThisMonth,
           currentlyRentingCustomers: new Set(activeRentals.map((rental) => rental.customerId)).size,

@@ -2585,7 +2585,7 @@ body { font-size: 15px; line-height: 1.45; }
 .guest-usage-head,
 .guest-usage-row {
   display: grid;
-  grid-template-columns: minmax(130px, 1.05fr) minmax(145px, 1.15fr) minmax(180px, 1.35fr) minmax(125px, .9fr) minmax(110px, .75fr) auto;
+  grid-template-columns: minmax(130px, 1fr) minmax(145px, 1.08fr) minmax(190px, 1.35fr) minmax(175px, 1.2fr) minmax(110px, .7fr);
   gap: 10px;
   align-items: center;
 }
@@ -2608,6 +2608,11 @@ body { font-size: 15px; line-height: 1.45; }
 .guest-usage-row small { display: block; }
 .guest-usage-row strong { color: var(--ink); font-size: 10px; overflow-wrap: anywhere; }
 .guest-usage-row small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.35; }
+.guest-usage-values { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; align-items: baseline; }
+.guest-usage-values small { margin-top: 0; font-weight: 750; }
+.guest-usage-values strong { margin: 0; }
+.guest-usage-values .guest-return-value { font-size: 11px; font-weight: 900; }
+.guest-usage-values .guest-total-run { color: var(--green); font-size: 11px; font-weight: 900; }
 .guest-usage-row > button {
   min-height: 32px;
   padding: 0 9px;
@@ -4529,8 +4534,17 @@ body { font-size: 15px; line-height: 1.45; }
    Change Vehicle: allowed KM + return fuel + segment amount preview. */
 
 .change-segment-preview-v43 {
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
 }
+
+.total-run-preview {
+  border: 1px solid #cfe5db;
+  background: #edf8f3 !important;
+}
+
+.total-run-preview small { color: #467766 !important; font-weight: 800; }
+.total-run-preview strong,
+.total-run-preview b { color: #246a50 !important; font-weight: 900; }
 
 .change-segment-preview-v43 .segment-total-preview {
   border: 1px solid #d9d5ff;
@@ -7316,4 +7330,68 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 
 .fleet-return-highlight.return-tomorrow small {
   color: #8a6648 !important;
+}
+
+
+/* MECARDEE_COMPLETED_CALENDAR_TAGS_CSS_V8_9_100
+   Completed rental periods get the same compact status-label treatment as
+   active Rented periods, while retaining the existing completed blue colour. */
+
+.booking-legend-completed i {
+  background: #2c69a5;
+  border: 1px solid #2c69a5;
+}
+
+.booking-calendar-day button.completed {
+  position: relative;
+  padding-right: 49px;
+}
+
+.calendar-completed-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #2c69a5;
+  color: #fff;
+  font-size: 5.5px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.dashboard-calendar-entry.completed {
+  padding-right: 45px;
+}
+
+.dashboard-calendar-entry.completed em.completed-calendar-tag {
+  background: #2c69a5;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+  .booking-calendar-day button.completed {
+    padding-right: 3px !important;
+  }
+
+  .calendar-completed-tag {
+    position: static;
+    display: block;
+    width: fit-content;
+    margin-top: 2px;
+    padding: 1px 3px;
+    font-size: 4.8px;
+  }
+
+  .dashboard-calendar-entry.completed {
+    padding-right: 2px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .calendar-completed-tag {
+    font-size: 4.5px;
+  }
 }

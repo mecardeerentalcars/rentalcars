@@ -225,7 +225,7 @@ test("default return kilometer follows the allowance for the selected return tim
   assert.equal(calculateExpectedReturnKilometer(startKilometer, projection.rentalDays, 100), 54_008);
 });
 
-test("customer settlement names every vehicle without exposing Guest Car classification", () => {
+test("one-vehicle customer settlement stays concise without exposing Guest Car classification", () => {
   const calculation = calculateSettlement({
     baseRentalAmount: 1_300,
     rentalDays: 1,
@@ -275,9 +275,11 @@ test("customer settlement names every vehicle without exposing Guest Car classif
     }],
   });
 
-  assert.match(message, /Vehicle 1: Toyota Taisor \(KL 35 N 6181\)/);
-  assert.match(message, /Odometer: 18165 km to 18526 km \(361 km used\)/);
+  assert.match(message, /Vehicle: Toyota Taisor \(KL 35 N 6181\)/);
+  assert.match(message, /Starting kilometer: 18165 km/);
+  assert.match(message, /Actual return kilometer: 18526 km/);
   assert.match(message, /Extra kilometers: 261 km/);
-  assert.match(message, /Fuel range: 110 km to 1 km/);
+  assert.match(message, /Starting fuel range: 110 km/);
+  assert.match(message, /Return fuel range: 1 km/);
   assert.doesNotMatch(message, /Guest Car/i);
 });

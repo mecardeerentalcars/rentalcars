@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     const nextVehicleId = text(body.nextVehicleId, "Replacement vehicle");
     const nextStartingKilometer = whole(body.nextStartingKilometer, "New vehicle starting kilometer");
     const nextStartingFuelRangeKm = whole(body.nextStartingFuelRangeKm ?? 0, "New vehicle starting fuel range");
+    const requestedNextDailyRate = body.nextDailyRate;
 
     const result = await withRequestDb((db) => db.transaction(async (tx) => {
       const [booking] = await tx.select().from(bookings).where(eq(bookings.bookingNumber, bookingNumber)).limit(1).for("update");
@@ -50,6 +51,10 @@ export async function POST(request: Request) {
       const [nextVehicle] = await tx.select().from(vehicles).where(eq(vehicles.id, nextVehicleId)).limit(1).for("update");
       if (!nextVehicle) throw new RequestError("Replacement vehicle was not found.", 404);
       if (["inactive", "maintenance"].includes(nextVehicle.status)) throw new RequestError("Selected vehicle is not available for rental.", 409);
+      const nextDailyRate = requestedNextDailyRate === undefined || requestedNextDailyRate === null
+        ? nextVehicle.dailyRate
+        : amount(requestedNextDailyRate, "New vehicle daily rate");
+      if (nextDailyRate <= 0) throw new RequestError("New vehicle daily rate must be greater than zero.");
 
       // The next segment only requires the vehicle to be free at changeAt.
       // A later booking remains untouched; staff can change vehicle again before it.
@@ -131,7 +136,7 @@ export async function POST(request: Request) {
         startAt: changeAt,
         startingKilometer: nextStartingKilometer,
         startingFuelRangeKm: nextStartingFuelRangeKm,
-        dailyRate: nextVehicle.dailyRate,
+        dailyRate: nextDailyRate,
         rentalDays: 1,
         rentalCharge: 0,
         allowedKmPerDay: nextVehicle.allowedKmPerDay,
@@ -151,6 +156,7 @@ export async function POST(request: Request) {
         finishedTotal: segmentTotal,
         nextVehicle: nextVehicle.name,
         nextVehicleGuest: nextVehicle.isGuest,
+        nextDailyRate,
       };
     }));
 
