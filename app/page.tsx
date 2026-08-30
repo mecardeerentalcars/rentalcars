@@ -1,6 +1,8 @@
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 "use client";
 
+// MECARDEE_PAYMENT_REMINDER_OPEN_PENDING_PAYMENTS_V8_9_101
+
 // MECARDEE_SMART_REMINDERS_SETTLEMENT_DUE_COMPLETED_TAGS_V8_9_100
 
 // MECARDEE_FUEL_RETURN_DEFAULTS_SETTLEMENT_WHATSAPP_FINAL_V8_9_98
@@ -1592,11 +1594,11 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
     </section>
     <section className="side-card dashboard-reminders-inline">
           <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div></div>
-          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} type={reminder.type} title={reminder.title} text={reminder.text} action={reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
+          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} type={reminder.type} title={reminder.title} text={reminder.text} action={reminder.type === "payment" ? openPendingPayments : reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
           {reminders.length > 3 && <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>}
         </section>
     <section className="dashboard-status-line" aria-label="Fleet summary">{stats.map((stat) => <span key={stat.shortLabel}><small>{stat.shortLabel}</small><strong>{stat.value}</strong></span>)}</section>
-    <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
+    <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.type === "payment") return openPendingPayments(); if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
     <div className="dashboard-layout">
       <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} sendBookingWhatsApp={sendBookingWhatsApp} />
       <aside className="dashboard-side">
