@@ -121,7 +121,7 @@ test("active notifications refresh, resolve from current data, and only render b
   assert.match(page, /document\.addEventListener\("visibilitychange", refreshWhenVisible\)/);
   assert.match(page, /window\.addEventListener\("online", refreshWhenVisible\)/);
   assert.match(page, /No active notifications right now\./);
-  assert.equal(page.match(/reminders=\{reminders\}/g)?.length, 1, "notifications should only be passed to the bell panel");
+  assert.equal(page.match(/reminders=\{reminders\}/g)?.length, 2, "reminders should render in dashboard and bell panel");
   assert.doesNotMatch(page, /NotificationHistory|notificationHistory|Smart reminders/);
 
   assert.match(snapshot, /rental\.state === "completed" && rental\.balance > 0/);

@@ -1438,7 +1438,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
+          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
           {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
@@ -1512,7 +1512,7 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, openRental, openVehicle, openReservation, openBooking, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
+function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const [dashboardCalendarOpen, setDashboardCalendarOpen] = useState(false);
   // MECARDEE_DYNAMIC_GREETING_BUTTON_SIZE_V8_9_52
   // Greeting follows the browser/device local time.
@@ -1595,6 +1595,51 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
       <div className="booking-brief-footer">
         <button type="button" onClick={openPendingPayments}><IndianRupee size={15} /><span>Pending payments</span><strong>{money(settledPendingAmount)}</strong><ArrowRight size={15} /></button>
       </div>
+    </section>
+    <section className="side-card dashboard-reminders-inline">
+      <div className="side-card-title">
+        <div>
+          <h3>Reminders</h3>
+          <span>{reminders.length} active</span>
+        </div>
+      </div>
+
+      {reminders.slice(0, 3).map((reminder) =>
+        <Reminder
+          key={reminder.key}
+          tone={reminder.tone}
+          icon={reminderIcon(reminder.type)}
+          type={reminder.type}
+          title={reminder.title}
+          text={reminder.text}
+          action={
+            reminder.type === "payment"
+              ? openPendingPayments
+              : reminder.reservationId
+                ? () => {
+                    const booking = reservations.find((item) => item.id === reminder.reservationId);
+                    if (booking) openReservation(booking);
+                  }
+                : reminder.rentalId
+                  ? () => {
+                      const rental = rentals.find((item) => item.id === reminder.rentalId);
+                      if (rental) openRental(rental);
+                    }
+                  : reminder.vehicleId
+                    ? () => {
+                        const vehicle = vehicles.find((item) => item.id === reminder.vehicleId);
+                        if (vehicle) openVehicle(vehicle);
+                      }
+                    : undefined
+          }
+        />
+      )}
+
+      {reminders.length > 3 &&
+        <button className="full-link" onClick={openNotifications}>
+          View all reminders <ChevronRight size={15} />
+        </button>
+      }
     </section>
     <section className="dashboard-status-line" aria-label="Fleet summary">{stats.map((stat) => <span key={stat.shortLabel}><small>{stat.shortLabel}</small><strong>{stat.value}</strong></span>)}</section>
     <div className="dashboard-layout">
@@ -1857,6 +1902,10 @@ function ReminderCopy({ type, text }: { type: string; text: string }) {
     {(customer || place) && <span className="booking-reminder-person">{customer}{customer && place ? " \u00b7 " : ""}{place}</span>}
   </small>;
 }
+function Reminder({ tone, icon: Icon, type, title, text, action }: { tone: string; icon: LucideIcon; type: string; title: string; text: string; action?: () => void }) {
+  return <button className={`reminder ${tone}`} onClick={action}><span><Icon size={15} /></span><div><strong>{title}</strong><ReminderCopy type={type} text={text} /></div><ChevronRight size={15} /></button>;
+}
+
 function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, startBooking, sendWhatsApp, newBooking }: { bookings: BookingRecord[]; rentals: Rental[]; vehicles: Vehicle[]; openBooking: (booking: BookingRecord) => void; editBooking: (booking: BookingRecord) => void; startBooking: (booking: BookingRecord) => void; sendWhatsApp: (booking: BookingRecord) => void; newBooking: () => void }) {
   const [mode, setMode] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState("All");
