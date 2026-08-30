@@ -1,6 +1,6 @@
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireWriteAccess } from "@/lib/mecardee-auth";
 import { eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { bookings, expenses, vehicles } from "@/db/schema";

@@ -1,8 +1,8 @@
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireWriteAccess } from "@/lib/mecardee-auth";
 import { and, eq, gt, lt, ne } from "drizzle-orm";
-import { DatabaseConfigurationError, withRequestDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb, type AppDb } from "@/db";
 import { bookings, customers, payments, rentalSegments, vehicles } from "@/db/schema";
 import { nextSimpleBookingNumber } from "@/lib/simple-booking-number";
 import { calculateExpectedReturnKilometer, rentalDaysFromSchedule } from "@/lib/rental-calculations";
@@ -34,7 +34,9 @@ const optionalText = (value: unknown) => typeof value === "string" && value.trim
 const amount = (value: unknown, field: string) => { const number = Number(value); if (!Number.isFinite(number) || number < 0) throw new RequestError(`${field} must be zero or greater.`); return Math.round(number * 100) / 100; };
 const wholeNumber = (value: unknown, field: string, minimum = 0) => { const number = Number(value); if (!Number.isInteger(number) || number < minimum) throw new RequestError(`${field} must be a whole number of at least ${minimum}.`); return number; };
 const date = (value: unknown, field: string) => { const result = new Date(text(value, field)); if (Number.isNaN(result.getTime())) throw new RequestError(`${field} is invalid.`); return result; };
-async function vehicleConflict(tx: any, vehicleId: string, startAt: Date, endAt: Date, excludeBookingId?: string) {
+type AppTransaction = Parameters<Parameters<AppDb["transaction"]>[0]>[0];
+
+async function vehicleConflict(tx: AppTransaction, vehicleId: string, startAt: Date, endAt: Date, excludeBookingId?: string) {
   const bookedWhere = excludeBookingId
     ? and(eq(bookings.vehicleId, vehicleId), eq(bookings.status, "booked"), ne(bookings.id, excludeBookingId), lt(bookings.startAt, endAt), gt(bookings.endAt, startAt))
     : and(eq(bookings.vehicleId, vehicleId), eq(bookings.status, "booked"), lt(bookings.startAt, endAt), gt(bookings.endAt, startAt));

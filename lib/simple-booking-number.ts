@@ -1,9 +1,9 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQLWrapper } from "drizzle-orm";
 
 export type BookingNumberPrefix = "BKG" | "RNT" | "DRF";
 
 type SqlExecutor = {
-  execute: (query: any) => Promise<unknown>;
+  execute: (query: SQLWrapper) => Promise<unknown>;
 };
 
 function rowsOf(result: unknown): Record<string, unknown>[] {

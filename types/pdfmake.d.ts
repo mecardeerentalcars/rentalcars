@@ -1,9 +1,9 @@
 declare module "pdfmake/build/pdfmake" {
-  const pdfMake: any;
+  const pdfMake: unknown;
   export default pdfMake;
 }
 
 declare module "pdfmake/build/vfs_fonts" {
-  const pdfFonts: any;
+  const pdfFonts: unknown;
   export default pdfFonts;
 }

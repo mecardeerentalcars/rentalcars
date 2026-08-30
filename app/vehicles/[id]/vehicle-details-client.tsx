@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays, Camera, CarFront, CircleDollarSign, FileCheck2, Fuel, Gauge, IndianRupee,
+  CalendarDays, CarFront, FileCheck2, Fuel, Gauge, IndianRupee,
   Pencil, Save, Settings2, ShieldCheck, Wrench,
 } from "lucide-react";
 import { compressVehicleImage } from "@/lib/client-image";

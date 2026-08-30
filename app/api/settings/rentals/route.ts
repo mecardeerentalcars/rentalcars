@@ -5,7 +5,7 @@ import { requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb, type AppDb } from "@/db";
 import { bookings, customers, payments, rentalExtensions, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
-import { calculateExpectedReturnKilometer } from "@/lib/rental-calculations";
+import { calculateExpectedReturnKilometer, rentalDaysFromSchedule } from "@/lib/rental-calculations";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
 
 type AnyRow = Record<string, unknown>;
@@ -203,7 +203,7 @@ export async function PATCH(request: Request) {
             )).limit(1);
           if (activeConflict) throw new RequestError(`The corrected rental conflicts with active rental ${activeConflict.number}.`, 409);
 
-          const rentalDays = Math.max(1, Math.ceil((endAt.getTime() - startAt.getTime()) / 86_400_000));
+          const rentalDays = rentalDaysFromSchedule(startAt, endAt);
           const activeProjection = calculateSegmentCharge({
             startAt: segmentStartAt,
             endAt,
@@ -318,7 +318,7 @@ export async function PATCH(request: Request) {
           )).limit(1);
         if (rentalOverlap) throw new RequestError(`The corrected schedule overlaps active rental ${rentalOverlap.number}.`, 409);
 
-        const rentalDays = Math.max(1, Math.ceil((endAt.getTime() - startAt.getTime()) / 86_400_000));
+        const rentalDays = rentalDaysFromSchedule(startAt, endAt);
         const replacementFlow = segments.length > 1 || (segments.length === 1 && segments[0]?.vehicleId !== booking.requestedVehicleId);
         let baseRentalAmount: number;
         let expectedReturnKilometer = booking.expectedReturnKilometer;

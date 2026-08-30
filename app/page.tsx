@@ -71,7 +71,7 @@
 
 // MECARDEE_CURRENT_RENTAL_BALANCE_LABEL_V8_9_20
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   buildSettlementWhatsAppMessage,
@@ -85,7 +85,7 @@ import {
 } from "@/lib/rental-calculations";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
 import { effectiveBookingCalendarEndAt } from "@/lib/booking-calendar";
-import VehicleDetailsClient, { type VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
+import type { VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
 import {
   AlertTriangle,
@@ -124,7 +124,6 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  TrendingDown,
   TrendingUp,
   Trash2,
   UserRound,
@@ -134,12 +133,8 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
 
-const pdfMakeClient = pdfMake as any;
-if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addVirtualFileSystem(pdfFonts);
-else pdfMakeClient.vfs = pdfFonts;
+const VehicleDetailsClient = lazy(() => import("@/app/vehicles/[id]/vehicle-details-client"));
 
 type View = "dashboard" | "rentals" | "bookings" | "vehicles" | "guest-cars" | "customers" | "payments" | "accounts" | "reports" | "settings";
 type UserRole = "superadmin" | "owner" | "viewer";
@@ -402,8 +397,7 @@ type TransactionManagerData = {
   ok: boolean; error?: string; payments: ManagedPaymentTransaction[]; expenses: ManagedExpenseTransaction[]; history: DeletedTransactionHistory[];
 };
 
-type ReminderRow = { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string };
-type NotificationHistoryItem = ReminderRow & { readAt: string };
+type ReminderRow = { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string; vehicleId?: string };
 
 type Metrics = {
   totalCars: number; availableCars: number; onRentCars: number; maintenanceCars: number; roadReadyPercent: number; activeRentals: number; returningToday: number; overdue: number; outstanding: number; outstandingRentals: number; outstandingCustomers: number; settledOutstanding: number; settledOutstandingRentals: number; settledOutstandingCustomers: number; totalCustomers: number; newCustomersThisMonth: number; currentlyRentingCustomers: number; collectedToday: number; paymentsToday: number; expensesToday: number; netToday: number; collectedMonth: number; collectedLastMonth: number; collectionChangePercent: number; rentalRevenueMonth: number; expensesMonth: number; netIncomeMonth: number; depositsHeld: number; twelveMonthCollected: number; monthlyCollected: { key: string; label: string; amount: number }[];
@@ -449,7 +443,7 @@ function dateInputValue(value: Date) {
 
 function indiaDateKey(value: string | Date) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(value));
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const map = parts.reduce<Record<string, string>>((result, part) => { result[part.type] = part.value; return result; }, {});
   return `${map.year}-${map.month}-${map.day}`;
 }
 
@@ -459,7 +453,7 @@ function formatIndiaWhen(value: string | Date) {
 
 function indiaDateTimeParts(value: string) {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(value));
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const map = parts.reduce<Record<string, string>>((result, part) => { result[part.type] = part.value; return result; }, {});
   return { date: `${map.year}-${map.month}-${map.day}`, time: `${map.hour}:${map.minute}` };
 }
 
@@ -665,7 +659,6 @@ export default function Home() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [seenNotificationKeys, setSeenNotificationKeys] = useState<string[]>([]);
   const [readNotificationKeys, setReadNotificationKeys] = useState<string[]>([]);
-  const [notificationHistory, setNotificationHistory] = useState<NotificationHistoryItem[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileQuickCreateOpen, setMobileQuickCreateOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -721,21 +714,38 @@ export default function Home() {
     }
   }, [showToast]);
 
-  useEffect(() => { if (!sessionUser) return; void refreshData(); }, [refreshData, sessionUser]);
+  useEffect(() => {
+    if (!sessionUser) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshData({ silent: true });
+    };
+    void refreshData();
+    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+    };
+  }, [refreshData, sessionUser]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    document.body.classList.add("mecardee-client-ready");
+    return () => document.body.classList.remove("mecardee-client-ready");
+  }, [authReady]);
 
   // MECARDEE_MOBILE_LAST_EDITS_V8_9_23
   useEffect(() => {
     try {
       const seen = JSON.parse(localStorage.getItem("mecardee-notifications-seen-v1") || "[]");
       const read = JSON.parse(localStorage.getItem("mecardee-notifications-read-v1") || "[]");
-      const history = JSON.parse(localStorage.getItem("mecardee-notifications-history-v1") || "[]");
       if (Array.isArray(seen)) setSeenNotificationKeys((seen as unknown[]).filter((value): value is string => typeof value === "string").slice(-200));
       if (Array.isArray(read)) setReadNotificationKeys((read as unknown[]).filter((value): value is string => typeof value === "string").slice(-200));
-      if (Array.isArray(history)) setNotificationHistory((history as NotificationHistoryItem[]).slice(0, 10));
     } catch {
       localStorage.removeItem("mecardee-notifications-seen-v1");
       localStorage.removeItem("mecardee-notifications-read-v1");
-      localStorage.removeItem("mecardee-notifications-history-v1");
     }
   }, []);
 
@@ -984,11 +994,6 @@ export default function Home() {
       localStorage.setItem("mecardee-notifications-read-v1", JSON.stringify(next));
       return next;
     });
-    setNotificationHistory((current) => {
-      const next = [{ ...reminder, readAt: new Date().toISOString() }, ...current.filter((item) => item.key !== reminder.key)].slice(0, 10);
-      localStorage.setItem("mecardee-notifications-history-v1", JSON.stringify(next));
-      return next;
-    });
   }
 
   function goTo(next: View) {
@@ -1086,7 +1091,7 @@ export default function Home() {
     const digits = (booking.whatsappNumber || booking.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const label = booking.status === "cancelled" ? "Booking update" : "Booking confirmation";
-    const text = `Mecardee Rental — ${label}\n\nHello ${customerWithPlace(booking.customer, booking.city)},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nBooking amount: ${money(booking.amount)}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replaceAll("_", " ")}\n\nPlease reply if any detail needs correction.`;
+    const text = `Mecardee Rental — ${label}\n\nHello ${customerWithPlace(booking.customer, booking.city)},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nBooking amount: ${money(booking.amount)}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replace(/_/g, " ")}\n\nPlease reply if any detail needs correction.`;
     openWhatsAppSafely(phone, text);
   }
 
@@ -1265,7 +1270,7 @@ export default function Home() {
 
   function exportPayments() {
     if (!paymentList.length) return showToast("No payments to export.");
-    const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentList.map((payment) => [payment.id, customerWithPlace(payment.customer, payment.place), payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
     const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -1382,7 +1387,7 @@ export default function Home() {
           <h1>Welcome back</h1>
           <p>Sign in to continue to Rental Manager.</p>
           <form className="mecardee-auth-form" onSubmit={handleUserLogin}>
-            <label><span>Username</span><input name="username" autoComplete="username" autoCapitalize="none" required autoFocus /></label>
+            <label><span>Username</span><input name="username" autoComplete="username" autoCapitalize="none" required /></label>
             <label><span>Password</span><input name="password" type="password" autoComplete="current-password" required /></label>
             {authError && <p className="mecardee-auth-error">{authError}</p>}
             <button className="primary-button" type="submit" disabled={authBusy}>{authBusy ? "Signing in..." : "Sign in"}</button>
@@ -1417,7 +1422,7 @@ export default function Home() {
             <button className="icon-button mobile-sync-button" onClick={() => void manualSync()} aria-label="Sync latest data"><RefreshCw size={18} className={syncing ? "spin" : ""} /></button>
             <div className="notification-wrap" ref={notificationRef}>
               <button className="icon-button" onClick={toggleNotificationsPanel} aria-label="Notifications"><Bell size={18} />{reminders.some((reminder) => !seenNotificationKeys.includes(reminder.key)) && <span className="notification-dot" />}</button>
-              {notificationsOpen && <Notifications reminders={reminders} history={notificationHistory} readKeys={readNotificationKeys} onClose={() => setNotificationsOpen(false)} markRead={markNotificationRead} openRental={openRentalById} openReservation={openReservationById} />}
+              {notificationsOpen && <Notifications reminders={reminders} readKeys={readNotificationKeys} onClose={() => setNotificationsOpen(false)} markRead={markNotificationRead} openRental={openRentalById} openReservation={openReservationById} openVehicle={(vehicleId) => { const vehicle = [...vehicleList, ...guestVehicleList].find((item) => item.id === vehicleId); if (vehicle) openVehicle(vehicle); }} />}
             </div>
             <button className="primary-button" onClick={() => openNewRental()}><Plus size={17} /> New rental</button>
           </div>
@@ -1433,7 +1438,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
+          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
           {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
           {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
           {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
@@ -1470,7 +1475,7 @@ export default function Home() {
       {dialog === "customer-edit" && selectedCustomer && <CustomerEditDialog customer={selectedCustomer} close={() => { setDialog(null); setSelectedCustomer(null); }} done={(message) => { setDialog(null); setSelectedCustomer(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "guest-vehicle" && <VehicleDialog guest close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
-      {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded startEditing={vehicleEditOnOpen} initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></DialogShell>}
+      {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><Suspense fallback={<div className="dialog-loading">Loading vehicle profile…</div>}><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded startEditing={vehicleEditOnOpen} initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></Suspense></DialogShell>}
       {dialog === "expense" && <ExpenseDialog vehicles={[...vehicleList, ...guestVehicleList]} rentals={rentalList} seedRentalId={expenseSeedRentalId} currentUser={sessionUser} close={() => { setExpenseSeedRentalId(null); setDialog(null); }} done={(message) => { setExpenseSeedRentalId(null); setDialog(null); showToast(message); void refreshData(); }} />}
       {toast && <div className="toast"><CheckCircle2 size={18} /><span>{toast}</span></div>}
     </div>
@@ -1507,8 +1512,7 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNotifications, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
-  const focus = rentals.find((rental) => rental.state === "overdue") ?? rentals.find((rental) => rental.state === "today") ?? rentals.find((rental) => rental.state !== "completed");
+function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, openRental, openVehicle, openReservation, openBooking, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const [dashboardCalendarOpen, setDashboardCalendarOpen] = useState(false);
   // MECARDEE_DYNAMIC_GREETING_BUTTON_SIZE_V8_9_52
   // Greeting follows the browser/device local time.
@@ -1592,13 +1596,7 @@ function Dashboard({ userName, rentals, reservations, bookings, vehicles, metric
         <button type="button" onClick={openPendingPayments}><IndianRupee size={15} /><span>Pending payments</span><strong>{money(settledPendingAmount)}</strong><ArrowRight size={15} /></button>
       </div>
     </section>
-    <section className="side-card dashboard-reminders-inline">
-          <div className="side-card-title"><div><h3>Reminders</h3><span>{reminders.length} active</span></div></div>
-          {reminders.slice(0, 3).map((reminder) => <Reminder key={reminder.key} tone={reminder.tone} icon={reminderIcon(reminder.type)} type={reminder.type} title={reminder.title} text={reminder.text} action={reminder.type === "payment" ? openPendingPayments : reminder.reservationId ? () => { const booking = reservations.find((item) => item.id === reminder.reservationId); if (booking) openReservation(booking); } : reminder.rentalId ? () => { const rental = rentals.find((item) => item.id === reminder.rentalId); if (rental) openRental(rental); } : undefined} />)}
-          {reminders.length > 3 && <button className="full-link" onClick={openNotifications}>View all reminders <ChevronRight size={15} /></button>}
-        </section>
     <section className="dashboard-status-line" aria-label="Fleet summary">{stats.map((stat) => <span key={stat.shortLabel}><small>{stat.shortLabel}</small><strong>{stat.value}</strong></span>)}</section>
-    <section className="attention-card"><div className="attention-icon"><AlertTriangle size={18} /></div><div><strong>{reminders.length} item{reminders.length === 1 ? "" : "s"} need your attention</strong><p>{reminders[0]?.title ?? "No urgent rental issues right now."}</p></div><button disabled={!reminders.length && !focus} onClick={() => { const first = reminders[0]; if (first?.type === "payment") return openPendingPayments(); if (first?.reservationId) { const booking = reservations.find((item) => item.id === first.reservationId); if (booking) return openReservation(booking); } if (first?.rentalId) { const rental = rentals.find((item) => item.id === first.rentalId); if (rental) return openRental(rental); } if (focus) openRental(focus); }}>Review now <ArrowRight size={14} /></button></section>
     <div className="dashboard-layout">
       <FleetStatusPanel vehicles={vehicles} rentals={rentals} reservations={reservations} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBooking} sendBookingWhatsApp={sendBookingWhatsApp} />
       <aside className="dashboard-side">
@@ -1667,8 +1665,8 @@ function DashboardBookingCalendar({ bookings, rentals, close }: { bookings: Book
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [close]);
 
-  return <div className="dashboard-calendar-backdrop" onMouseDown={close}>
-    <section className="dashboard-calendar-modal" role="dialog" aria-modal="true" aria-label="Booking calendar" onMouseDown={(event) => event.stopPropagation()}>
+  return <div className="dashboard-calendar-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+    <section className="dashboard-calendar-modal" role="dialog" aria-modal="true" aria-label="Booking calendar">
       <header className="dashboard-calendar-top">
         <div><small>BOOKING CALENDAR</small><strong>Quick month view</strong></div>
         <button type="button" className="dashboard-calendar-close" onClick={close} aria-label="Close booking calendar"><X size={18} /></button>
@@ -1836,7 +1834,7 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
               </span>
             </> : <span className="fleet-available-box">{detail}</span>}
           </div>
-          <div className="fleet-status-actions">
+          <div className={`fleet-status-actions${reservation ? " has-booking-whatsapp" : ""}${rental ? " has-rental-book" : ""}`}>
             {rental && <button className="primary-button" onClick={() => openRental(rental)}><CarFront size={15} />View rental</button>}
             {(canBook || Boolean(rental)) && <button className={`primary-button ${rental ? "rental-book-action" : ""}`} onClick={() => openBooking(vehicle.id, availabilityDate)}><CalendarDays size={15} />Book now</button>}
             {reservation && <><button className="primary-button booked-action" onClick={() => openReservation(reservation)}><CalendarRange size={15} />View booking</button><button className="booking-whatsapp-action" onClick={() => sendBookingWhatsApp(reservation, "reminder")} aria-label={`WhatsApp booking reminder to ${customerWithPlace(reservation.customer, reservation.city)}`} title="WhatsApp booking reminder"><MessageCircle size={17} /></button></>}
@@ -1846,20 +1844,6 @@ function FleetStatusPanel({ vehicles, rentals, reservations, openRental, openVeh
       </article>)}
     </div>
   </section>;
-}
-
-function RentalCard({ rental, open, sendWhatsApp }: { rental: Rental; open: () => void; sendWhatsApp: () => void }) {
-  return <article className={`rental-row ${rental.state}`}>
-    <button className="rental-main" onClick={open}>
-      <img src={rental.image} alt="" />
-      <span className="rental-vehicle"><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span><strong>{rental.vehicle}</strong><small>{rental.plate} · {rental.id}</small></span>
-      <span className="rental-customer"><small>Customer</small><strong>{customerWithPlace(rental.customer, rental.city)}</strong><span>{rental.phone}</span></span>
-      <span className="rental-return"><small>Expected return</small><strong>{rental.returnDate}</strong><span>{rental.days} days · {money(rental.rate)}/day</span></span>
-      <span className="rental-balance"><small>Balance due</small><strong>{money(rental.balance)}</strong><span>{money(rental.paid)} paid</span></span>
-      <ChevronRight className="row-chevron" size={18} />
-    </button>
-    <div className="rental-quick"><a href={`tel:${rental.phone.replaceAll(" ", "")}`} aria-label={`Call ${customerWithPlace(rental.customer, rental.city)}`}><Phone size={15} /></a><button onClick={sendWhatsApp} aria-label={`WhatsApp ${customerWithPlace(rental.customer, rental.city)}`}><MessageCircle size={15} /></button><button onClick={open}><MoreHorizontal size={16} /></button></div>
-  </article>;
 }
 
 function ReminderCopy({ type, text }: { type: string; text: string }) {
@@ -1873,11 +1857,6 @@ function ReminderCopy({ type, text }: { type: string; text: string }) {
     {(customer || place) && <span className="booking-reminder-person">{customer}{customer && place ? " \u00b7 " : ""}{place}</span>}
   </small>;
 }
-function Reminder({ tone, icon: Icon, type, title, text, action }: { tone: string; icon: LucideIcon; type: string; title: string; text: string; action?: () => void }) {
-  return <button className={`reminder ${tone}`} onClick={action}><span><Icon size={15} /></span><div><strong>{title}</strong><ReminderCopy type={type} text={text} /></div><ChevronRight size={15} /></button>;
-}
-
-
 function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, startBooking, sendWhatsApp, newBooking }: { bookings: BookingRecord[]; rentals: Rental[]; vehicles: Vehicle[]; openBooking: (booking: BookingRecord) => void; editBooking: (booking: BookingRecord) => void; startBooking: (booking: BookingRecord) => void; sendWhatsApp: (booking: BookingRecord) => void; newBooking: () => void }) {
   const [mode, setMode] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -1895,7 +1874,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
     if (booking.status === "cancelled") return "Cancelled";
     if (booking.status === "booked" && indiaDateKey(booking.startAt) === today) return "Today";
     if (booking.status === "booked") return "Upcoming";
-    return booking.status.replaceAll("_", " ");
+    return booking.status.replace(/_/g, " ");
   };
 
   const shown = bookings.filter((booking) => {
@@ -1959,7 +1938,7 @@ function BookingsView({ bookings, rentals, vehicles, openBooking, editBooking, s
       <button onClick={() => setStatusFilter("Completed")}><span>Completed</span><strong>{summary.completed}</strong></button>
       <button onClick={() => setStatusFilter("Cancelled")}><span>Cancelled</span><strong>{summary.cancelled}</strong></button>
     </section>
-    <section className="bookings-toolbar">
+    <section className="bookings-toolbar mecardee-filter-field-container">
       <div className="booking-view-switch"><button className={mode === "list" ? "active" : ""} onClick={() => setMode("list")}><CalendarRange size={15} />List view</button><button className={mode === "calendar" ? "active" : ""} onClick={() => setMode("calendar")}><CalendarDays size={15} />Calendar view</button></div>
       <label className="booking-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search customer, phone, vehicle or booking" /></label>
       <select value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="All">All vehicles</option>{vehicles.map((vehicle) => <option value={vehicle.id} key={vehicle.id}>{vehicle.name} · {vehicle.plate}</option>)}</select>
@@ -2054,9 +2033,9 @@ function GuestCarsView({ vehicles, rentals, addVehicle, openVehicle }: { vehicle
   });
   const available = vehicles.filter((vehicle) => vehicle.statusKey === "available").length;
   const onRent = vehicles.filter((vehicle) => ["rented", "today", "overdue"].includes(vehicle.statusKey)).length;
-  const usageRows = rentals.flatMap((rental) => rental.segments
+  const usageRows = rentals.reduce<{ rental: Rental; segment: RentalSegmentRow; charge: number }[]>((rows, rental) => rows.concat(rental.segments
     .filter((segment) => segment.isGuest)
-    .map((segment) => ({ rental, segment, charge: Number(segment.rentalCharge || 0) + Number(segment.extraKmCharge || 0) + Number(segment.fuelCharge || 0) })))
+    .map((segment) => ({ rental, segment, charge: Number(segment.rentalCharge || 0) + Number(segment.extraKmCharge || 0) + Number(segment.fuelCharge || 0) }))), [])
     .sort((a, b) => new Date(b.segment.startAt).getTime() - new Date(a.segment.startAt).getTime());
   const totalCustomerCharges = usageRows.reduce((sum, row) => sum + row.charge, 0);
 
@@ -2120,7 +2099,7 @@ function CustomersView({ customers, metrics, openNew, openRentalById, addCustome
   {<>
     <PageHeading eyebrow="CUSTOMER DIRECTORY" title="Customers" description="Rental history, documents and balances—without duplicate records." action={<button className="primary-button" onClick={addCustomer}><UserRoundPlus size={17} />Add customer</button>} />
     <section className="customer-summary"><article><UsersRound size={20} /><div><strong>{metrics.totalCustomers}</strong><span>Total customers</span></div><small><TrendingUp size={13} /> {metrics.newCustomersThisMonth} this month</small></article><article><CalendarDays size={20} /><div><strong>{metrics.currentlyRentingCustomers}</strong><span>Currently renting</span></div><small>{metrics.totalCustomers ? Math.round((metrics.currentlyRentingCustomers / metrics.totalCustomers) * 100) : 0}% of customers</small></article><article><IndianRupee size={20} /><div><strong>{money(metrics.outstanding)}</strong><span>Pending balance</span></div><small className="warn"><AlertTriangle size={13} /> {metrics.outstandingCustomers} customers</small></article></section>
-    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name, place or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customerWithPlace(customer.name, customer.city)}</strong><small>{customer.phone}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customerWithPlace(customer.name, customer.city)}`} onClick={() => { window.location.href = `tel:${customer.phone.replaceAll(" ", "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customerWithPlace(customer.name, customer.city)}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-history-action" type="button" onClick={() => setHistoryCustomer(customer)}>View history</button>{currentUser.role === "superadmin" && <button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customerWithPlace(customer.name, customer.city)}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button>}<button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
+    <section className="data-panel customer-panel"><div className="panel-toolbar"><label className="panel-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search customers" placeholder="Search name, place or mobile number" /></label><button className="filter-button" onClick={() => setCityFilter(window.prompt("Filter by city. Leave blank for all.", cityFilter) ?? cityFilter)}><SlidersHorizontal size={15} />Filters</button></div><div className="customer-list"><div className="customer-list-head"><span>Customer</span><span>Driving licence</span><span>Rental activity</span><span>Amount spent</span><span>Balance</span><span /></div>{shown.map((customer) => <article className="customer-list-row" key={customer.id}><span className="customer-identity"><i>{customer.initials}</i><span><strong>{customerWithPlace(customer.name, customer.city)}</strong><small>{customer.phone}</small></span></span><span><strong>{customer.licence || "Not recorded"}</strong><small>{customer.licence ? "Recorded" : "Optional"}</small></span><span><strong>{customer.rentals} rentals</strong><small>{customer.active ? `Active: ${customer.active}` : "No active rental"}</small></span><span><strong>{money(customer.spent)}</strong><small>Lifetime value</small></span><span><strong className={customer.pending ? "red-text" : "green-text"}>{money(customer.pending)}</strong><small>{customer.pending ? "Pending" : "Fully paid"}</small></span><span className="customer-actions"><button className="customer-icon-action" aria-label={`Call ${customerWithPlace(customer.name, customer.city)}`} onClick={() => { window.location.href = `tel:${customer.phone.replace(/\s/g, "")}`; }}><Phone size={15} /></button><button className="customer-icon-action" aria-label={`Edit ${customerWithPlace(customer.name, customer.city)}`} onClick={() => editCustomer(customer)}><Pencil size={15} /></button><button className="customer-history-action" type="button" onClick={() => setHistoryCustomer(customer)}>View history</button>{currentUser.role === "superadmin" && <button className="customer-icon-action customer-delete-action" aria-label={`Delete ${customerWithPlace(customer.name, customer.city)}`} title="Delete customer" onClick={() => deleteCustomer(customer)}><Trash2 size={15} /></button>}<button className="customer-primary-action" onClick={() => customer.activeRentalId ? openRentalById(customer.activeRentalId) : openNew()}>{customer.active ? "View rental" : "Rent again"}</button><ChevronRight size={16} /></span></article>)}</div></section>
   </>}
   {historyCustomer && <CustomerHistoryDialog customer={historyCustomer} rentals={rentals} payments={payments} close={() => setHistoryCustomer(null)} openRentalById={openRentalById} />}
 </>;
@@ -2216,7 +2195,7 @@ function CustomerHistoryDialog({ customer, rentals, payments, close, openRentalB
             </div>
             <div>
               <span>{payment.method || "Payment method not recorded"}</span>
-              <small>{payment.rental || "No rental reference"} - {String(payment.type || "payment").replaceAll("_", " ")}</small>
+              <small>{payment.rental || "No rental reference"} - {String(payment.type || "payment").replace(/_/g, " ")}</small>
             </div>
           </article>) : <div className="customer-history-empty">No payment history for this customer yet.</div>}
         </div>
@@ -2237,14 +2216,6 @@ function PaymentsView({ rentals, payments, metrics, openPayment, openExpense, ex
   </>;
 }
 
-function safeReportText(value: string | number) {
-  return String(value).replace(/₹/g, "INR ").replace(/[–—→·]/g, "-").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function reportCurrency(value: number) {
-  return `INR ${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value)}`;
-}
-
 function downloadExcelTable(
   filename: string,
   title: string,
@@ -2257,13 +2228,14 @@ function downloadExcelTable(
 ) {
   const xmlEscape = (value: string | number) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   const widths = headers.map((header, columnIndex) => {
-    const longest = Math.max(header.length, ...rows.slice(0, 100).flatMap((row) => String(row[columnIndex] ?? "").split("\n").map((line) => line.length)));
+    const lineLengths = rows.slice(0, 100).reduce<number[]>((lengths, row) => lengths.concat(String(row[columnIndex] ?? "").split("\n").map((line) => line.length)), []);
+    const longest = Math.max(header.length, ...lineLengths);
     return Math.min(210, Math.max(85, longest * 7.2));
   });
   const cells = (row: (string | number)[]) => row.map((cell, columnIndex) => {
     const numeric = typeof cell === "number";
     const style = numeric && currencyColumns.includes(columnIndex) ? "Currency" : numeric ? "Number" : "Cell";
-    const excelValue = typeof cell === "string" ? cell.replaceAll("\n", " | ") : cell;
+    const excelValue = typeof cell === "string" ? cell.replace(/\n/g, " | ") : cell;
     return `<Cell ss:StyleID="${style}"><Data ss:Type="${numeric ? "Number" : "String"}">${xmlEscape(excelValue)}</Data></Cell>`;
   }).join("");
   const mergeAcross = Math.max(0, headers.length - 1);
@@ -2287,6 +2259,18 @@ async function downloadPdfTable(
   totalLabel: string,
   total: number,
 ) {
+  const [{ default: pdfMake }, { default: pdfFonts }] = await Promise.all([
+    import("pdfmake/build/pdfmake"),
+    import("pdfmake/build/vfs_fonts"),
+  ]);
+  const pdfMakeClient = pdfMake as unknown as {
+    addVirtualFileSystem?: (fonts: unknown) => void;
+    vfs?: unknown;
+    createPdf: (definition: unknown) => { download: (name: string) => void };
+  };
+  if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addVirtualFileSystem(pdfFonts);
+  else pdfMakeClient.vfs = pdfFonts;
+
   const DEEP = "#071a17";
   const INK = "#10201d";
   const MUTED = "#64736f";
@@ -2294,7 +2278,7 @@ async function downloadPdfTable(
   const PAPER = "#f7f9f8";
   const SOFT = "#eaf0ec";
 
-  const headerIndex = Object.fromEntries(headers.map((header, index) => [header.toLowerCase(), index]));
+  const headerIndex = headers.reduce<Record<string, number>>((result, header, index) => { result[header.toLowerCase()] = index; return result; }, {});
   const sumColumn = (label: string) => {
     const index = headerIndex[label.toLowerCase()];
     if (index === undefined) return 0;
@@ -2311,7 +2295,7 @@ async function downloadPdfTable(
     ? [70, 70, 55, 82, "*", 100, 65, 68, 68, 68]
     : key.includes("vehicle usage / changes|km by vehicle")
       ? [48, 62, 58, 45, 45, "*", 90, 48, 48, 48, 48, 52, 52]
-    : key.includes("vehicle|registration|rental|customer|rental dates|km run|change details|revenue")
+    : key.includes("vehicle|registration|rental|customer|rental dates|km run|change details|period revenue")
       ? [74, 64, 52, 88, 92, 105, "*", 62]
       : key.includes("rental|vehicle|customer|start|return|status|total|paid|balance")
         ? [74, 112, 84, 70, 70, "*", 68, 68, 68]
@@ -2354,7 +2338,7 @@ async function downloadPdfTable(
     kpis.push({ label: totalLabel.toUpperCase(), value: money(total) });
   }
 
-  const body: any[][] = [
+  const body: Record<string, unknown>[][] = [
     headers.map((header) => ({ text: header.toUpperCase(), style: "tableHeader", fillColor: DEEP, color: "#ffffff" })),
     ...rows.map((row, rowIndex) => headers.map((_, columnIndex) => {
       const raw = row[columnIndex] ?? "";
@@ -2377,7 +2361,7 @@ async function downloadPdfTable(
   });
   body.push(totalCells);
 
-  const doc: any = {
+  const doc: Record<string, unknown> = {
     pageSize: "A4",
     pageOrientation: "landscape",
     pageMargins: [28, 32, 28, 34],
@@ -2441,7 +2425,7 @@ async function downloadPdfTable(
           body,
         },
         layout: {
-          hLineWidth: (i: number, node: any) => i === 0 || i === node.table.body.length ? 0 : 0.45,
+          hLineWidth: (i: number, node: { table: { body: unknown[] } }) => i === 0 || i === node.table.body.length ? 0 : 0.45,
           vLineWidth: () => 0,
           hLineColor: () => LINE,
           paddingLeft: () => 6,
@@ -2549,23 +2533,44 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   const toggleVehicle = (vehicleId: string) => setSelectedVehicleIds((current) => current.includes(vehicleId) ? current.filter((id) => id !== vehicleId) : [...current, vehicleId]);
 
   const report = useMemo(() => {
+    const reportStartMs = dateFrom ? new Date(`${dateFrom}T00:00:00+05:30`).getTime() : Number.NEGATIVE_INFINITY;
+    const reportEndMs = dateTo ? new Date(`${dateTo}T23:59:59.999+05:30`).getTime() : Number.POSITIVE_INFINITY;
     const within = (value: string) => {
       const day = value ? indiaDateKey(value) : "";
       return (!dateFrom || !day || day >= dateFrom) && (!dateTo || !day || day <= dateTo);
     };
+    const overlapsReportPeriod = (startValue: string, endValue: string) => {
+      const startMs = new Date(startValue).getTime();
+      const endMs = new Date(endValue).getTime();
+      return Number.isFinite(startMs) && Number.isFinite(endMs) && startMs <= reportEndMs && endMs >= reportStartMs;
+    };
+    const overlapRatio = (startValue: string, endValue: string) => {
+      const startMs = new Date(startValue).getTime();
+      const endMs = new Date(endValue).getTime();
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0;
+      const overlapMs = Math.max(0, Math.min(endMs, reportEndMs) - Math.max(startMs, reportStartMs));
+      return Math.min(1, overlapMs / (endMs - startMs));
+    };
+    const rentalOverlapsPeriod = (rental: Rental) => overlapsReportPeriod(rental.startAt, rental.actualReturnAt || rental.endAt);
     const orderedSegments = (rental: Rental) => [...rental.segments].sort((a, b) => a.sequence - b.sequence);
     const ownSegments = (rental: Rental) => orderedSegments(rental).filter((segment) => !segment.isGuest);
     const segmentCharge = (segment: RentalSegmentRow) => Math.max(0, segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge);
     const ownWeight = (rental: Rental) => ownSegments(rental).reduce((sum, segment) => sum + segmentCharge(segment), 0);
-    const vehicleShare = (rental: Rental, vehicleId: string) => {
+    const periodVehicleShare = (rental: Rental, vehicleId: string) => {
       const segments = ownSegments(rental);
       if (!segments.some((segment) => segment.vehicleId === vehicleId)) return 0;
-      if (segments.length === 1) return 1;
       const totalWeight = ownWeight(rental);
-      const selectedWeight = segments.filter((segment) => segment.vehicleId === vehicleId).reduce((sum, segment) => sum + segmentCharge(segment), 0);
-      if (totalWeight > 0) return selectedWeight / totalWeight;
-      const vehicleSegmentCount = segments.filter((segment) => segment.vehicleId === vehicleId).length;
-      return vehicleSegmentCount / Math.max(1, segments.length);
+      const selectedPeriodWeight = segments
+        .filter((segment) => segment.vehicleId === vehicleId)
+        .reduce((sum, segment) => sum + segmentCharge(segment) * overlapRatio(segment.startAt, segment.endAt || new Date().toISOString()), 0);
+      if (totalWeight > 0) return selectedPeriodWeight / totalWeight;
+      const totalDuration = segments.reduce((sum, segment) => sum + Math.max(0, new Date(segment.endAt || new Date()).getTime() - new Date(segment.startAt).getTime()), 0);
+      const selectedDuration = segments.filter((segment) => segment.vehicleId === vehicleId).reduce((sum, segment) => {
+        const endAt = segment.endAt || new Date().toISOString();
+        const duration = Math.max(0, new Date(endAt).getTime() - new Date(segment.startAt).getTime());
+        return sum + duration * overlapRatio(segment.startAt, endAt);
+      }, 0);
+      return totalDuration > 0 ? selectedDuration / totalDuration : 0;
     };
     const segmentOverlapsPeriod = (segment: RentalSegmentRow) => {
       const segmentStart = indiaDateKey(segment.startAt);
@@ -2620,10 +2625,10 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       // Guest Cars are visible for operational traceability, but every financial
       // column remains excluded from business reporting.
       const chosen = selectedVehicleIds.length ? vehicles.filter((vehicle) => selectedVehicleIds.includes(vehicle.id)) : vehicles;
-      const rows = chosen.flatMap((vehicle) => {
-        const usageEntries = rentals.flatMap((rental) => orderedSegments(rental)
+      const rows = chosen.reduce<(string | number)[][]>((allRows, vehicle) => {
+        const usageEntries = rentals.reduce<{ rental: Rental; segment: RentalSegmentRow }[]>((entries, rental) => entries.concat(orderedSegments(rental)
           .filter((segment) => segment.vehicleId === vehicle.id && segmentOverlapsPeriod(segment))
-          .map((segment) => ({ rental, segment })));
+          .map((segment) => ({ rental, segment }))), []);
         const entriesByRental = new Map<string, { rental: Rental; segments: RentalSegmentRow[] }>();
         for (const { rental, segment } of usageEntries) {
           const entry = entriesByRental.get(rental.id) ?? { rental, segments: [] };
@@ -2632,16 +2637,17 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
         }
         const rentalEntries = [...entriesByRental.values()].sort((left, right) => new Date(left.rental.startAt).getTime() - new Date(right.rental.startAt).getTime());
         if (!rentalEntries.length) {
-          return [[`${vehicle.name}${vehicle.isGuest ? "\nGuest Car" : ""}`, vehicle.plate, "—", "No rental in this period", "—", "—", "—", vehicle.isGuest ? "Excluded" : 0] as (string | number)[]];
+          allRows.push([`${vehicle.name}${vehicle.isGuest ? "\nGuest Car" : ""}`, vehicle.plate, "—", "No rental in this period", "—", "—", "—", vehicle.isGuest ? "Excluded" : 0]);
+          return allRows;
         }
 
-        return rentalEntries.map(({ rental, segments }) => {
+        allRows.push(...rentalEntries.map(({ rental, segments }) => {
           const rentalDates = segments.map((segment) => `${customerReportDateOnly(segment.startAt)} → ${segment.endAt ? customerReportDateOnly(segment.endAt) : "Current"}`).join("\n");
           const kilometerDetails = segments.map((segment) => segmentKilometers(segment)).join("\n");
           const totalKilometers = segments.reduce((sum, segment) => sum + (segment.endingKilometer === null ? 0 : Math.max(0, segment.endingKilometer - segment.startingKilometer)), 0);
           const hasPendingKilometers = segments.some((segment) => segment.endingKilometer === null);
           const vehicleChanges = orderedSegments(rental).length > 1 ? rentalVehicleUsage(rental) : "—";
-          const rentalValue = rental.businessFinancialTotal * vehicleShare(rental, vehicle.id);
+          const rentalValue = Math.round(rental.businessFinancialTotal * periodVehicleShare(rental, vehicle.id) * 100) / 100;
 
           return [
             `${vehicle.name}${vehicle.isGuest ? "\nGuest Car" : ""}`,
@@ -2653,23 +2659,24 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
             vehicleChanges,
             vehicle.isGuest ? "Excluded" : rentalValue,
           ] as (string | number)[];
-        });
-      });
+        }));
+        return allRows;
+      }, []);
 
       return {
         title: "Car-wise report",
-        headers: ["Vehicle", "Registration", "Rental", "Customer", "Rental dates", "KM run", "Change details", "Revenue"],
+        headers: ["Vehicle", "Registration", "Rental", "Customer", "Rental dates", "KM run", "Change details", "Period revenue"],
         rows,
         currencyColumns: [7],
         total: rows.reduce((sum, row) => sum + (typeof row[7] === "number" ? row[7] : 0), 0),
-        label: "Rental revenue",
+        label: "Period revenue",
       };
     }
 
     if (reportType === "customers") {
       const selectedSet = new Set(selectedCustomerKeys);
       const filteredRentals = rentals.filter((rental) => {
-        if (!within(rental.startAt)) return false;
+        if (!rentalOverlapsPeriod(rental)) return false;
         const normalizedPhone = String(rental.phone || "").replace(/\D/g, "");
         const key = normalizedPhone ? `phone:${normalizedPhone}` : `name:${String(rental.customer || "").trim().toLowerCase()}|place:${String(rental.city || "").trim().toLowerCase()}`;
         return !selectedSet.size || selectedSet.has(key);
@@ -2700,7 +2707,7 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
       };
     }
 
-    const base = rentals.filter((rental) => within(rental.startAt) && (status === "all" || rental.state === status));
+    const base = rentals.filter((rental) => rentalOverlapsPeriod(rental) && (status === "all" || rental.state === status));
     if (reportType === "outstanding") {
       const filtered = base.filter((rental) => rental.businessBalance > 0);
       return { title: "Outstanding balances", headers: ["Customer", "Phone", "Original vehicle", "Expected return", "Status", "Business balance"], rows: filtered.map((rental) => [customerWithPlace(rental.customer, rental.city), rental.phone, `${rental.originalVehicle} ${rental.originalPlate}`, formatIndiaWhen(rental.endAt), rental.statusText, rental.businessBalance] as (string | number)[]), currencyColumns: [5], total: filtered.reduce((sum, rental) => sum + rental.businessBalance, 0), label: "Outstanding" };
@@ -2740,14 +2747,14 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
   return <>
     <PageHeading eyebrow="INSIGHTS" title="Reports" description="Live business reports from your rental, payment and expense records." />
     <section className="report-filter-card">
-      <div className="report-filter-grid">
+      <div className="report-filter-grid mecardee-filter-field-container">
         <label className="field mecardee-report-filter-field"><span>Report</span><select value={reportType} onChange={(event) => setReportType(event.target.value as ReportType)}><option value="rentals">Rentals</option><option value="payments">Payments</option><option value="expenses">Expenses</option><option value="outstanding">Outstanding balances</option><option value="cars">Car-wise report</option><option value="customers">Customer-wise report</option></select></label>
         <label className="field"><span>From</span><input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
         <label className="field"><span>To</span><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
         {(reportType === "rentals" || reportType === "outstanding") && <label className="field mecardee-report-filter-field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="active">Active</option><option value="today">Returning today</option><option value="overdue">Overdue</option><option value="completed">Completed</option></select></label>}
         {reportType === "payments" && <label className="field mecardee-report-filter-field"><span>Entered by</span><select value={paidByFilter} onChange={(event) => setPaidByFilter(event.target.value)}><option value="all">All users</option>{paidByChoices.map((name) => <option key={name} value={name}>{displayUserName(name)}</option>)}</select></label>}
       </div>
-      {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple vehicles. Guest Cars show their usage and KM, while every financial value is excluded.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => <label key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</small></span></label>)}</div></div>}
+      {reportType === "cars" && <div className="car-report-filter"><div><strong>Cars</strong><small>Select one or multiple vehicles. Guest Cars show their usage and KM, while every financial value is excluded.</small></div><button type="button" className="secondary-button" onClick={() => setSelectedVehicleIds([])}>All cars</button><div className="car-report-options">{vehicles.map((vehicle) => { const controlId = `car-report-${vehicle.id}`; return <label aria-label={`${vehicle.name} ${vehicle.plate}`} htmlFor={controlId} key={vehicle.id} className={selectedVehicleIds.includes(vehicle.id) ? "selected" : ""}><input id={controlId} type="checkbox" checked={selectedVehicleIds.includes(vehicle.id)} onChange={() => toggleVehicle(vehicle.id)} /><span><strong>{vehicle.name}</strong><small>{vehicle.plate}{vehicle.isGuest ? " · Guest Car" : ""}</small></span></label>; })}</div></div>}
       {reportType === "customers" && <div className="customer-report-filter">
         <div className="customer-report-filter-head">
           <div><strong>Customers</strong><small>Search and select one or multiple customers. Leave empty for all customers.</small></div>
@@ -3268,7 +3275,8 @@ function AccountsView({ expenses, metrics }: { expenses: ExpenseRow[]; metrics: 
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const chart = metrics.monthlyCollected.length ? metrics.monthlyCollected : Array.from({ length: 12 }, (_, index) => ({ key: String(index), label: "—", amount: 0 }));
   const max = Math.max(1, ...chart.map((item) => item.amount));
-  const year = metrics.monthlyCollected.at(-1)?.key.slice(0, 4) ?? new Date().getFullYear();
+  const latestMonthlyCollection = metrics.monthlyCollected[metrics.monthlyCollected.length - 1];
+  const year = latestMonthlyCollection?.key.slice(0, 4) ?? new Date().getFullYear();
   const shownExpenses = showAllExpenses ? expenses : expenses.slice(0, 12);
   return <>
     <PageHeading eyebrow="MONEY & ACCOUNTS" title="Business overview" description="Simple income and expenses—only what you need to understand the business." />
@@ -3277,20 +3285,20 @@ function AccountsView({ expenses, metrics }: { expenses: ExpenseRow[]; metrics: 
   </>;
 }
 
-function Notifications({ reminders, history, readKeys, onClose, markRead, openRental, openReservation }: { reminders: ReminderRow[]; history: NotificationHistoryItem[]; readKeys: string[]; onClose: () => void; markRead: (reminder: ReminderRow) => void; openRental: (rentalId: string) => void; openReservation: (reservationId: string) => void }) {
-  void history;
+function Notifications({ reminders, readKeys, onClose, markRead, openRental, openReservation, openVehicle }: { reminders: ReminderRow[]; readKeys: string[]; onClose: () => void; markRead: (reminder: ReminderRow) => void; openRental: (rentalId: string) => void; openReservation: (reservationId: string) => void; openVehicle: (vehicleId: string) => void }) {
   const newCount = reminders.filter((reminder) => !readKeys.includes(reminder.key)).length;
   const openItem = (reminder: ReminderRow) => {
     markRead(reminder);
     if (reminder.reservationId) openReservation(reminder.reservationId);
     else if (reminder.rentalId) openRental(reminder.rentalId);
+    else if (reminder.vehicleId) openVehicle(reminder.vehicleId);
     onClose();
   };
   return <div className="notifications-panel">
     <div className="notification-head"><div><strong>Notifications</strong><span>{newCount ? `${newCount} new` : reminders.length ? "All seen" : "No new"}</span></div><button onClick={onClose}><X size={16} /></button></div>
     <div className="notification-section-label"><span>Active notifications</span><b>{reminders.length}</b></div>
     {reminders.length ? reminders.map((reminder) => { const Icon = reminderIcon(reminder.type); const isRead = readKeys.includes(reminder.key); return <button className={isRead ? "notification-is-read" : "notification-is-new"} key={reminder.key} onClick={() => openItem(reminder)}><span className={`notice-icon ${reminder.tone === "urgent" ? "urgent" : reminder.type === "payment" ? "payment" : "warning"}`}><Icon size={15} /></span><div><strong>{reminder.title}</strong><ReminderCopy type={reminder.type} text={reminder.text} /><time className={`notification-status ${isRead ? "read" : "new"}`}>{isRead ? "READ" : "NEW"}</time></div></button>; }) : <div className="notification-empty-state">No active notifications right now.</div>}
-    <div className="notification-footer" onClick={onClose}>Close notifications</div>
+    <button type="button" className="notification-footer" onClick={onClose}>Close notifications</button>
   </div>;
 }
 
@@ -3500,7 +3508,7 @@ function CustomerDialog({ customers, close, done }: { customers: CustomerRow[]; 
   return <DialogShell title="Add customer" subtitle="Customer contact and licence details" close={close}>
     <form className="simple-form" onSubmit={submit}>
       <div className="field-grid">
-        <label className="field"><span>Customer name</span><input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" /></label>
+        <label className="field"><span>Customer name</span><input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" /></label>
         <label className="field"><span>Phone number</span><input required inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" /></label>
         <label className="field"><span>WhatsApp number</span><input inputMode="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="Leave blank to use phone" /></label>
         <label className="field"><span>Driving licence number (optional)</span><input value={drivingLicence} onChange={(e) => setDrivingLicence(e.target.value.toUpperCase())} placeholder="Optional" /></label>
@@ -4043,7 +4051,7 @@ function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp, addExpe
   const formatOriginalPeriod = `${formatIndiaWhen(rental.originalStartAt)} → ${formatIndiaWhen(rental.originalEndAt)}`;
   return <DialogShell title={rental.id} subtitle={`${rental.vehicle} · ${rental.plate}${rental.isGuestCurrent ? " · Guest Car" : ""}`} close={close} wide>
     {showOriginalContext && <div className="original-booking-context rental-context-banner"><strong>Original Booking: {rental.originalVehicle} — {rental.originalDays} Days</strong><span>{rental.originalVehicle} was unavailable for part of this rental, so a temporary/replacement vehicle is being used. The original booking remains connected throughout every vehicle change.</span><small>{formatOriginalPeriod}</small></div>}
-    <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span>{rental.isGuestCurrent && <span className="guest-inline-badge">Guest Car</span>}<h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replaceAll(" ", "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />WhatsApp</button></div></div>
+    <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span>{rental.isGuestCurrent && <span className="guest-inline-badge">Guest Car</span>}<h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replace(/\s/g, "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />WhatsApp</button></div></div>
     <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Finalized from the actual return" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>{completed ? "Final rental days" : "Rental days"}</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>{completed ? "Final return KM" : "Current expected return KM"}</small><strong>{(completed && rental.returnKilometer !== null ? rental.returnKilometer : calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay)).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
       {(rental.segments.length > 1 || rental.replacementUsed) && <section className="detail-section"><div className="detail-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle usage</h3><p>All vehicles used within this same customer rental</p></div></div><div className="rental-segment-list">{rental.segments.map((segment) => <article key={segment.id} className={`rental-segment-card ${segment.status === "active" ? "active" : ""}`}><div className="segment-vehicle"><img src={segment.image} alt="" /><span><strong>{segment.vehicle}</strong><small>{segment.plate}{segment.isGuest ? " · Guest Car" : ""}</small></span><b>#{segment.sequence}</b></div><div className="segment-facts"><span><small>Used from</small><strong>{segment.start}</strong></span><span><small>Used to</small><strong>{segment.end}</strong></span><span><small>Start KM</small><strong>{segment.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>End KM</small><strong>{segment.endingKilometer === null ? "Current" : segment.endingKilometer.toLocaleString("en-IN")}</strong></span><span className="total-run-preview"><small>Total run KM</small><strong>{segment.endingKilometer === null ? "Pending" : `${Math.max(0, segment.endingKilometer - segment.startingKilometer).toLocaleString("en-IN")} km`}</strong></span><span><small>Rental period</small><strong>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Vehicle charge</small><strong>{money(segment.rentalCharge + segment.extraKmCharge)}</strong></span></div></article>)}</div></section>}
       </div>{completed && rental.settlement ? <aside className="financial-card completed-settlement-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Final settlement bill</h3><p>Complete finalized return calculation</p></div></div><div className="completed-settlement-readings"><span><small>Return KM</small><strong>{rental.settlement.actualReturnKilometer.toLocaleString("en-IN")} km</strong></span><span className="total-run-preview"><small>Total run KM</small><strong>{totalRunKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Extra KM used</small><strong>{rental.settlement.totalExtraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Return fuel</small><strong>{rental.settlement.returnFuelRangeKm} km</strong></span><span><small>Fuel price</small><strong>{money(rental.settlement.fuelPricePerLitre)}/L</strong></span></div><div className="financial-line"><span>Final rental · {rental.days} day{rental.days === 1 ? "" : "s"}</span><strong>{money(rental.settlement.rentalAmount)}</strong></div>{rental.settlement.existingCharges > 0 && <div className="financial-line"><span>Existing charges</span><strong>{money(rental.settlement.existingCharges)}</strong></div>}<div className="financial-line"><span>Extra KM charge · {rental.settlement.totalExtraKilometers} km</span><strong>{money(rental.settlement.totalExtraKmCharge)}</strong></div><div className="financial-line"><span>Fuel shortage · {rental.settlement.fuelRangeShortageKm} km</span><strong>{money(rental.settlement.fuelCharge)}</strong></div>{rental.settlement.lateFee > 0 && <div className="financial-line"><span>Late return charge</span><strong>{money(rental.settlement.lateFee)}</strong></div>}<div className="financial-line settlement-described-line"><span>Additional charge{rental.settlement.additionalDescription ? <small>{rental.settlement.additionalDescription}</small> : null}</span><strong>{money(rental.settlement.additionalCharge)}</strong></div><div className="financial-line settlement-subtotal"><span>Subtotal</span><strong>{money(rental.settlement.subtotal)}</strong></div><div className="financial-line settlement-described-line settlement-discount"><span>Discount{rental.settlement.discountRemark ? <small>{rental.settlement.discountRemark}</small> : null}</span><strong>− {money(rental.settlement.discountAmount)}</strong></div><div className="financial-total"><span>Final amount</span><strong>{money(rental.settlement.finalAmount)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button><button className="completed-settlement-whatsapp" onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />Send settlement on WhatsApp</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside> : <aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>Updated live</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside>}</div>
@@ -4178,7 +4186,7 @@ function ExtendDialog({ rental, close, done }: { rental: Rental; close: () => vo
 }
 
 function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rentals, close, done }: { rental: Rental; vehicles: Vehicle[]; guestVehicles: Vehicle[]; bookings: BookingRecord[]; rentals: Rental[]; close: () => void; done: (message: string) => void }) {
-  const currentSegment = [...rental.segments].reverse().find((segment) => segment.status === "active") ?? rental.segments.at(-1) ?? null;
+  const currentSegment = [...rental.segments].reverse().find((segment) => segment.status === "active") ?? rental.segments[rental.segments.length - 1] ?? null;
   const nowParts = indiaDateTimeParts(new Date().toISOString());
   const [changeDate, setChangeDate] = useState(nowParts.date);
   const [changeTime, setChangeTime] = useState(nowParts.time);
@@ -4280,7 +4288,7 @@ function ChangeVehicleDialog({ rental, vehicles, guestVehicles, bookings, rental
 }
 
 function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, editCompleted = false }: { rental: Rental; close: () => void; onConfirmed: (result: SettlementResult) => void; sendSettlementWhatsApp: (phone: string, text: string) => void; editCompleted?: boolean }) {
-  const currentSegment = [...rental.segments].reverse().find((segment) => segment.status === "active") ?? rental.segments.at(-1) ?? null;
+  const currentSegment = [...rental.segments].reverse().find((segment) => segment.status === "active") ?? rental.segments[rental.segments.length - 1] ?? null;
   const singleOriginalSegment = rental.segments.length <= 1 && (!currentSegment || currentSegment.vehicleId === rental.originalVehicleId);
   const savedSettlement = editCompleted ? rental.settlement : null;
   const initialReturnAt = savedSettlement?.actualReturnAt ?? new Date().toISOString();
@@ -4288,17 +4296,6 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
   const [actualReturnTime, setActualReturnTime] = useState(() => indiaDateTimeParts(initialReturnAt).time);
   const actualReturnIso = new Date(`${actualReturnDate}T${actualReturnTime}:00+05:30`).toISOString();
   const automaticReturnStartKilometer = currentSegment?.startingKilometer ?? rental.startingKilometer;
-  const automaticReturnAllowedPerDay = currentSegment?.allowedKmPerDay ?? rental.allowedKmPerDay;
-  const automaticReturnDays = currentSegment ? calculateSegmentCharge({
-    startAt: currentSegment.startAt,
-    endAt: actualReturnIso,
-    dailyRate: currentSegment.dailyRate,
-    startingKilometer: currentSegment.startingKilometer,
-    endingKilometer: currentSegment.startingKilometer,
-    allowedKmPerDay: currentSegment.allowedKmPerDay,
-    extraKmRate: currentSegment.extraKmRate,
-  }).rentalDays : Math.max(1, rental.days);
-  const automaticReturnKilometer = calculateExpectedReturnKilometer(automaticReturnStartKilometer, automaticReturnDays, automaticReturnAllowedPerDay);
   const [manualActualReturnKilometer, setManualActualReturnKilometer] = useState<number>(savedSettlement?.actualReturnKilometer ?? 0);
   const actualReturnKilometer = manualActualReturnKilometer;
   const currentTotalRunKilometers = Math.max(0, actualReturnKilometer - automaticReturnStartKilometer);
@@ -4327,7 +4324,6 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
   const returnDateTimeFormatter = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
   const expectedReturnLabel = returnDateTimeFormatter.format(new Date(scheduledReturnMs));
   const graceReturnLabel = returnDateTimeFormatter.format(new Date(graceReturnMs));
-  const earlyReturnDays = earlyReturn ? Math.max(1, Math.ceil((scheduledReturnMs - actualReturnMs) / 86_400_000)) : 0;
 
   const completedSegments = rental.segments.filter((segment) => segment.status !== "active" && segment.id !== currentSegment?.id);
   const completedRentalCharge = completedSegments.reduce((sum, segment) => sum + segment.rentalCharge, 0);

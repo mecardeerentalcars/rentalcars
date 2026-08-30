@@ -1,5 +1,5 @@
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireReadAccess, requireWriteAccess } from "@/lib/mecardee-auth";
 import { desc, eq, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb, type AppDb } from "@/db";
 import {

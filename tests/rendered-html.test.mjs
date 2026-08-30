@@ -67,20 +67,25 @@ test("reports vehicle replacements and excludes Guest Car finances", async () =>
   assert.match(page, /if \(segments\.length <= 1\) return "—"/);
   assert.match(page, /const entriesByRental/);
   assert.match(page, /customerWithPlace\(rental\.customer, rental\.city\)/);
-  assert.match(page, /headers: \["Vehicle", "Registration", "Rental", "Customer", "Rental dates", "KM run", "Change details", "Revenue"\]/);
+  assert.match(page, /headers: \["Vehicle", "Registration", "Rental", "Customer", "Rental dates", "KM run", "Change details", "Period revenue"\]/);
   assert.doesNotMatch(page, /headers: \["Vehicle", "Registration", "Type", "Customer \/ rental"/);
   assert.match(page, /vehicle\.isGuest \? "\\nGuest Car"/);
   assert.match(page, /vehicle\.isGuest \? "Excluded"/);
+  assert.match(page, /const rentalOverlapsPeriod = \(rental: Rental\) => overlapsReportPeriod/);
+  assert.match(page, /segmentCharge\(segment\) \* overlapRatio\(segment\.startAt, segment\.endAt/);
+  assert.match(page, /rental\.businessFinancialTotal \* periodVehicleShare\(rental, vehicle\.id\)/);
   assert.match(snapshot, /segment\.rentalCharge \+ segment\.extraKmCharge \+ segment\.fuelCharge/);
+  assert.doesNotMatch(snapshot, /\.slice\(0,\s*100\)/);
 });
 
 test("keeps settlement, schedule, and report corrections wired through every entry point", async () => {
-  const [page, snapshot, settlement, extension, paymentAdmin] = await Promise.all([
+  const [page, snapshot, settlement, extension, paymentAdmin, rentalAdmin] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/snapshot/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/settlements/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/extensions/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/settings/transactions/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/settings/rentals/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /normalisePendingBalance\(roundedFinalAmount - rental\.paid\)/);
@@ -98,6 +103,50 @@ test("keeps settlement, schedule, and report corrections wired through every ent
   assert.match(page, /setManualActualReturnKilometer\(0\)/);
   assert.match(extension, /activeSegmentProjection\?\.rentalDays/);
   assert.match(paymentAdmin, /const replacementFlow/);
+  assert.equal(
+    rentalAdmin.match(/const rentalDays = rentalDaysFromSchedule\(startAt, endAt\);/g)?.length,
+    2,
+    "both rental schedule correction paths must use the shared India-calendar rule",
+  );
+  assert.doesNotMatch(rentalAdmin, /Math\.ceil\(\(endAt\.getTime\(\) - startAt\.getTime\(\)\) \/ 86_400_000\)/);
+});
+
+test("active notifications refresh, resolve from current data, and only render below the bell", async () => {
+  const [page, snapshot] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/snapshot/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /window\.setInterval\(refreshWhenVisible, 60_000\)/);
+  assert.match(page, /document\.addEventListener\("visibilitychange", refreshWhenVisible\)/);
+  assert.match(page, /window\.addEventListener\("online", refreshWhenVisible\)/);
+  assert.match(page, /No active notifications right now\./);
+  assert.equal(page.match(/reminders=\{reminders\}/g)?.length, 1, "notifications should only be passed to the bell panel");
+  assert.doesNotMatch(page, /NotificationHistory|notificationHistory|Smart reminders/);
+
+  assert.match(snapshot, /rental\.state === "completed" && rental\.balance > 0/);
+  assert.match(snapshot, /if \(record\.status !== "open"\) continue/);
+  assert.match(snapshot, /key: `document:\$\{document\.id\}:\$\{document\.expiryDate\}`/);
+  assert.match(snapshot, /key: `maintenance:\$\{record\.id\}:/);
+  assert.match(snapshot, /key: `tyre:\$\{tyre\.id\}:/);
+  assert.doesNotMatch(snapshot, /reminders\.slice\(0,\s*12\)/);
+});
+
+test("critical startup paths retain old Samsung Chrome and iPhone compatibility", async () => {
+  const [page, layout, serviceWorker, viteConfig] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
+    readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(viteConfig, /target: \["chrome64", "edge79", "firefox67", "safari11\.1"\]/);
+  assert.match(layout, /body\.mecardee-client-ready \.mecardee-first-paint/);
+  assert.match(page, /document\.body\.classList\.add\("mecardee-client-ready"\)/);
+  assert.match(page, /import\("pdfmake\/build\/pdfmake"\)/);
+  assert.doesNotMatch(page, /import pdfMake from "pdfmake/);
+  assert.doesNotMatch(page, /\.replaceAll\(|\.flatMap\(|\.at\(|Object\.fromEntries\(/);
+  assert.doesNotMatch(serviceWorker, /\?\./, "the untranspiled service worker must not use optional chaining");
 });
 
 test("mobile return controls, vehicle image navigation, and payment report fields remain connected", async () => {

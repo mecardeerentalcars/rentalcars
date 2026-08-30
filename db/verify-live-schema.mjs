@@ -4,7 +4,7 @@ import pg from "pg";
 
 if (!process.env.DATABASE_URL) {
   for (const file of [".dev.vars", ".env.local", ".env"]) {
-    try { process.loadEnvFile(file); } catch {}
+    try { process.loadEnvFile(file); } catch (error) { void error; }
     if (process.env.DATABASE_URL) break;
   }
 }

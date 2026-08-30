@@ -1,13 +1,14 @@
 // MECARDEE_RENTAL_EXPENSES_PAYMENTS_HUB_V8_9_81
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
-import { DatabaseConfigurationError, withRequestDb } from "@/db";
+import { DatabaseConfigurationError, withRequestDb, type AppDb } from "@/db";
 import { bookings, customers, expenses, payments, rentalSegments, returnSettlements, vehicles } from "@/db/schema";
 import { calculateSegmentCharge } from "@/lib/rental-segments";
 
 type TransactionType = "payment" | "expense";
-type AnyRow = Record<string, any>;
+type AnyRow = Record<string, unknown>;
+type AppTransaction = Parameters<Parameters<AppDb["transaction"]>[0]>[0];
 
 class RequestError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -47,7 +48,7 @@ function rowsOf<T = AnyRow>(result: unknown): T[] {
   return [];
 }
 
-async function ensureDeleteHistoryTable(db: any) {
+async function ensureDeleteHistoryTable(db: Pick<AppDb, "execute">) {
   await db.execute(sql.raw(`
     CREATE TABLE IF NOT EXISTS transaction_delete_history (
       id uuid PRIMARY KEY,
@@ -69,7 +70,7 @@ async function ensureDeleteHistoryTable(db: any) {
   `));
 }
 
-async function paymentLimit(tx: any, bookingId: string, excludingPaymentId?: string) {
+async function paymentLimit(tx: AppTransaction, bookingId: string, excludingPaymentId?: string) {
   const [booking] = await tx.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1);
   if (!booking) throw new RequestError("The linked rental no longer exists. This payment cannot be changed.", 409);
   const [settlement] = await tx
@@ -194,8 +195,10 @@ export async function GET() {
         displayLabel: row.display_label ? String(row.display_label) : "",
         reason: String(row.reason ?? ""),
         deletedBy: String(row.deleted_by ?? "Admin"),
-        deletedAt: new Date(row.deleted_at).toISOString(),
-        restoredAt: row.restored_at ? new Date(row.restored_at).toISOString() : null,
+        deletedAt: new Date(row.deleted_at instanceof Date ? row.deleted_at : String(row.deleted_at)).toISOString(),
+        restoredAt: row.restored_at
+          ? new Date(row.restored_at instanceof Date ? row.restored_at : String(row.restored_at)).toISOString()
+          : null,
         restoredBy: row.restored_by ? String(row.restored_by) : null,
       }));
 

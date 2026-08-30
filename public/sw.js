@@ -1,4 +1,4 @@
-const VERSION = "build-1788058776660";
+const VERSION = "build-1788081650731";
 const CACHE_PREFIX = "mecardee-shell-";
 const CACHE = `mecardee-shell-deploy-${VERSION}`;
 const SHELL = ["/manifest.webmanifest", "/icons/mecardee-192.png", "/icons/mecardee-512.png"];
@@ -10,7 +10,8 @@ self.addEventListener("install", (event) => {
       try {
         const response = await fetch(new Request(url, { cache: "reload" }));
         if (response.ok) await cache.put(url, response);
-      } catch {
+      } catch (error) {
+        void error;
         // Installation must still succeed if an optional shell icon is temporarily unavailable.
       }
     }));
@@ -46,7 +47,8 @@ self.addEventListener("activate", (event) => {
           if (url.origin !== self.location.origin || url.searchParams.has("mecardee_v")) continue;
           url.searchParams.set("mecardee_v", VERSION);
           await client.navigate(url.href);
-        } catch {
+        } catch (error) {
+          void error;
           // A later navigation will still be network-fresh.
         }
       }
@@ -55,7 +57,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
+  if (event.data && event.data.type === "SKIP_WAITING") void self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -64,7 +66,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
-  const acceptsHtml = event.request.headers.get("accept")?.includes("text/html");
+  const acceptHeader = event.request.headers.get("accept") || "";
+  const acceptsHtml = acceptHeader.indexOf("text/html") !== -1;
   if (event.request.mode === "navigate" || acceptsHtml) {
     // Never serve HTML/index from Cache Storage. Always ask the deployment for the page.
     event.respondWith(fetch(new Request(event.request, { cache: "no-store" })));

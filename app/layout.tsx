@@ -63,6 +63,7 @@ export default function RootLayout({
           .mecardee-first-paint-progress span{display:block;width:34%;height:100%;background:#5d50cf;animation:mecardeeFirstPaint 1s ease-in-out infinite}
           .mecardee-first-paint-brand{display:flex;align-items:center;gap:12px;color:#1f2725;font-family:Arial,sans-serif;font-size:18px}
           .mecardee-first-paint-mark{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(145deg,#755ee7,#5444c5);color:#fff;font-family:Georgia,serif;font-size:21px;font-weight:700;box-shadow:0 8px 24px rgba(84,68,197,.18)}
+          body.mecardee-client-ready .mecardee-first-paint{opacity:0;visibility:hidden;pointer-events:none}
           body:has(.app-shell) .mecardee-first-paint,body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint{opacity:0;visibility:hidden;pointer-events:none}
           @keyframes mecardeeFirstPaint{0%{transform:translateX(-120%)}55%{transform:translateX(150%)}100%{transform:translateX(310%)}}
         `}</style>

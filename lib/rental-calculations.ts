@@ -286,68 +286,47 @@ export function normaliseWhatsAppNumber(phone: string) {
 export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
   const { calculation } = input;
   const lines = [
-    "Mecardee Rental — Final Settlement",
+    "Mecardee Rental — Final Bill",
     "",
     `Customer: ${input.customerName}`,
-    `Vehicle: ${input.vehicleName} (${input.registrationNumber})`,
     `Booking: ${input.bookingNumber}`,
-    `Rental period: ${input.bookingStart} to ${input.bookingEnd}`,
-    `Rental days: ${input.rentalDays}`,
+    `Period: ${input.bookingStart} to ${input.bookingEnd}`,
   ];
 
-  // MECARDEE_SETTLEMENT_MULTI_CAR_ONLY_WHATSAPP_V8_9_98
   const distinctVehicleCount = new Set(
     (input.segments ?? []).map((segment) => segment.registrationNumber.trim().toLowerCase()),
   ).size;
   if (input.segments && distinctVehicleCount > 1) {
-    lines.push("", "Vehicle-wise details:");
+    lines.push("Vehicles used:");
     for (const segment of input.segments) {
-      lines.push(`Vehicle ${segment.sequence}: ${segment.vehicleName} (${segment.registrationNumber})`);
-      lines.push(`Used: ${segment.bookingStart} to ${segment.bookingEnd}`);
-      if (segment.startingKilometer !== undefined) {
-        const endingKilometer = segment.endingKilometer ?? segment.startingKilometer;
-        const travelled = Math.max(0, endingKilometer - segment.startingKilometer);
-        lines.push(`Odometer: ${segment.startingKilometer} km to ${endingKilometer} km (${travelled} km used)`);
-      }
-      lines.push(`Rental days: ${segment.rentalDays}`);
-      lines.push(`Rental charge: ${formatMoney(segment.rentalCharge)}`);
-      if ((segment.extraKilometers ?? 0) > 0) lines.push(`Extra kilometers: ${segment.extraKilometers} km`);
-      if ((segment.extraKmCharge ?? 0) > 0) lines.push(`Extra KM charge: ${formatMoney(segment.extraKmCharge ?? 0)}`);
-      if (segment.startingFuelRangeKm !== undefined && segment.returnFuelRangeKm !== null && segment.returnFuelRangeKm !== undefined) {
-        lines.push(`Fuel range: ${segment.startingFuelRangeKm} km to ${segment.returnFuelRangeKm} km`);
-      }
-      if ((segment.fuelCharge ?? 0) > 0) {
-        lines.push(`Fuel shortage: ${segment.fuelRangeShortageKm ?? 0} km`);
-        lines.push(`Fuel charge: ${formatMoney(segment.fuelCharge ?? 0)}${segment.fuelPricePerLitre !== undefined ? ` at ${formatMoney(segment.fuelPricePerLitre)}/L` : ""}`);
-      }
-      lines.push(`Vehicle total: ${formatMoney(segment.rentalCharge + (segment.extraKmCharge ?? 0) + (segment.fuelCharge ?? 0))}`);
-      lines.push("");
+      const vehicleTotal = segment.rentalCharge + (segment.extraKmCharge ?? 0) + (segment.fuelCharge ?? 0);
+      lines.push(`${segment.sequence}. ${segment.vehicleName} (${segment.registrationNumber}) · ${segment.rentalDays} day${segment.rentalDays === 1 ? "" : "s"} · ${formatMoney(vehicleTotal)}`);
     }
+  } else {
+    lines.push(`Vehicle: ${input.vehicleName} (${input.registrationNumber})`);
   }
 
-  lines.push(`Starting kilometer: ${input.startingKilometer} km`);
-  lines.push(`Actual return kilometer: ${input.actualReturnKilometer} km`);
-  lines.push(`Allowed kilometers: ${calculation.allowedKilometers} km`);
+  const totalRun = Math.max(0, input.actualReturnKilometer - input.startingKilometer);
+  lines.push(`Rental: ${input.rentalDays} day${input.rentalDays === 1 ? "" : "s"} · ${formatMoney(input.rentalAmount)}`);
+  lines.push(`KM: ${input.startingKilometer} → ${input.actualReturnKilometer} (${totalRun} km)`);
 
   if (calculation.extraKilometers > 0) {
-    lines.push(`Extra kilometers: ${calculation.extraKilometers} km`);
-    lines.push(`Extra KM charge: ${formatMoney(calculation.extraKmCharge)}`);
+    lines.push(`Extra KM: ${calculation.extraKilometers} km · ${formatMoney(calculation.extraKmCharge)}`);
   }
 
-  lines.push(`Starting fuel range: ${input.startingFuelRangeKm} km`);
-  lines.push(`Return fuel range: ${input.returnFuelRangeKm} km`);
   if (calculation.fuelCharge > 0) {
-    lines.push(`Fuel shortage charge: ${formatMoney(calculation.fuelCharge)}`);
+    lines.push(`Fuel shortage: ${calculation.fuelRangeShortageKm} km · ${formatMoney(calculation.fuelCharge)}`);
   }
-  lines.push(`Rental amount: ${formatMoney(input.rentalAmount)}`);
+  const otherCharges = Math.max(0, calculation.additionalCharges - calculation.extraKmCharge - calculation.fuelCharge);
+  if (otherCharges > 0) lines.push(`Other charges: ${formatMoney(otherCharges)}`);
   if (input.discountAmount > 0) {
-    lines.push(`Discount: ${formatMoney(input.discountAmount)}`);
-    if (input.discountRemark?.trim()) lines.push(`Discount remark: ${input.discountRemark.trim()}`);
+    lines.push(`Discount: -${formatMoney(input.discountAmount)}${input.discountRemark?.trim() ? ` · ${input.discountRemark.trim()}` : ""}`);
   }
-  lines.push(`Final amount: ${formatWholeMoney(calculation.finalAmount)}`);
-  if (calculation.amountDue > 0) lines.push(`Balance due: ${formatWholeMoney(calculation.amountDue)}`);
-  lines.push("Booking status: Completed");
-  lines.push("", "Thank you for choosing Mecardee Rental Cars.");
+  const amountPaid = Math.max(0, calculation.finalAmount - calculation.amountDue);
+  lines.push("", `Final amount: ${formatWholeMoney(calculation.finalAmount)}`);
+  if (amountPaid > 0) lines.push(`Paid: ${formatWholeMoney(amountPaid)}`);
+  lines.push(calculation.amountDue > 0 ? `Balance due: ${formatWholeMoney(calculation.amountDue)}` : "Payment: Complete");
+  lines.push("Status: Completed", "", "Thank you for choosing Mecardee Rental Cars.");
   return lines.join("\n");
 }
 

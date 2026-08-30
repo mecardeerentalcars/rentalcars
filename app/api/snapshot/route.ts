@@ -711,7 +711,7 @@ export async function GET() {
         .map((row) => ({ ...row, businessAmount: businessPaymentByPaymentId.get(row.payment.id) ?? row.payment.amount }))
         .filter((row) => row.businessAmount > 0);
 
-      const paymentDtos = businessPaymentRows.slice(0, 100).map(({ payment, customer, booking, businessAmount }) => {
+      const paymentDtos = businessPaymentRows.map(({ payment, customer, booking, businessAmount }) => {
         const rental = rentalByDatabaseId.get(booking.id);
         const vehicleLabels = rental?.segments.length
           ? [...new Set(rental.segments.map((segment) => `${segment.vehicle} (${segment.plate})`))]
@@ -734,7 +734,7 @@ export async function GET() {
         };
       });
 
-      const expenseDtos = expenseRows.slice(0, 100).map(({ expense, vehicle }) => ({
+      const expenseDtos = expenseRows.map(({ expense, vehicle }) => ({
         id: expense.expenseNumber,
         rawDate: expense.expenseDate,
         date: formatShortDate(new Date(`${expense.expenseDate}T00:00:00+05:30`)),
@@ -783,7 +783,7 @@ export async function GET() {
       );
       const rentalRevenueMonth = roundMoney(
         rentals
-          .filter((rental) => monthKey(new Date(rental.startAt)) === thisMonth)
+          .filter((rental) => monthKey(new Date(rental.actualReturnAt ?? rental.startAt)) === thisMonth)
           .reduce((sum, rental) => sum + rental.businessFinancialTotal, 0),
       );
       const depositsHeld = roundMoney(
@@ -797,9 +797,9 @@ export async function GET() {
         ? Math.round(((collectedMonth - collectedLastMonth) / collectedLastMonth) * 1000) / 10
         : collectedMonth > 0 ? 100 : 0;
 
-      const reminders: { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string }[] = [];
+      const reminders: { key: string; tone: string; type: string; title: string; text: string; rentalId?: string; reservationId?: string; vehicleId?: string }[] = [];
       for (const rental of overdueRentals) {
-        reminders.push({ key: `overdue:${rental.id}`, tone: "urgent", type: "overdue", title: `${rental.vehicle} is overdue`, text: rental.statusText, rentalId: rental.id });
+        reminders.push({ key: `overdue:${rental.id}:${rental.lateRentalDays}`, tone: "urgent", type: "overdue", title: `${rental.vehicle} is overdue`, text: rental.statusText, rentalId: rental.id });
       }
       for (const rental of returningToday) {
         reminders.push({ key: `today:${rental.id}`, tone: "upcoming", type: "today", title: `${rental.vehicle} returns today`, text: rental.returnDate, rentalId: rental.id });
@@ -811,7 +811,7 @@ export async function GET() {
       for (const rental of settledPaymentDue) {
         const place = rental.city && rental.city !== "—" ? ` · ${rental.city}` : "";
         reminders.push({
-          key: `settled-payment:${rental.databaseId}`,
+          key: `settled-payment:${rental.databaseId}:${Math.round(rental.balance * 100)}`,
           tone: "normal",
           type: "payment",
           title: `Payment pending · ${rental.customer}`,
@@ -869,11 +869,66 @@ export async function GET() {
         if (!document.expiryDate) continue;
         const vehicle = vehicleRows.find((row) => row.id === document.vehicleId);
         if (!vehicle || vehicle.isGuest) continue;
-        const expiry = new Date(`${document.expiryDate}T00:00:00+05:30`);
-        const days = Math.ceil((expiry.getTime() - current.getTime()) / 86_400_000);
-        if (days >= 0 && days <= 30) {
-          reminders.push({ key: `document:${document.id}`, tone: "upcoming", type: "document", title: `${vehicle.name} ${document.documentType} expires`, text: `Due in ${days} day${days === 1 ? "" : "s"}` });
+        const days = calendarDayDistance(today, document.expiryDate);
+        if (days <= 30) {
+          const overdue = days < 0;
+          const distance = Math.abs(days);
+          reminders.push({
+            key: `document:${document.id}:${document.expiryDate}`,
+            tone: overdue ? "urgent" : "upcoming",
+            type: "document",
+            title: `${vehicle.name} ${document.documentType} ${overdue ? "expired" : "expires soon"}`,
+            text: overdue ? `${distance} day${distance === 1 ? "" : "s"} overdue` : days === 0 ? "Due today" : `Due in ${days} day${days === 1 ? "" : "s"}`,
+            vehicleId: vehicle.id,
+          });
         }
+      }
+
+      for (const record of maintenanceRows) {
+        if (record.status !== "open") continue;
+        const vehicle = vehicleRows.find((row) => row.id === record.vehicleId);
+        if (!vehicle || vehicle.isGuest) continue;
+        const dueDays = record.dueDate ? calendarDayDistance(today, record.dueDate) : null;
+        const remainingKm = record.dueOdometerKm === null ? null : record.dueOdometerKm - vehicle.odometerKm;
+        const dateRequiresAction = dueDays !== null && dueDays <= 30;
+        const kilometerRequiresAction = remainingKm !== null && remainingKm <= 1_000;
+        if (!dateRequiresAction && !kilometerRequiresAction) continue;
+        const overdue = (dueDays !== null && dueDays < 0) || (remainingKm !== null && remainingKm < 0);
+        const details = [
+          dateRequiresAction && dueDays !== null ? (dueDays < 0 ? `${Math.abs(dueDays)} day${Math.abs(dueDays) === 1 ? "" : "s"} overdue` : dueDays === 0 ? "due today" : `due in ${dueDays} day${dueDays === 1 ? "" : "s"}`) : null,
+          kilometerRequiresAction && remainingKm !== null ? (remainingKm < 0 ? `${Math.abs(remainingKm).toLocaleString("en-IN")} km overdue` : `${remainingKm.toLocaleString("en-IN")} km remaining`) : null,
+        ].filter(Boolean).join(" · ");
+        reminders.push({
+          key: `maintenance:${record.id}:${record.dueDate ?? "none"}:${record.dueOdometerKm ?? "none"}`,
+          tone: overdue ? "urgent" : "upcoming",
+          type: "maintenance",
+          title: `${vehicle.name} · ${record.title}`,
+          text: details,
+          vehicleId: vehicle.id,
+        });
+      }
+
+      for (const tyre of tyreRows) {
+        const vehicle = vehicleRows.find((row) => row.id === tyre.vehicleId);
+        if (!vehicle || vehicle.isGuest) continue;
+        const dueDays = tyre.replacementDueDate ? calendarDayDistance(today, tyre.replacementDueDate) : null;
+        const remainingKm = tyre.replacementDueOdometerKm === null ? null : tyre.replacementDueOdometerKm - vehicle.odometerKm;
+        const dateRequiresAction = dueDays !== null && dueDays <= 30;
+        const kilometerRequiresAction = remainingKm !== null && remainingKm <= 1_000;
+        if (!dateRequiresAction && !kilometerRequiresAction) continue;
+        const overdue = (dueDays !== null && dueDays < 0) || (remainingKm !== null && remainingKm < 0);
+        const details = [
+          dateRequiresAction && dueDays !== null ? (dueDays < 0 ? `${Math.abs(dueDays)} day${Math.abs(dueDays) === 1 ? "" : "s"} overdue` : dueDays === 0 ? "due today" : `due in ${dueDays} day${dueDays === 1 ? "" : "s"}`) : null,
+          kilometerRequiresAction && remainingKm !== null ? (remainingKm < 0 ? `${Math.abs(remainingKm).toLocaleString("en-IN")} km overdue` : `${remainingKm.toLocaleString("en-IN")} km remaining`) : null,
+        ].filter(Boolean).join(" · ");
+        reminders.push({
+          key: `tyre:${tyre.id}:${tyre.replacementDueDate ?? "none"}:${tyre.replacementDueOdometerKm ?? "none"}`,
+          tone: overdue ? "urgent" : "upcoming",
+          type: "tyre",
+          title: `${vehicle.name} tyre replacement`,
+          text: `${tyre.position.replace(/_/g, " ")} · ${details}`,
+          vehicleId: vehicle.id,
+        });
       }
 
       return Response.json({
@@ -888,7 +943,7 @@ export async function GET() {
         customers: customerDtos,
         payments: paymentDtos,
         expenses: expenseDtos,
-        reminders: reminders.slice(0, 12),
+        reminders,
         metrics: {
           totalCars: ownVehicleDtos.length,
           availableCars,

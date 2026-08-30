@@ -308,7 +308,7 @@ img { display: block; max-width: 100%; }
 .notifications-panel > button { width: 100%; border: 0; border-bottom: 1px solid #edf0ef; background: white; padding: 11px 13px; display: grid; grid-template-columns: 32px 1fr; gap: 9px; text-align: left; color: var(--ink); }
 .notifications-panel > button:hover { background: #fafcfc; }.notice-icon { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; }.notice-icon.urgent { background: var(--amber-soft); color: var(--amber); }.notice-icon.payment { background: var(--green-soft); color: var(--green); }.notice-icon.warning { background: var(--red-soft); color: var(--red); }
 .notifications-panel strong, .notifications-panel small, .notifications-panel time { display: block; }.notifications-panel strong { font-size: 8px; }.notifications-panel small { font-size: 7px; color: var(--muted); margin: 4px 0; }.notifications-panel time { color: var(--faint); font-size: 6px; }
-.notification-footer { padding: 11px; text-align: center; color: var(--green); font-size: 8px; font-weight: 800; }
+.notification-footer { width: 100%; padding: 11px; border: 0; background: #fff; text-align: center; color: var(--green); font-size: 8px; font-weight: 800; }
 .bottom-nav, .mobile-menu-overlay { display: none; }
 
 .dialog-overlay { position: fixed; inset: 0; padding: 26px; background: rgba(12,26,23,.56); backdrop-filter: blur(5px); display: grid; place-items: center; z-index: 80; animation: fade-in .18s ease; }
@@ -1352,12 +1352,12 @@ body { font-size: 15px; line-height: 1.45; }
   }
   .customer-actions .customer-primary-action { flex: 1 !important; }
 
-  .fleet-status-actions:has(.booking-whatsapp-action) {
+  .fleet-status-actions.has-booking-whatsapp {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 40px;
     gap: 7px;
   }
-  .fleet-status-actions:has(.booking-whatsapp-action) .booking-whatsapp-action {
+  .fleet-status-actions.has-booking-whatsapp .booking-whatsapp-action {
     width: 40px;
     min-width: 40px;
   }
@@ -2273,11 +2273,11 @@ body { font-size: 15px; line-height: 1.45; }
 
 /* On-rent cards have two equal actions: View rental + Book now. */
 @media (max-width: 720px) {
-  .fleet-status-actions:has(.rental-book-action) {
+  .fleet-status-actions.has-rental-book {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
   }
 
-  .fleet-status-actions:has(.rental-book-action) button {
+  .fleet-status-actions.has-rental-book button {
     min-width: 0;
     padding-left: 5px;
     padding-right: 5px;
@@ -4056,7 +4056,7 @@ body { font-size: 15px; line-height: 1.45; }
 
   /* View booking stays orange. View rental becomes clearly blue.
      Available Book now stays purple. */
-  .fleet-status-actions:has(.rental-book-action)
+  .fleet-status-actions.has-rental-book
   .primary-button:not(.rental-book-action) {
     border-color: transparent !important;
     background: linear-gradient(145deg, #2563eb, #1d4ed8) !important;
@@ -5694,14 +5694,12 @@ body { font-size: 15px; line-height: 1.45; }
    parent automatically becomes the soft rounded filter card when supported. */
 @media (max-width: 700px) {
 
-  /* The immediate filter container becomes one clean rounded card.
-     :has() is supported by current Chrome, Safari and modern mobile browsers. */
-  div:has(> .mecardee-report-filter-field),
-  section:has(> .mecardee-report-filter-field) {
+  /* The explicit container class keeps the same layout on older Samsung Chrome. */
+  .mecardee-filter-field-container {
     grid-template-columns: 1fr !important;
   }
 
-  div:has(> .mecardee-report-filter-field) {
+  div.mecardee-filter-field-container {
     gap: 15px !important;
     padding: 18px 16px !important;
     margin: 12px 0 16px !important;
@@ -5759,13 +5757,13 @@ body { font-size: 15px; line-height: 1.45; }
 
   /* If Status or another report label is a sibling inside that same
      filter container, visually match it even when it did not need a marker. */
-  div:has(> .mecardee-report-filter-field) > label {
+  div.mecardee-filter-field-container > label {
     width: 100% !important;
     min-width: 0 !important;
   }
 
-  div:has(> .mecardee-report-filter-field) > label > input,
-  div:has(> .mecardee-report-filter-field) > label > select {
+  div.mecardee-filter-field-container > label > input,
+  div.mecardee-filter-field-container > label > select {
     width: 100% !important;
     max-width: none !important;
   }
@@ -6274,6 +6272,12 @@ body {
   font-size: 21px;
   font-weight: 700;
   box-shadow: 0 8px 24px rgba(84,68,197,.18);
+}
+
+body.mecardee-client-ready .mecardee-first-paint {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 body:has(.app-shell) .mecardee-first-paint,

@@ -1,5 +1,5 @@
 // MECARDEE_ROLE_GUARD_V8_9_55
-import { requireReadAccess, requireWriteAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
+import { requireWriteAccess } from "@/lib/mecardee-auth";
 import { and, eq } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb } from "@/db";
 import { vehicleDocuments, vehicles } from "@/db/schema";

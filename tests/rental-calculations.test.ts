@@ -49,6 +49,14 @@ test("booking days are derived from the India calendar dates shown to staff", ()
     rentalDaysFromSchedule("2026-08-20T23:00:00+05:30", "2026-08-21T01:00:00+05:30"),
     1,
   );
+  assert.equal(
+    rentalDaysFromSchedule("2026-08-20T10:00:00+05:30", "2026-08-20T18:00:00+05:30"),
+    1,
+  );
+  assert.equal(
+    rentalDaysFromSchedule("2026-08-20T23:30:00+05:30", "2026-08-22T00:15:00+05:30"),
+    2,
+  );
 });
 
 test("balances below one rupee are settled instead of shown as pending", () => {
@@ -176,6 +184,51 @@ test("vehicle segment calculation keeps rental days, kilometer allowance, and ex
   });
 });
 
+test("vehicle changes replace only their own rental days and respect the three-hour boundary", () => {
+  const ownCar = calculateSegmentCharge({
+    startAt: "2026-08-20T10:00:00+05:30",
+    endAt: "2026-08-28T10:00:00+05:30",
+    dailyRate: 1_200,
+    startingKilometer: 10_000,
+    endingKilometer: 10_000,
+    allowedKmPerDay: 100,
+    extraKmRate: 0,
+  });
+  const guestCar = calculateSegmentCharge({
+    startAt: "2026-08-28T10:00:00+05:30",
+    endAt: "2026-08-30T10:00:00+05:30",
+    dailyRate: 1_500,
+    startingKilometer: 20_000,
+    endingKilometer: 20_000,
+    allowedKmPerDay: 100,
+    extraKmRate: 0,
+  });
+  assert.equal(ownCar.rentalDays, 8);
+  assert.equal(guestCar.rentalDays, 2);
+  assert.equal(ownCar.rentalCharge + guestCar.rentalCharge, 12_600);
+
+  const atGraceBoundary = calculateSegmentCharge({
+    startAt: "2026-08-25T10:00:00+05:30",
+    endAt: "2026-08-28T13:00:00+05:30",
+    dailyRate: 1_500,
+    startingKilometer: 20_000,
+    endingKilometer: 20_000,
+    allowedKmPerDay: 100,
+    extraKmRate: 0,
+  });
+  const afterGraceBoundary = calculateSegmentCharge({
+    startAt: "2026-08-25T10:00:00+05:30",
+    endAt: "2026-08-28T17:00:00+05:30",
+    dailyRate: 1_500,
+    startingKilometer: 20_000,
+    endingKilometer: 20_000,
+    allowedKmPerDay: 100,
+    extraKmRate: 0,
+  });
+  assert.equal(atGraceBoundary.rentalDays, 3);
+  assert.equal(afterGraceBoundary.rentalDays, 4);
+});
+
 test("Reji early return finalizes three days and uses the same three-day KM allowance", () => {
   const rental = calculateRentalChargeForActualReturn(
     "2026-08-21T13:00:00+05:30",
@@ -225,7 +278,7 @@ test("default return kilometer follows the allowance for the selected return tim
   assert.equal(calculateExpectedReturnKilometer(startKilometer, projection.rentalDays, 100), 54_008);
 });
 
-test("one-vehicle customer settlement stays concise without exposing Guest Car classification", () => {
+test("one-vehicle customer settlement is a concise final bill without exposing Guest Car classification", () => {
   const calculation = calculateSettlement({
     baseRentalAmount: 1_300,
     rentalDays: 1,
@@ -275,11 +328,18 @@ test("one-vehicle customer settlement stays concise without exposing Guest Car c
     }],
   });
 
+  assert.match(message, /^Mecardee Rental — Final Bill/);
   assert.match(message, /Vehicle: Toyota Taisor \(KL 35 N 6181\)/);
-  assert.match(message, /Starting kilometer: 18165 km/);
-  assert.match(message, /Actual return kilometer: 18526 km/);
-  assert.match(message, /Extra kilometers: 261 km/);
-  assert.match(message, /Starting fuel range: 110 km/);
-  assert.match(message, /Return fuel range: 1 km/);
+  assert.match(message, /Rental: 1 day · ₹1,300/);
+  assert.match(message, /KM: 18165 → 18526 \(361 km\)/);
+  assert.match(message, /Extra KM: 261 km · ₹2,088/);
+  assert.match(message, /Fuel shortage: 109 km · ₹1,253\.5/);
+  assert.match(message, /Final amount: ₹4,642/);
+  assert.match(message, /Balance due: ₹4,642/);
+  assert.match(message, /Status: Completed/);
+  assert.match(message, /Thank you for choosing Mecardee Rental Cars\.$/);
   assert.doesNotMatch(message, /Guest Car/i);
+  assert.doesNotMatch(message, /Starting kilometer:|Actual return kilometer:|Starting fuel range:|Return fuel range:/i);
+  assert.ok(message.split("\n").length <= 16, "final bill should stay short enough for WhatsApp");
+  assert.ok(message.length < 650, "final bill should remain concise");
 });
