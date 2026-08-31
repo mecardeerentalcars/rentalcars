@@ -331,7 +331,9 @@ test("one-vehicle customer settlement is a concise final bill without exposing G
   assert.match(message, /^Mecardee Rental — Final Bill/);
   assert.match(message, /Vehicle: Toyota Taisor \(KL 35 N 6181\)/);
   assert.match(message, /Rental: 1 day · ₹1,300/);
-  assert.match(message, /KM: 18165 → 18526 \(361 km\)/);
+  assert.match(message, /Starting KM: 18165/);
+  assert.match(message, /Return KM: 18526/);
+  assert.match(message, /Total run: 361 km/);
   assert.match(message, /Extra KM: 261 km · ₹2,088/);
   assert.match(message, /Fuel shortage: 109 km · ₹1,253\.5/);
   assert.match(message, /Final amount: ₹4,642/);
@@ -340,6 +342,70 @@ test("one-vehicle customer settlement is a concise final bill without exposing G
   assert.match(message, /Thank you for choosing Mecardee Rental Cars\.$/);
   assert.doesNotMatch(message, /Guest Car/i);
   assert.doesNotMatch(message, /Starting kilometer:|Actual return kilometer:|Starting fuel range:|Return fuel range:/i);
-  assert.ok(message.split("\n").length <= 16, "final bill should stay short enough for WhatsApp");
+  assert.ok(message.split("\n").length <= 20, "final bill should stay short enough for WhatsApp");
   assert.ok(message.length < 650, "final bill should remain concise");
+});
+
+test("multi-vehicle settlement groups each car with separate kilometer lines", () => {
+  const calculation = calculateSettlement({
+    baseRentalAmount: 3_000,
+    rentalDays: 3,
+    startingKilometer: 5_000,
+    actualReturnKilometer: 5_300,
+    allowedKmPerDay: 100,
+    extraKmRate: 8,
+    startingFuelRangeKm: 100,
+    returnFuelRangeKm: 100,
+    mileageKmPerLitre: 10,
+    fuelPricePerLitre: 110,
+  });
+  const message = buildSettlementWhatsAppMessage({
+    customerName: "Customer",
+    phone: "9999999999",
+    vehicleName: "Maruti Ertiga",
+    registrationNumber: "KL 10 BB 2002",
+    bookingNumber: "BKG-1000",
+    bookingStart: "21 Aug, 1:00 pm",
+    bookingEnd: "24 Aug, 1:00 pm",
+    rentalDays: 3,
+    startingKilometer: 5_000,
+    actualReturnKilometer: 5_300,
+    startingFuelRangeKm: 100,
+    returnFuelRangeKm: 100,
+    rentalAmount: 3_000,
+    discountAmount: 0,
+    calculation,
+    segments: [
+      {
+        sequence: 1,
+        vehicleName: "Maruti Swift",
+        registrationNumber: "KL 10 AA 1001",
+        isGuest: false,
+        bookingStart: "21 Aug, 1:00 pm",
+        bookingEnd: "23 Aug, 1:00 pm",
+        rentalDays: 2,
+        startingKilometer: 10_000,
+        endingKilometer: 10_200,
+        rentalCharge: 2_000,
+      },
+      {
+        sequence: 2,
+        vehicleName: "Maruti Ertiga",
+        registrationNumber: "KL 10 BB 2002",
+        isGuest: false,
+        bookingStart: "23 Aug, 1:00 pm",
+        bookingEnd: "24 Aug, 1:00 pm",
+        rentalDays: 1,
+        startingKilometer: 5_000,
+        endingKilometer: 5_300,
+        rentalCharge: 1_000,
+      },
+    ],
+  });
+
+  assert.match(message, /Vehicles used:\n1\. Maruti Swift \(KL 10 AA 1001\)/);
+  assert.match(message, / {3}Starting KM: 10000\n {3}Return KM: 10200\n {3}Total run: 200 km/);
+  assert.match(message, /2\. Maruti Ertiga \(KL 10 BB 2002\)/);
+  assert.match(message, / {3}Starting KM: 5000\n {3}Return KM: 5300\n {3}Total run: 300 km/);
+  assert.doesNotMatch(message, /KM: \d+ → \d+/);
 });

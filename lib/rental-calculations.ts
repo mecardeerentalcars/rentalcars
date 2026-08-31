@@ -293,14 +293,23 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     `Period: ${input.bookingStart} to ${input.bookingEnd}`,
   ];
 
+  const segments = input.segments ?? [];
   const distinctVehicleCount = new Set(
-    (input.segments ?? []).map((segment) => segment.registrationNumber.trim().toLowerCase()),
+    segments.map((segment) => segment.registrationNumber.trim().toLowerCase()),
   ).size;
-  if (input.segments && distinctVehicleCount > 1) {
-    lines.push("Vehicles used:");
-    for (const segment of input.segments) {
+  const hasMultipleVehicles = distinctVehicleCount > 1;
+  if (hasMultipleVehicles) {
+    lines.push("", "Vehicles used:");
+    for (const segment of segments) {
       const vehicleTotal = segment.rentalCharge + (segment.extraKmCharge ?? 0) + (segment.fuelCharge ?? 0);
-      lines.push(`${segment.sequence}. ${segment.vehicleName} (${segment.registrationNumber}) · ${segment.rentalDays} day${segment.rentalDays === 1 ? "" : "s"} · ${formatMoney(vehicleTotal)}`);
+      lines.push(`${segment.sequence}. ${segment.vehicleName} (${segment.registrationNumber})`);
+      lines.push(`   ${segment.rentalDays} day${segment.rentalDays === 1 ? "" : "s"} · ${formatMoney(vehicleTotal)}`);
+      if (typeof segment.startingKilometer === "number" && typeof segment.endingKilometer === "number") {
+        lines.push(`   Starting KM: ${segment.startingKilometer}`);
+        lines.push(`   Return KM: ${segment.endingKilometer}`);
+        lines.push(`   Total run: ${Math.max(0, segment.endingKilometer - segment.startingKilometer)} km`);
+      }
+      lines.push("");
     }
   } else {
     lines.push(`Vehicle: ${input.vehicleName} (${input.registrationNumber})`);
@@ -308,7 +317,11 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
 
   const totalRun = Math.max(0, input.actualReturnKilometer - input.startingKilometer);
   lines.push(`Rental: ${input.rentalDays} day${input.rentalDays === 1 ? "" : "s"} · ${formatMoney(input.rentalAmount)}`);
-  lines.push(`KM: ${input.startingKilometer} → ${input.actualReturnKilometer} (${totalRun} km)`);
+  if (!hasMultipleVehicles) {
+    lines.push(`Starting KM: ${input.startingKilometer}`);
+    lines.push(`Return KM: ${input.actualReturnKilometer}`);
+    lines.push(`Total run: ${totalRun} km`);
+  }
 
   if (calculation.extraKilometers > 0) {
     lines.push(`Extra KM: ${calculation.extraKilometers} km · ${formatMoney(calculation.extraKmCharge)}`);

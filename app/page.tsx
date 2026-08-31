@@ -87,6 +87,7 @@ import { calculateSegmentCharge } from "@/lib/rental-segments";
 import { effectiveBookingCalendarEndAt } from "@/lib/booking-calendar";
 import type { VehicleProfilePayload } from "@/app/vehicles/[id]/vehicle-details-client";
 import { compressVehicleImage } from "@/lib/client-image";
+import { userDeletionPolicy } from "@/lib/user-access";
 import {
   AlertTriangle,
   ArrowRight,
@@ -1091,7 +1092,7 @@ export default function Home() {
     const digits = (booking.whatsappNumber || booking.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const label = booking.status === "cancelled" ? "Booking update" : "Booking confirmation";
-    const text = `Mecardee Rental — ${label}\n\nHello ${customerWithPlace(booking.customer, booking.city)},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nBooking amount: ${money(booking.amount)}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replace(/_/g, " ")}\n\nPlease reply if any detail needs correction.`;
+    const text = `Mecardee Rental — ${label}\n\nHello ${booking.customer},\n\nVehicle: ${booking.vehicle} (${booking.plate})\nBooking: ${booking.bookingNumber}\nPickup: ${booking.start}\nExpected return: ${booking.returnDate}\nRental days: ${booking.days}\nAdvance: ${money(booking.advancePaid)}\nStatus: ${booking.status.replace(/_/g, " ")}\n\nPlease reply if any detail needs correction.`;
     openWhatsAppSafely(phone, text);
   }
 
@@ -1184,7 +1185,7 @@ export default function Home() {
         amountDue: rental.balance,
       };
       const text = buildSettlementWhatsAppMessage({
-        customerName: customerWithPlace(rental.customer, rental.city),
+        customerName: rental.customer,
         phone: rental.whatsappNumber || rental.phone,
         vehicleName: rental.vehicle,
         registrationNumber: rental.plate,
@@ -1223,7 +1224,7 @@ export default function Home() {
       openWhatsAppSafely(phone, text);
       return;
     }
-    const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${customerWithPlace(rental.customer, rental.city)}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}\nBalance due: ${money(rental.balance)}`;
+    const text = `Mecardee Rental — ${purpose}\n\nCustomer: ${rental.customer}\nVehicle: ${rental.vehicle} (${rental.plate})\nBooking: ${rental.id}\nExpected return: ${rental.returnDate}`;
     openWhatsAppSafely(phone, text);
   }
 
@@ -1247,15 +1248,15 @@ export default function Home() {
       ? "Please reply to confirm that the pickup details are still correct."
       : "Please reply to confirm the booking details.";
 
-    // Reminder: show the booked PER-DAY rate, but no estimated total.
-    // Confirmation: keep the existing estimated total behaviour.
+    // Reminders omit pricing. The alternate confirmation branch keeps its
+    // existing estimated-total behaviour.
     const priceLine = isReminder
-      ? `\nPer day rent: ${money(reservation.rate)}`
+      ? ""
       : `\nEstimated rent: ${money(reservation.amount)}`;
 
     const text =
       `Mecardee Rental - ${label}\n\n` +
-      `Hello ${customerWithPlace(reservation.customer, reservation.city)},\n` +
+      `Hello ${reservation.customer},\n` +
       `${intro}\n\n` +
       `Vehicle: ${reservation.vehicle} (${reservation.plate})\n` +
       `Booking: ${reservation.bookingNumber}\n` +
@@ -2841,17 +2842,43 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
   const [userAccessMessage, setUserAccessMessage] = useState("");
   const [userAccessError, setUserAccessError] = useState("");
   // MECARDEE_PROFESSIONAL_USER_ACCESS_V8_9_92
-  const [userAccessMode, setUserAccessMode] = useState<"password" | "create" | null>(null);
+  const [userAccessMode, setUserAccessMode] = useState<"password" | "create" | "manage" | null>(null);
+  const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
+  const [managedUsersLoading, setManagedUsersLoading] = useState(false);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<AuthUser | null>(null);
+  const [deleteUserConfirmation, setDeleteUserConfirmation] = useState("");
 
-  const toggleUserAccessMode = (mode: "password" | "create") => {
+  const loadManagedUsers = useCallback(async () => {
+    if (currentUser.role !== "superadmin") return;
+    setManagedUsersLoading(true);
+    try {
+      const response = await fetch("/api/auth/users", { cache: "no-store" });
+      const payload = await readApiResponse<{ ok: boolean; users?: AuthUser[]; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load users.");
+      setManagedUsers(payload.users ?? []);
+    } catch (loadError) {
+      setUserAccessError(loadError instanceof Error ? loadError.message : "Could not load users.");
+    } finally {
+      setManagedUsersLoading(false);
+    }
+  }, [currentUser.role]);
+
+  useEffect(() => {
+    if (userAccessMode === "manage" && currentUser.role === "superadmin") void loadManagedUsers();
+  }, [currentUser.role, loadManagedUsers, userAccessMode]);
+
+  const toggleUserAccessMode = (mode: "password" | "create" | "manage") => {
     setUserAccessMode((current) => current === mode ? null : mode);
     setUserAccessError("");
     setUserAccessMessage("");
+    setDeleteUserTarget(null);
+    setDeleteUserConfirmation("");
   };
 
   const changeOwnPassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const currentPassword = String(form.get("currentPassword") || "");
     const newPassword = String(form.get("newPassword") || "");
     const confirmPassword = String(form.get("confirmPassword") || "");
@@ -2874,7 +2901,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string }>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not change password.");
       setUserAccessMessage(payload.message || "Password changed successfully.");
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (changeError) {
       setUserAccessError(changeError instanceof Error ? changeError.message : "Could not change password.");
     } finally {
@@ -2886,7 +2913,8 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     event.preventDefault();
     if (currentUser.role !== "superadmin") return;
 
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const username = String(form.get("newUsername") || "").trim().toLowerCase();
     const password = String(form.get("newUserPassword") || "");
     const confirmPassword = String(form.get("confirmNewUserPassword") || "");
@@ -2910,9 +2938,51 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       const payload = await readApiResponse<{ ok: boolean; user?: AuthUser; error?: string }>(response);
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not create user.");
       setUserAccessMessage(`${payload.user?.username || username} created as ${role === "owner" ? "Owner" : "Viewer"}.`);
-      event.currentTarget.reset();
+      formElement.reset();
+      await loadManagedUsers();
     } catch (createError) {
       setUserAccessError(createError instanceof Error ? createError.message : "Could not create user.");
+    } finally {
+      setUserAccessBusy(false);
+    }
+  };
+
+  const deleteManagedUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (currentUser.role !== "superadmin" || !deleteUserTarget) return;
+
+    setUserAccessError("");
+    setUserAccessMessage("");
+    const policy = userDeletionPolicy(deleteUserTarget, currentUser.id);
+    if (!policy.allowed) {
+      setUserAccessError(policy.error || "This user cannot be deleted.");
+      return;
+    }
+    if (deleteUserConfirmation.trim().toLowerCase() !== deleteUserTarget.username.trim().toLowerCase()) {
+      setUserAccessError(`Type ${deleteUserTarget.username} exactly to continue.`);
+      return;
+    }
+
+    const finalWarning = policy.additionalWarning
+      ? `Additional warning: you are deleting ${deleteUserTarget.username}. Verify this is intentional.\n\nThis permanently removes the user and signs out all of their sessions. Delete now?`
+      : `Delete ${deleteUserTarget.username}?\n\nThis permanently removes the user and signs out all of their sessions.`;
+    if (!window.confirm(finalWarning)) return;
+
+    setUserAccessBusy(true);
+    try {
+      const response = await fetch("/api/auth/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deleteUserTarget.id, confirmationUsername: deleteUserConfirmation }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not delete user.");
+      setUserAccessMessage(payload.message || `${deleteUserTarget.username} deleted successfully.`);
+      setDeleteUserTarget(null);
+      setDeleteUserConfirmation("");
+      await loadManagedUsers();
+    } catch (deleteError) {
+      setUserAccessError(deleteError instanceof Error ? deleteError.message : "Could not delete user.");
     } finally {
       setUserAccessBusy(false);
     }
@@ -3204,6 +3274,16 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
           <UserRoundPlus size={17} />
           <span>Create new user</span>
         </button>}
+
+        {currentUser.role === "superadmin" && <button
+          className={`user-access-action ${userAccessMode === "manage" ? "active" : ""}`}
+          type="button"
+          aria-expanded={userAccessMode === "manage"}
+          onClick={() => toggleUserAccessMode("manage")}
+        >
+          <UsersRound size={17} />
+          <span>Manage users</span>
+        </button>}
       </div>
 
       {userAccessMode === "password" && <div className="user-access-expand">
@@ -3233,6 +3313,39 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
           <label><span>Confirm password</span><input name="confirmNewUserPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
           <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Creating…" : "Create user"}</button>
         </form>
+      </div>}
+
+      {currentUser.role === "superadmin" && userAccessMode === "manage" && <div className="user-access-expand">
+        <div className="user-access-expand-head">
+          <span className="settings-icon"><UsersRound size={18} /></span>
+          <div><h3>Manage users</h3><p>Delete Owner or Viewer access with two-step verification. Admin accounts are protected.</p></div>
+        </div>
+        {(userAccessMessage || userAccessError) && <div role="status" className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
+        {managedUsersLoading ? <div className="user-manager-empty">Loading users…</div> : managedUsers.length ? <div className="user-manager-list">
+          {managedUsers.map((user) => {
+            const policy = userDeletionPolicy(user, currentUser.id);
+            return <article className="user-manager-row" key={user.id}>
+              <div><strong>{user.username}</strong><span>{user.role === "superadmin" ? "Super Admin" : user.role === "owner" ? "Owner" : "Viewer"}{policy.additionalWarning ? " · Extra deletion warning" : ""}</span></div>
+              <button className={policy.allowed ? "danger-button" : "protected-user-button"} type="button" disabled={!policy.allowed || userAccessBusy} title={policy.error || `Delete ${user.username}`} onClick={() => { setUserAccessError(""); setUserAccessMessage(""); setDeleteUserConfirmation(""); setDeleteUserTarget(user); }}>
+                {policy.allowed ? <><Trash2 size={14} />Delete</> : <><ShieldCheck size={14} />Protected</>}
+              </button>
+            </article>;
+          })}
+        </div> : <div className="user-manager-empty">No active users found.</div>}
+
+        {deleteUserTarget && (() => {
+          const policy = userDeletionPolicy(deleteUserTarget, currentUser.id);
+          return <form className={`user-delete-verification ${policy.additionalWarning ? "additional-warning" : ""}`} onSubmit={deleteManagedUser}>
+            <div className="delete-warning">
+              <AlertTriangle size={18} />
+              <div><strong>Delete {deleteUserTarget.username}?</strong><p>This permanently removes this login and signs out all of its active sessions. Rental, payment and correction history remain recorded.</p></div>
+            </div>
+            {policy.additionalWarning && <div className="user-delete-extra-warning"><AlertTriangle size={17} /><div><strong>Additional warning</strong><p>{deleteUserTarget.username} is a specially flagged user. Check the selected username carefully before continuing.</p></div></div>}
+            <label><span>First verification: type <strong>{deleteUserTarget.username}</strong></span><input value={deleteUserConfirmation} onChange={(event) => setDeleteUserConfirmation(event.target.value)} autoComplete="off" required /></label>
+            <p className="user-delete-final-note">Second verification: a final confirmation will appear after you continue.</p>
+            <div className="form-actions"><button type="button" onClick={() => { setDeleteUserTarget(null); setDeleteUserConfirmation(""); }} disabled={userAccessBusy}>Cancel</button><button className="danger-button" type="submit" disabled={userAccessBusy || deleteUserConfirmation.trim().toLowerCase() !== deleteUserTarget.username.trim().toLowerCase()}><Trash2 size={15} />{userAccessBusy ? "Deleting…" : "Continue to final confirmation"}</button></div>
+          </form>;
+        })()}
       </div>}
     </section>
 
@@ -3881,7 +3994,7 @@ function StartBookingDialog({ reservation, vehicle, vehicles, guestVehicles, boo
 
     const text =
       `Mecardee Rental - Rental started\n\n` +
-      `Hello ${customerWithPlace(reservation.customer, reservation.city)},\n` +
+      `Hello ${reservation.customer},\n` +
       `Your vehicle rental has been started.\n\n` +
       `Vehicle: ${startedHandover.vehicle} (${startedHandover.plate})\n` +
       `Booking: ${reservation.bookingNumber}\n` +

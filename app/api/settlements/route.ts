@@ -371,7 +371,7 @@ async function saveSettlement(request: Request, editCompleted: boolean) {
       });
 
       const whatsappInput = {
-        customerName: record.customer.city ? `${record.customer.name} · ${record.customer.city}` : record.customer.name,
+        customerName: record.customer.name,
         phone: record.customer.whatsappNumber ?? record.customer.phone,
         vehicleName: currentVehicle.name,
         registrationNumber: currentVehicle.registrationNumber,
