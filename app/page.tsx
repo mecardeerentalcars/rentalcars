@@ -998,6 +998,11 @@ export default function Home() {
   }
 
   function goTo(next: View) {
+    if (sessionUser?.role === "viewer" && next === "settings") {
+      showToast("Settings are not available in Viewer demo mode.");
+      setMobileMenuOpen(false);
+      return;
+    }
     setView(next);
     setMobileMenuOpen(false);
     setSearch("");
@@ -1089,6 +1094,7 @@ export default function Home() {
   }
 
   function sendBookingRecordWhatsApp(booking: BookingRecord) {
+    if (sessionUser?.role === "viewer") { showToast("WhatsApp actions are disabled in Viewer demo mode."); return; }
     const digits = (booking.whatsappNumber || booking.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     const label = booking.status === "cancelled" ? "Booking update" : "Booking confirmation";
@@ -1166,6 +1172,7 @@ export default function Home() {
   }
 
   function sendWhatsApp(rental: Rental, purpose = "rental reminder") {
+    if (sessionUser?.role === "viewer") { showToast("WhatsApp actions are disabled in Viewer demo mode."); return; }
     const digits = (rental.whatsappNumber || rental.phone).replace(/\D/g, "");
     const phone = digits.length === 10 ? `91${digits}` : digits.startsWith("0") && digits.length === 11 ? `91${digits.slice(1)}` : digits;
     if (rental.state === "completed" && rental.settlement) {
@@ -1231,6 +1238,7 @@ export default function Home() {
   // MECARDEE_REMINDER_NO_ESTIMATED_RENT_V8_9_41
   // MECARDEE_REMINDER_DAILY_RATE_V8_9_51
   function sendBookingWhatsApp(reservation: Reservation, purpose: "confirmation" | "reminder" = "confirmation") {
+    if (sessionUser?.role === "viewer") { showToast("WhatsApp actions are disabled in Viewer demo mode."); return; }
     const digits = (reservation.whatsappNumber || reservation.phone).replace(/\D/g, "");
     const phone =
       digits.length === 10
@@ -1270,6 +1278,7 @@ export default function Home() {
   }
 
   function exportPayments() {
+    if (sessionUser?.role === "viewer") return showToast("Exports are disabled in Viewer demo mode.");
     if (!paymentList.length) return showToast("No payments to export.");
     const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentList.map((payment) => [payment.id, customerWithPlace(payment.customer, payment.place), payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
@@ -1406,7 +1415,7 @@ export default function Home() {
       if (target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
       if (target.tagName === "INPUT" || target.tagName === "SELECT") event.preventDefault();
     }}>
-      <Sidebar view={view} goTo={goTo} metrics={metrics} bookings={bookingList} />
+      <Sidebar view={view} goTo={goTo} metrics={metrics} bookings={bookingList} role={sessionUser.role} />
       <main className="main-area">
         <header className="topbar">
           <button className="mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"><Menu size={21} /></button>
@@ -1439,16 +1448,19 @@ export default function Home() {
               </div>}
             </div>
           </div>
-          {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
-          {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
-          {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
-          {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
-          {view === "guest-cars" && <GuestCarsView vehicles={guestVehicleList} rentals={rentalList} addVehicle={() => setDialog("guest-vehicle")} openVehicle={openVehicle} />}
-          {view === "customers" && <CustomersView currentUser={sessionUser!} payments={paymentList} rentals={rentalList} customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
-          {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
-          {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} />}
-          {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={[...vehicleList, ...guestVehicleList]} />}
-          {view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} customers={customerList} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
+          {sessionUser.role === "viewer" && <section className="viewer-demo-banner"><ShieldCheck size={18} /><div><strong>Viewer demo privacy mode</strong><span>Live customer, vehicle, financial and report details are hidden. All changes, messages and exports are disabled.</span></div></section>}
+          <div className={sessionUser.role === "viewer" ? "viewer-demo-content" : undefined}>
+            {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
+            {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
+            {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
+            {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
+            {view === "guest-cars" && <GuestCarsView vehicles={guestVehicleList} rentals={rentalList} addVehicle={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("guest-vehicle")} openVehicle={openVehicle} />}
+            {view === "customers" && <CustomersView currentUser={sessionUser!} payments={paymentList} rentals={rentalList} customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
+            {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
+            {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} />}
+            {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={[...vehicleList, ...guestVehicleList]} demoMode={sessionUser.role === "viewer"} />}
+            {sessionUser.role !== "viewer" && view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} customers={customerList} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
+          </div>
         </div>
       </main>
 
@@ -1459,7 +1471,7 @@ export default function Home() {
         newBooking={() => { setMobileQuickCreateOpen(false); newBookingFromTab(); }}
       />}
       {installBannerVisible && <InstallAppPrompt installing={installInstalling} onInstall={() => void installApp()} onClose={dismissInstallPrompt} />}
-      {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} />}
+      {mobileMenuOpen && <MobileMenu view={view} goTo={goTo} close={() => setMobileMenuOpen(false)} role={sessionUser.role} />}
       {dialog === "new-booking" && <NewBookingDialog vehicles={vehicleList} guestVehicles={guestVehicleList} customers={customerList} bookings={bookingList} rentals={rentalList} seed={bookingSeed} close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} showToast={showToast} />}
       {dialog === "booking-detail" && selectedReservation && <BookingDetailDialog reservation={selectedReservation} canStart={Date.now() >= new Date(selectedReservation.startAt).getTime()} close={() => setDialog(null)} edit={() => { const bookingRecord = bookingList.find((item) => item.id === selectedReservation.id); if (!bookingRecord) { showToast("Could not load booking details."); return; } setSelectedBookingRecord(bookingRecord); setDialog("booking-edit"); }} start={() => setDialog("booking-start")} cancelled={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
       {dialog === "booking-start" && selectedReservation && <StartBookingDialog reservation={selectedReservation} vehicle={[...vehicleList, ...guestVehicleList].find((item) => item.id === selectedReservation.vehicleId) ?? null} vehicles={vehicleList} guestVehicles={guestVehicleList} bookings={bookingList} rentals={rentalList} close={() => setDialog("booking-detail")} done={(message) => { setDialog(null); setSelectedReservation(null); showToast(message); void refreshData(); }} />}
@@ -1476,23 +1488,24 @@ export default function Home() {
       {dialog === "customer-edit" && selectedCustomer && <CustomerEditDialog customer={selectedCustomer} close={() => { setDialog(null); setSelectedCustomer(null); }} done={(message) => { setDialog(null); setSelectedCustomer(null); showToast(message); void refreshData(); }} />}
       {dialog === "vehicle" && <VehicleDialog close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
       {dialog === "guest-vehicle" && <VehicleDialog guest close={() => setDialog(null)} done={(message) => { setDialog(null); showToast(message); void refreshData(); }} />}
-      {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><Suspense fallback={<div className="dialog-loading">Loading vehicle profile…</div>}><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded startEditing={vehicleEditOnOpen} initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></Suspense></DialogShell>}
+      {dialog === "vehicle-detail" && selectedVehicle && <DialogShell title={selectedVehicle.name} subtitle={`${selectedVehicle.plate} · Vehicle profile`} close={() => setDialog(null)} wide><Suspense fallback={<div className="dialog-loading">Loading vehicle profile…</div>}><VehicleDetailsClient vehicleId={selectedVehicle.id} embedded startEditing={sessionUser.role === "viewer" ? false : vehicleEditOnOpen} readOnly={sessionUser.role === "viewer"} initialData={vehicleProfiles[selectedVehicle.id] ?? null} onChanged={() => void refreshData()} /></Suspense></DialogShell>}
       {dialog === "expense" && <ExpenseDialog vehicles={[...vehicleList, ...guestVehicleList]} rentals={rentalList} seedRentalId={expenseSeedRentalId} currentUser={sessionUser} close={() => { setExpenseSeedRentalId(null); setDialog(null); }} done={(message) => { setExpenseSeedRentalId(null); setDialog(null); showToast(message); void refreshData(); }} />}
       {toast && <div className="toast"><CheckCircle2 size={18} /><span>{toast}</span></div>}
     </div>
   );
 }
 
-function Sidebar({ view, goTo, metrics, bookings }: { view: View; goTo: (view: View) => void; metrics: Metrics; bookings: BookingRecord[] }) {
+function Sidebar({ view, goTo, metrics, bookings, role }: { view: View; goTo: (view: View) => void; metrics: Metrics; bookings: BookingRecord[]; role: UserRole }) {
   const today = indiaDateKey(new Date());
   const upcomingBookings = bookings.filter((booking) => booking.status === "booked" && indiaDateKey(booking.endAt) >= today).length;
+  const insightsItems = navItems.slice(8).filter((item) => role !== "viewer" || item.view !== "settings");
   return <aside className="sidebar">
     <div className="brand"><span className="brand-mark">M</span><div><strong>Mecardee</strong><small>Rental Manager</small></div></div>
     <nav aria-label="Primary navigation">
       <span className="nav-label">WORKSPACE</span>
       {navItems.slice(0, 8).map((item) => { const Icon = item.icon; const badge = item.view === "rentals" && metrics.activeRentals > 0 ? String(metrics.activeRentals) : item.view === "bookings" && upcomingBookings > 0 ? String(upcomingBookings) : null; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span>{badge && <b>{badge}</b>}</button>; })}
       <span className="nav-label lower">INSIGHTS</span>
-      {navItems.slice(8).map((item) => { const Icon = item.icon; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span></button>; })}
+      {insightsItems.map((item) => { const Icon = item.icon; return <button key={item.view} className={`nav-item ${view === item.view ? "active" : ""}`} onClick={() => goTo(item.view)}><Icon size={17} /><span>{item.label}</span></button>; })}
             <button className="nav-item sidebar-logout-action" type="button" onClick={() => void mecardeeQuickLogout()}><svg className="mecardee-logout-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 3h5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-5"/></svg><span>Log out</span></button>
       </nav>
     <div className="sidebar-health"><div className="health-head"><span className="pulse" /><strong>Fleet health</strong><b>{metrics.roadReadyPercent}%</b></div><div className="health-bar"><span style={{ width: `${metrics.roadReadyPercent}%` }} /></div><small>{metrics.availableCars + metrics.onRentCars} of {metrics.totalCars} vehicles are road-ready</small></div>
@@ -2524,7 +2537,7 @@ function customerReportDateOnly(value: string) {
   }).format(date);
 }
 
-function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[]; vehicles: Vehicle[] }) {
+function ReportsView({ rentals, payments, expenses, vehicles, demoMode = false }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[]; vehicles: Vehicle[]; demoMode?: boolean }) {
   const today = dateInputValue(new Date());
   const monthStart = `${today.slice(0, 8)}01`;
   const [reportType, setReportType] = useState<ReportType>("rentals");
@@ -2829,10 +2842,13 @@ function ReportsView({ rentals, payments, expenses, vehicles }: { rentals: Renta
           </div>
         </details>
       </div>}
-      <div className="report-actions"><button className="secondary-button" onClick={() => downloadPdfTable(exportName, report.title, subtitle, pdfHeaders, pdfRows, pdfCurrencyColumns, report.label, report.total)} disabled={!report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={!report.rows.length}><Download size={16} />Excel</button></div>
+      <div className="report-actions"><button className="secondary-button" title={demoMode ? "Exports are disabled in Viewer demo mode" : "Download PDF"} onClick={() => downloadPdfTable(exportName, report.title, subtitle, pdfHeaders, pdfRows, pdfCurrencyColumns, report.label, report.total)} disabled={demoMode || !report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" title={demoMode ? "Exports are disabled in Viewer demo mode" : "Download Excel"} onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={demoMode || !report.rows.length}><Download size={16} />Excel</button></div>
     </section>
-    <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Guest Car rental amounts excluded from business totals</small></article></section>
-    <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table className={reportType === "rentals" || reportType === "cars" ? "report-detailed-table" : ""}><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => { const header = report.headers[cellIndex]; const detailed = ["Vehicle usage / changes", "KM by vehicle", "Rental & KM details", "Rental dates", "KM run", "Change details"].includes(header); return <td className={detailed ? "report-detail-cell" : ""} key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>; })}</tr>)}</tbody></table></div></section>
+    <div className={demoMode ? "viewer-report-lock" : undefined}>
+      <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Guest Car rental amounts excluded from business totals</small></article></section>
+      <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table className={reportType === "rentals" || reportType === "cars" ? "report-detailed-table" : ""}><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => { const header = report.headers[cellIndex]; const detailed = ["Vehicle usage / changes", "KM by vehicle", "Rental & KM details", "Rental dates", "KM run", "Change details"].includes(header); return <td className={detailed ? "report-detail-cell" : ""} key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>; })}</tr>)}</tbody></table></div></section>
+      {demoMode && <div className="viewer-report-lock-message"><ShieldCheck size={22} /><strong>Report data hidden in demo mode</strong><span>Super Admin and Owner accounts retain full report access.</span></div>}
+    </div>
   </>;
 }
 
@@ -2842,9 +2858,10 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
   const [userAccessMessage, setUserAccessMessage] = useState("");
   const [userAccessError, setUserAccessError] = useState("");
   // MECARDEE_PROFESSIONAL_USER_ACCESS_V8_9_92
-  const [userAccessMode, setUserAccessMode] = useState<"password" | "create" | "manage" | null>(null);
+  const [userAccessMode, setUserAccessMode] = useState<"create" | "manage" | null>(null);
   const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
   const [managedUsersLoading, setManagedUsersLoading] = useState(false);
+  const [passwordUserTarget, setPasswordUserTarget] = useState<AuthUser | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<AuthUser | null>(null);
   const [deleteUserConfirmation, setDeleteUserConfirmation] = useState("");
 
@@ -2867,46 +2884,13 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     if (userAccessMode === "manage" && currentUser.role === "superadmin") void loadManagedUsers();
   }, [currentUser.role, loadManagedUsers, userAccessMode]);
 
-  const toggleUserAccessMode = (mode: "password" | "create" | "manage") => {
+  const toggleUserAccessMode = (mode: "create" | "manage") => {
     setUserAccessMode((current) => current === mode ? null : mode);
     setUserAccessError("");
     setUserAccessMessage("");
+    setPasswordUserTarget(null);
     setDeleteUserTarget(null);
     setDeleteUserConfirmation("");
-  };
-
-  const changeOwnPassword = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const currentPassword = String(form.get("currentPassword") || "");
-    const newPassword = String(form.get("newPassword") || "");
-    const confirmPassword = String(form.get("confirmPassword") || "");
-
-    setUserAccessError("");
-    setUserAccessMessage("");
-
-    if (newPassword !== confirmPassword) {
-      setUserAccessError("New passwords do not match.");
-      return;
-    }
-
-    setUserAccessBusy(true);
-    try {
-      const response = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string }>(response);
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not change password.");
-      setUserAccessMessage(payload.message || "Password changed successfully.");
-      formElement.reset();
-    } catch (changeError) {
-      setUserAccessError(changeError instanceof Error ? changeError.message : "Could not change password.");
-    } finally {
-      setUserAccessBusy(false);
-    }
   };
 
   const createUser = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -2942,6 +2926,49 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       await loadManagedUsers();
     } catch (createError) {
       setUserAccessError(createError instanceof Error ? createError.message : "Could not create user.");
+    } finally {
+      setUserAccessBusy(false);
+    }
+  };
+
+  const resetManagedUserPassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (currentUser.role !== "superadmin" || !passwordUserTarget) return;
+
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const newPassword = String(form.get("managedUserPassword") || "");
+    const confirmPassword = String(form.get("confirmManagedUserPassword") || "");
+
+    setUserAccessError("");
+    setUserAccessMessage("");
+    if (newPassword !== confirmPassword) {
+      setUserAccessError("New passwords do not match.");
+      return;
+    }
+
+    setUserAccessBusy(true);
+    try {
+      const response = await fetch("/api/auth/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: passwordUserTarget.id, newPassword }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string; currentUserSignedOut?: boolean }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not change the user password.");
+
+      formElement.reset();
+      if (payload.currentUserSignedOut) {
+        window.alert(payload.message || "Password changed. All active sessions were signed out. Please sign in again.");
+        await onLogout();
+        return;
+      }
+
+      setUserAccessMessage(payload.message || `${passwordUserTarget.username}'s password was changed and all sessions were signed out.`);
+      setPasswordUserTarget(null);
+      await loadManagedUsers();
+    } catch (changeError) {
+      setUserAccessError(changeError instanceof Error ? changeError.message : "Could not change the user password.");
     } finally {
       setUserAccessBusy(false);
     }
@@ -3254,18 +3281,8 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
         <button className="secondary-button" type="button" onClick={onLogout}>Log out</button>
       </div>
 
-      <div className="user-access-actions">
+      {currentUser.role === "superadmin" && <div className="user-access-actions">
         <button
-          className={`user-access-action ${userAccessMode === "password" ? "active" : ""}`}
-          type="button"
-          aria-expanded={userAccessMode === "password"}
-          onClick={() => toggleUserAccessMode("password")}
-        >
-          <ShieldCheck size={17} />
-          <span>Change password</span>
-        </button>
-
-        {currentUser.role === "superadmin" && <button
           className={`user-access-action ${userAccessMode === "create" ? "active" : ""}`}
           type="button"
           aria-expanded={userAccessMode === "create"}
@@ -3273,9 +3290,9 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
         >
           <UserRoundPlus size={17} />
           <span>Create new user</span>
-        </button>}
+        </button>
 
-        {currentUser.role === "superadmin" && <button
+        <button
           className={`user-access-action ${userAccessMode === "manage" ? "active" : ""}`}
           type="button"
           aria-expanded={userAccessMode === "manage"}
@@ -3283,21 +3300,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
         >
           <UsersRound size={17} />
           <span>Manage users</span>
-        </button>}
-      </div>
-
-      {userAccessMode === "password" && <div className="user-access-expand">
-        <div className="user-access-expand-head">
-          <span className="settings-icon"><ShieldCheck size={18} /></span>
-          <div><h3>Change password</h3><p>Update the password for your account.</p></div>
-        </div>
-        {(userAccessMessage || userAccessError) && <div role="status" className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
-        <form className="user-access-form" onSubmit={changeOwnPassword}>
-          <label><span>Current password</span><input name="currentPassword" type="password" autoComplete="current-password" required /></label>
-          <label><span>New password</span><input name="newPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-          <label><span>Confirm new password</span><input name="confirmPassword" type="password" minLength={4} autoComplete="new-password" required /></label>
-          <button className="primary-button" type="submit" disabled={userAccessBusy}>{userAccessBusy ? "Saving…" : "Save new password"}</button>
-        </form>
+        </button>
       </div>}
 
       {currentUser.role === "superadmin" && userAccessMode === "create" && <div className="user-access-expand">
@@ -3318,7 +3321,7 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
       {currentUser.role === "superadmin" && userAccessMode === "manage" && <div className="user-access-expand">
         <div className="user-access-expand-head">
           <span className="settings-icon"><UsersRound size={18} /></span>
-          <div><h3>Manage users</h3><p>Delete Owner or Viewer access with two-step verification. Admin accounts are protected.</p></div>
+          <div><h3>Manage users</h3><p>Reset passwords for any account or delete Owner and Viewer access. Every password reset signs that user out everywhere.</p></div>
         </div>
         {(userAccessMessage || userAccessError) && <div role="status" className={userAccessError ? "user-access-feedback error" : "user-access-feedback success"}>{userAccessError || userAccessMessage}</div>}
         {managedUsersLoading ? <div className="user-manager-empty">Loading users…</div> : managedUsers.length ? <div className="user-manager-list">
@@ -3326,12 +3329,27 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
             const policy = userDeletionPolicy(user, currentUser.id);
             return <article className="user-manager-row" key={user.id}>
               <div><strong>{user.username}</strong><span>{user.role === "superadmin" ? "Super Admin" : user.role === "owner" ? "Owner" : "Viewer"}{policy.additionalWarning ? " · Extra deletion warning" : ""}</span></div>
-              <button className={policy.allowed ? "danger-button" : "protected-user-button"} type="button" disabled={!policy.allowed || userAccessBusy} title={policy.error || `Delete ${user.username}`} onClick={() => { setUserAccessError(""); setUserAccessMessage(""); setDeleteUserConfirmation(""); setDeleteUserTarget(user); }}>
-                {policy.allowed ? <><Trash2 size={14} />Delete</> : <><ShieldCheck size={14} />Protected</>}
-              </button>
+              <div className="user-manager-actions">
+                <button className="secondary-button" type="button" disabled={userAccessBusy} onClick={() => { setUserAccessError(""); setUserAccessMessage(""); setDeleteUserTarget(null); setDeleteUserConfirmation(""); setPasswordUserTarget(user); }}><ShieldCheck size={14} />Reset password</button>
+                <button className={policy.allowed ? "danger-button" : "protected-user-button"} type="button" disabled={!policy.allowed || userAccessBusy} title={policy.error || `Delete ${user.username}`} onClick={() => { setUserAccessError(""); setUserAccessMessage(""); setPasswordUserTarget(null); setDeleteUserConfirmation(""); setDeleteUserTarget(user); }}>
+                  {policy.allowed ? <><Trash2 size={14} />Delete</> : <><ShieldCheck size={14} />Protected</>}
+                </button>
+              </div>
             </article>;
           })}
         </div> : <div className="user-manager-empty">No active users found.</div>}
+
+        {passwordUserTarget && <form className="user-password-reset" onSubmit={resetManagedUserPassword}>
+          <div className="user-access-expand-head">
+            <span className="settings-icon"><ShieldCheck size={18} /></span>
+            <div><h3>Reset {passwordUserTarget.username}&apos;s password</h3><p>This immediately signs this user out from every active device and browser.</p></div>
+          </div>
+          <div className="user-access-form">
+            <label><span>New password</span><input name="managedUserPassword" type="password" minLength={4} maxLength={200} autoComplete="new-password" required /></label>
+            <label><span>Confirm new password</span><input name="confirmManagedUserPassword" type="password" minLength={4} maxLength={200} autoComplete="new-password" required /></label>
+            <div className="form-actions"><button type="button" onClick={() => setPasswordUserTarget(null)} disabled={userAccessBusy}>Cancel</button><button className="primary-button" type="submit" disabled={userAccessBusy}><ShieldCheck size={15} />{userAccessBusy ? "Changing…" : "Change password & sign out sessions"}</button></div>
+          </div>
+        </form>}
 
         {deleteUserTarget && (() => {
           const policy = userDeletionPolicy(deleteUserTarget, currentUser.id);
@@ -3504,9 +3522,10 @@ function MobileQuickCreate({ close, newRental, newBooking }: { close: () => void
   </div>;
 }
 
-function MobileMenu({ view, goTo, close }: { view: View; goTo: (view: View) => void; close: () => void }) {
+function MobileMenu({ view, goTo, close, role }: { view: View; goTo: (view: View) => void; close: () => void; role: UserRole }) {
   const itemButton = (item: (typeof navItems)[number]) => { const Icon = item.icon; return <button className={view === item.view ? "active" : ""} key={item.view} onClick={() => goTo(item.view)}><Icon size={18} />{item.label}<ChevronRight size={16} /></button>; };
-  return <div className="mobile-menu-overlay"><aside><div className="mobile-menu-head"><div className="brand"><span className="brand-mark">M</span><div><strong>Mecardee</strong><small>Rental Manager</small></div></div><button onClick={close}><X size={20} /></button></div><nav><span className="mobile-menu-section-label">WORKSPACE</span>{navItems.slice(0, 8).map(itemButton)}<span className="mobile-menu-section-label insights">INSIGHTS</span>{navItems.slice(8).map(itemButton)}<button className="mobile-menu-logout-action" type="button" onClick={() => { close(); void mecardeeQuickLogout(); }}><svg className="mecardee-logout-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 3h5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-5"/></svg><span>Log out</span><ChevronRight size={16} /></button></nav></aside></div>;
+  const insightsItems = navItems.slice(8).filter((item) => role !== "viewer" || item.view !== "settings");
+  return <div className="mobile-menu-overlay"><aside><div className="mobile-menu-head"><div className="brand"><span className="brand-mark">M</span><div><strong>Mecardee</strong><small>Rental Manager</small></div></div><button onClick={close}><X size={20} /></button></div><nav><span className="mobile-menu-section-label">WORKSPACE</span>{navItems.slice(0, 8).map(itemButton)}<span className="mobile-menu-section-label insights">INSIGHTS</span>{insightsItems.map(itemButton)}<button className="mobile-menu-logout-action" type="button" onClick={() => { close(); void mecardeeQuickLogout(); }}><svg className="mecardee-logout-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 3h5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-5"/></svg><span>Log out</span><ChevronRight size={16} /></button></nav></aside></div>;
 }
 
 function DialogShell({ title, subtitle, close, wide = false, children }: { title: string; subtitle: string; close: () => void; wide?: boolean; children: React.ReactNode }) {

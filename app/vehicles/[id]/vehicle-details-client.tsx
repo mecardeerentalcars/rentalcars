@@ -42,13 +42,13 @@ function expiryState(expiryDate: string | null) {
   return { text: `Valid until ${shortDate(expiryDate)}`, tone: "good" };
 }
 
-export default function VehicleDetailsClient({ vehicleId, embedded = false, startEditing = false, initialData, onChanged }: { vehicleId: string; embedded?: boolean; startEditing?: boolean; initialData?: VehicleProfilePayload | null; onChanged?: () => void }) {
+export default function VehicleDetailsClient({ vehicleId, embedded = false, startEditing = false, readOnly = false, initialData, onChanged }: { vehicleId: string; embedded?: boolean; startEditing?: boolean; readOnly?: boolean; initialData?: VehicleProfilePayload | null; onChanged?: () => void }) {
   const [data, setData] = useState<VehicleProfilePayload | null>(initialData ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(startEditing);
+  const [editing, setEditing] = useState(readOnly ? false : startEditing);
   const [tab, setTab] = useState<"documents" | "maintenance" | "tyres" | "history">("documents");
 
-  useEffect(() => { setData(initialData ?? null); setTab(initialData?.vehicle.isGuest ? "history" : "documents"); setEditing(startEditing); }, [vehicleId, initialData, startEditing]);
+  useEffect(() => { setData(initialData ?? null); setTab(initialData?.vehicle.isGuest ? "history" : "documents"); setEditing(readOnly ? false : startEditing); }, [vehicleId, initialData, readOnly, startEditing]);
 
   async function reload() {
     const response = await fetch(`/api/vehicles/${vehicleId}`, { cache: "no-store" });
@@ -73,7 +73,7 @@ export default function VehicleDetailsClient({ vehicleId, embedded = false, star
     <section className={styles.compactHero}>
       <div className={styles.compactPhoto}>{vehicle.imageUrl ? <img src={vehicle.imageUrl} alt={vehicle.name} /> : <div><CarFront size={38} /><span>No vehicle image</span></div>}</div>
       <div className={styles.compactInfo}>
-        <div className={styles.compactTitleRow}><div><p className={styles.eyebrow}>VEHICLE PROFILE</p><h2>{vehicle.name}</h2><strong>{vehicle.registrationNumber}</strong></div><button className={styles.editButton} onClick={() => setEditing(true)}><Pencil size={15} />Edit</button></div>
+        <div className={styles.compactTitleRow}><div><p className={styles.eyebrow}>VEHICLE PROFILE</p><h2>{vehicle.name}</h2><strong>{vehicle.registrationNumber}</strong></div>{!readOnly && <button className={styles.editButton} onClick={() => setEditing(true)}><Pencil size={15} />Edit</button>}</div>
         <div className={styles.specs}><span><Fuel size={14} />{vehicle.fuelType}</span><span><Settings2 size={14} />{vehicle.transmission}</span><span><CalendarDays size={14} />{vehicle.modelYear}</span></div>{vehicle.isGuest && <div className={styles.specs}><span>Owner: {vehicle.guestOwnerName || "Not recorded"}</span><span>Place: {vehicle.guestOwnerPlace || "Not recorded"}</span></div>}
         <div className={styles.fastMetrics}><span><small>Rate</small><b>{money(vehicle.dailyRate)}/day</b></span><span><small>Odometer</small><b>{vehicle.odometerKm.toLocaleString("en-IN")} km</b></span><span><small>Allowed</small><b>{vehicle.allowedKmPerDay} km/day</b></span><span><small>Mileage</small><b>{vehicle.mileageKmPerLitre} km/L</b></span></div>
       </div>

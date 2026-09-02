@@ -2,7 +2,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { withRequestDb } from "@/db";
-import { appUsers } from "@/db/schema";
+import { appUsers, appUserSessions } from "@/db/schema";
 import { hashPassword, requireReadAccess, requireSuperAdminAccess } from "@/lib/mecardee-auth";
 import { userDeletionPolicy } from "@/lib/user-access";
 
@@ -13,7 +13,7 @@ export async function GET() {
   try {
     return withRequestDb(async (db) => {
       const rows = await db.select({ id: appUsers.id, username: appUsers.username, role: appUsers.role, active: appUsers.active }).from(appUsers).orderBy(asc(appUsers.username));
-      const visibleRoles = auth.user.role === "superadmin" ? ["superadmin", "owner", "viewer"] : ["superadmin", "owner"];
+      const visibleRoles = auth.user.role === "superadmin" ? ["superadmin", "owner", "viewer"] : auth.user.role === "owner" ? ["superadmin", "owner"] : [];
       const users = rows.filter((row) => row.active && visibleRoles.includes(row.role)).map(({ id, username, role }) => ({ id, username, role }));
       return NextResponse.json({ ok: true, users });
     });
@@ -64,6 +64,50 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("User creation failed", error);
     return NextResponse.json({ ok: false, error: "Could not create user." }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const auth = await requireSuperAdminAccess();
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = await request.json() as { userId?: unknown; newPassword?: unknown };
+    const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+    const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)) {
+      return NextResponse.json({ ok: false, error: "Select a user whose password should be changed." }, { status: 400 });
+    }
+    if (newPassword.length < 4 || newPassword.length > 200) {
+      return NextResponse.json({ ok: false, error: "Password must contain 4-200 characters." }, { status: 400 });
+    }
+
+    return withRequestDb(async (db) => db.transaction(async (tx) => {
+      const [target] = await tx.select({ id: appUsers.id, username: appUsers.username })
+        .from(appUsers)
+        .where(eq(appUsers.id, userId))
+        .limit(1);
+
+      if (!target) {
+        return NextResponse.json({ ok: false, error: "That user no longer exists." }, { status: 404 });
+      }
+
+      await tx.update(appUsers)
+        .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
+        .where(eq(appUsers.id, target.id));
+      await tx.delete(appUserSessions).where(eq(appUserSessions.userId, target.id));
+
+      return NextResponse.json({
+        ok: true,
+        message: `${target.username}'s password was changed. All active sessions for this user were signed out.`,
+        user: target,
+        currentUserSignedOut: target.id === auth.user.id,
+      });
+    }));
+  } catch (error) {
+    console.error("User password reset failed", error);
+    return NextResponse.json({ ok: false, error: "Could not change the user password." }, { status: 500 });
   }
 }
 

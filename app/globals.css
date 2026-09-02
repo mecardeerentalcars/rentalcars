@@ -7297,6 +7297,37 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   font-size: 11px;
 }
 
+.user-manager-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px !important;
+}
+
+.user-manager-actions .secondary-button,
+.user-manager-actions .danger-button,
+.user-manager-actions .protected-user-button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.user-password-reset {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dcd6f8;
+  border-radius: 13px;
+  background: #faf9ff;
+}
+
+.user-password-reset .user-access-expand-head {
+  margin-bottom: 13px;
+}
+
+.user-password-reset .form-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
+
 .user-manager-empty {
   padding: 18px;
   text-align: center;
@@ -7412,6 +7443,161 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
     grid-column: 1;
     width: 100%;
     justify-self: stretch;
+  }
+
+  .user-manager-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .user-manager-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .user-manager-actions > button {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .user-password-reset .user-access-form {
+    grid-template-columns: 1fr;
+  }
+
+  .user-password-reset .form-actions {
+    grid-column: 1;
+  }
+}
+
+/* Viewer accounts are shareable product demos. The API already replaces live
+   values; this layer makes the privacy boundary obvious on screen as well. */
+.viewer-demo-banner {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #d9d3fa;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f8f6ff, #f2f8ff);
+  color: #4e42b8;
+}
+
+.viewer-demo-banner svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.viewer-demo-banner div {
+  display: grid;
+  gap: 3px;
+}
+
+.viewer-demo-banner strong {
+  font-size: 12px;
+}
+
+.viewer-demo-banner span {
+  color: #6f6b87;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.app-shell[data-user-role="viewer"] .viewer-demo-content :is(
+  .dashboard-status-line strong,
+  .booking-priority-list,
+  .dashboard-reminders-inline ul,
+  .money-snapshot .money-line,
+  .fleet-status-grid,
+  .mini-stats strong,
+  .history-table .history-row,
+  .booking-summary-strip,
+  .booking-calendar-grid,
+  .booking-list-row,
+  .vehicle-grid .vehicle-card,
+  .guest-car-report-panel .guest-usage-list,
+  .guest-car-report-panel .guest-report-total,
+  .customer-summary strong,
+  .customer-list-row,
+  .payments-table article,
+  .outstanding-card article,
+  .payment-summary strong,
+  .expense-list,
+  .accounts-summary strong,
+  .bar-chart,
+  .chart-total
+) {
+  filter: blur(5px);
+  user-select: none;
+}
+
+.app-shell[data-user-role="viewer"] .viewer-demo-content :is(.vehicle-photo, .fleet-status-image) {
+  filter: blur(10px);
+}
+
+.app-shell[data-user-role="viewer"] :is(
+  .booking-brief-actions,
+  .booking-row-actions,
+  .customer-actions,
+  .detail-actions,
+  .rental-expense-action,
+  .receive-button,
+  .vehicle-actions,
+  .whatsapp-button
+) {
+  display: none !important;
+}
+
+.viewer-report-lock {
+  position: relative;
+  min-height: 250px;
+}
+
+.viewer-report-lock > .report-summary,
+.viewer-report-lock > .report-results {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.viewer-report-lock-message {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: min(360px, calc(100% - 32px));
+  padding: 22px;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  border: 1px solid #dcd6fa;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 18px 48px rgba(42, 37, 83, .16);
+  color: #4f43b9;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.viewer-report-lock-message strong {
+  color: #2b2935;
+  font-size: 14px;
+}
+
+.viewer-report-lock-message span {
+  color: #767285;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .viewer-demo-banner {
+    margin-bottom: 12px;
+    padding: 11px 12px;
+  }
+
+  .viewer-report-lock-message {
+    padding: 18px 14px;
   }
 }
 

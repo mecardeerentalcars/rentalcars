@@ -3,6 +3,7 @@
 // MECARDEE_ROLE_GUARD_V8_9_55
 // MECARDEE_SMART_REMINDERS_SETTLEMENT_DUE_V8_9_100
 import { requireReadAccess } from "@/lib/mecardee-auth";
+import { redactViewerData } from "@/lib/viewer-demo";
 // MECARDEE_MOBILE_SETTINGS_REMINDERS_CURRENT_RENTAL_V8_9_51
 // MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_V8_9_45
 import { asc, desc, eq } from "drizzle-orm";
@@ -931,7 +932,7 @@ export async function GET() {
         });
       }
 
-      return Response.json({
+      const payload = {
         ok: true,
         generatedAt: current.toISOString(),
         rentals,
@@ -976,7 +977,13 @@ export async function GET() {
           twelveMonthCollected,
           monthlyCollected,
         },
-      });
+      };
+
+      return Response.json(
+        __mecardeeAuth.user.role === "viewer"
+          ? redactViewerData({ ...payload, demoMode: true })
+          : payload,
+      );
     });
   } catch (error) {
     if (error instanceof DatabaseConfigurationError) {

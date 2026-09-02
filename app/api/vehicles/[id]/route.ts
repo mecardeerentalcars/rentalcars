@@ -1,5 +1,6 @@
 // MECARDEE_ROLE_GUARD_V8_9_55
 import { requireReadAccess, requireWriteAccess } from "@/lib/mecardee-auth";
+import { redactViewerData } from "@/lib/viewer-demo";
 import { desc, eq, sql } from "drizzle-orm";
 import { DatabaseConfigurationError, withRequestDb, type AppDb } from "@/db";
 import {
@@ -99,7 +100,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         tyreWarning = "Tyre details are temporarily unavailable. Documents, maintenance and rental history are still available.";
       }
 
-      return Response.json({
+      const payload = {
         ok: true,
         vehicle: {
           id: vehicle.id,
@@ -178,7 +179,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
           description: item.description,
           method: item.method,
         })),
-      });
+      };
+
+      return Response.json(
+        __mecardeeAuth.user.role === "viewer"
+          ? redactViewerData({ ...payload, demoMode: true })
+          : payload,
+      );
     });
   } catch (error) {
     if (error instanceof DatabaseConfigurationError) return Response.json({ ok: false, error: error.message }, { status: 503 });
