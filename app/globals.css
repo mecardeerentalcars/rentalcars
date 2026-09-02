@@ -5202,7 +5202,14 @@ body { font-size: 15px; line-height: 1.45; }
   border-radius: 11px;
   background: #fff;
   color: #171720;
+  font: inherit;
   outline: none;
+}
+
+.mecardee-auth-form input {
+  /* iOS Safari zooms focused form fields below 16px and can keep that zoom
+     after the login screen is replaced by the app. */
+  font-size: 16px;
 }
 
 .mecardee-auth-form input:focus,
@@ -7505,34 +7512,40 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 
 .app-shell[data-user-role="viewer"] .viewer-demo-content :is(
   .dashboard-status-line strong,
-  .booking-priority-list,
-  .dashboard-reminders-inline ul,
-  .money-snapshot .money-line,
-  .fleet-status-grid,
+  .booking-priority-car,
+  .booking-priority-customer,
+  .booking-priority-time,
+  .dashboard-reminders-inline .reminder strong,
+  .dashboard-reminders-inline .reminder small,
+  .dashboard-reminders-inline .reminder time,
+  .money-snapshot .money-line strong,
+  .fleet-status-grid .fleet-status-body strong,
+  .fleet-status-grid .fleet-card-customer,
+  .fleet-status-grid .fleet-booking-timing,
   .mini-stats strong,
-  .history-table .history-row,
-  .booking-summary-strip,
-  .booking-calendar-grid,
-  .booking-list-row,
-  .vehicle-grid .vehicle-card,
-  .guest-car-report-panel .guest-usage-list,
-  .guest-car-report-panel .guest-report-total,
+  .history-table .history-row > span,
+  .booking-summary-strip strong,
+  .booking-calendar-date,
+  .booking-calendar-events,
+  .booking-list-row > :not(.booking-row-actions),
+  .vehicle-grid .vehicle-title,
+  .vehicle-grid .odometer,
+  .vehicle-grid .document-note,
+  .guest-car-report-panel .guest-usage-row,
+  .guest-car-report-panel .guest-report-total strong,
   .customer-summary strong,
   .customer-list-row,
   .payments-table article,
   .outstanding-card article,
   .payment-summary strong,
-  .expense-list,
+  .expense-list article,
   .accounts-summary strong,
-  .bar-chart,
-  .chart-total
+  .bar-chart strong,
+  .bar-chart small,
+  .chart-total strong
 ) {
-  filter: blur(5px);
+  filter: blur(3.5px);
   user-select: none;
-}
-
-.app-shell[data-user-role="viewer"] .viewer-demo-content :is(.vehicle-photo, .fleet-status-image) {
-  filter: blur(10px);
 }
 
 .app-shell[data-user-role="viewer"] :is(
@@ -7550,33 +7563,30 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 
 .viewer-report-lock {
   position: relative;
-  min-height: 250px;
 }
 
-.viewer-report-lock > .report-summary,
-.viewer-report-lock > .report-results {
-  filter: blur(7px);
+.viewer-report-lock .report-summary :is(strong, small),
+.viewer-report-lock .report-results tbody {
+  filter: blur(3.5px);
   user-select: none;
   pointer-events: none;
 }
 
 .viewer-report-lock-message {
-  position: absolute;
-  z-index: 2;
-  top: 50%;
-  left: 50%;
-  width: min(360px, calc(100% - 32px));
-  padding: 22px;
-  display: grid;
-  justify-items: center;
-  gap: 7px;
+  width: 100%;
+  margin: 0 0 14px;
+  padding: 13px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   border: 1px solid #dcd6fa;
-  border-radius: 17px;
-  background: rgba(255, 255, 255, .94);
-  box-shadow: 0 18px 48px rgba(42, 37, 83, .16);
+  border-radius: 14px;
+  background: #faf9ff;
   color: #4f43b9;
-  text-align: center;
-  transform: translate(-50%, -50%);
+}
+
+.viewer-report-lock-message svg {
+  flex: 0 0 auto;
 }
 
 .viewer-report-lock-message strong {
@@ -7585,6 +7595,7 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 }
 
 .viewer-report-lock-message span {
+  margin-left: auto;
   color: #767285;
   font-size: 11px;
   line-height: 1.45;
@@ -7597,7 +7608,14 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   }
 
   .viewer-report-lock-message {
-    padding: 18px 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 12px;
+  }
+
+  .viewer-report-lock-message span {
+    width: 100%;
+    margin-left: 32px;
   }
 }
 

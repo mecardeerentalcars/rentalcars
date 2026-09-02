@@ -1302,6 +1302,8 @@ export default function Home() {
       });
       const payload = await readApiResponse<{ ok: boolean; user?: AuthUser; error?: string }>(response);
       if (!response.ok || !payload.user) throw new Error(payload.error || "Incorrect username or password.");
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
       setSessionUser(payload.user);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Incorrect username or password.");
@@ -1450,7 +1452,7 @@ export default function Home() {
           </div>
           {sessionUser.role === "viewer" && <section className="viewer-demo-banner"><ShieldCheck size={18} /><div><strong>Viewer demo privacy mode</strong><span>Live customer, vehicle, financial and report details are hidden. All changes, messages and exports are disabled.</span></div></section>}
           <div className={sessionUser.role === "viewer" ? "viewer-demo-content" : undefined}>
-            {view === "dashboard" && <Dashboard userName={sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
+            {view === "dashboard" && <Dashboard userName={sessionUser.role === "viewer" ? "Demo User" : sessionUser.username} rentals={rentalList} reservations={reservationList} bookings={bookingList} vehicles={vehicleList} metrics={metrics} reminders={reminders} openRental={openRental} openVehicle={openVehicle} openReservation={openReservation} openBooking={openBookingForVehicle} openNotifications={openNotificationsPanel} openPendingPayments={() => setDialog("pending-payments")} goTo={goTo} sendBookingWhatsApp={sendBookingWhatsApp} />}
             {view === "rentals" && <RentalsView rentals={rentalList} metrics={metrics} openRental={openRental} openNew={() => openNewRental()} />}
             {view === "bookings" && <BookingsView bookings={bookingList} rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} openBooking={openBookingRecord} editBooking={editBookingRecord} startBooking={startBookingRecord} sendWhatsApp={sendBookingRecordWhatsApp} newBooking={newBookingFromTab} />}
             {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
@@ -2845,9 +2847,9 @@ function ReportsView({ rentals, payments, expenses, vehicles, demoMode = false }
       <div className="report-actions"><button className="secondary-button" title={demoMode ? "Exports are disabled in Viewer demo mode" : "Download PDF"} onClick={() => downloadPdfTable(exportName, report.title, subtitle, pdfHeaders, pdfRows, pdfCurrencyColumns, report.label, report.total)} disabled={demoMode || !report.rows.length}><FileText size={16} />PDF</button><button className="primary-button" title={demoMode ? "Exports are disabled in Viewer demo mode" : "Download Excel"} onClick={() => downloadExcelTable(exportName, report.title, subtitle, report.headers, report.rows, report.currencyColumns, report.label, report.total)} disabled={demoMode || !report.rows.length}><Download size={16} />Excel</button></div>
     </section>
     <div className={demoMode ? "viewer-report-lock" : undefined}>
+      {demoMode && <div className="viewer-report-lock-message"><ShieldCheck size={22} /><strong>Report values hidden in demo mode</strong><span>Headings and report options remain visible. Super Admin and Owner accounts retain full report access.</span></div>}
       <section className="report-summary"><article><span>Rows</span><strong>{report.rows.length}</strong><small>{subtitle}</small></article><article><span>{report.label}</span><strong>{money(report.total)}</strong><small>Guest Car rental amounts excluded from business totals</small></article></section>
       <section className="data-panel report-results"><div className="panel-heading"><div><h2>{report.title}</h2><p>{report.rows.length ? `${report.rows.length} matching records` : "No records match these filters"}</p></div></div><div className="report-table-wrap"><table className={reportType === "rentals" || reportType === "cars" ? "report-detailed-table" : ""}><thead><tr>{report.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{report.rows.map((row, rowIndex) => <tr key={`${reportType}-${rowIndex}`}>{row.map((cell, cellIndex) => { const header = report.headers[cellIndex]; const detailed = ["Vehicle usage / changes", "KM by vehicle", "Rental & KM details", "Rental dates", "KM run", "Change details"].includes(header); return <td className={detailed ? "report-detail-cell" : ""} key={`${rowIndex}-${cellIndex}`}>{typeof cell === "number" && report.currencyColumns.includes(cellIndex) ? money(cell) : cell}</td>; })}</tr>)}</tbody></table></div></section>
-      {demoMode && <div className="viewer-report-lock-message"><ShieldCheck size={22} /><strong>Report data hidden in demo mode</strong><span>Super Admin and Owner accounts retain full report access.</span></div>}
     </div>
   </>;
 }
