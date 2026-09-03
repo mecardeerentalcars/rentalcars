@@ -382,3 +382,37 @@ CREATE INDEX IF NOT EXISTS app_user_sessions_expiry_idx
 INSERT INTO app_users (username, password_hash, role, active)
 VALUES ('admin', 'scrypt$bef4fd0b040fae2c00a850b355c53b28$32ea620aed10ca98e788473c16706b5f6a0d05b2004e29ef4fd64abb595541ce0cbaf32696c5f7adbe2f03fff3255e473952522c2d9e2d167df5f6da5f790910', 'superadmin', true)
 ON CONFLICT ((lower(username))) DO NOTHING;
+
+-- MECARDEE_GOOGLE_DRIVE_BACKUP
+CREATE TABLE IF NOT EXISTS backup_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz,
+  trigger_type varchar(32) NOT NULL,
+  destination varchar(32) NOT NULL,
+  status varchar(24) NOT NULL,
+  filename varchar(220) NOT NULL,
+  file_size integer,
+  google_drive_file_id varchar(180),
+  error_message text,
+  cleanup_warning text,
+  created_by varchar(120) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS backup_history_created_at_idx
+  ON backup_history (created_at);
+
+CREATE TABLE IF NOT EXISTS google_backup_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_email varchar(320) NOT NULL,
+  refresh_token_encrypted text NOT NULL,
+  folder_id varchar(180) NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  reconnect_required boolean NOT NULL DEFAULT false,
+  connected_by varchar(120) NOT NULL,
+  connected_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS google_backup_connections_active_idx
+  ON google_backup_connections (active);

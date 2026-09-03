@@ -103,6 +103,7 @@ import {
   CircleDollarSign,
   Clock3,
   CreditCard,
+  DatabaseBackup,
   Download,
   FileText,
   Fuel,
@@ -394,6 +395,16 @@ type DeletedTransactionHistory = {
   id: string; transactionType: "payment" | "expense"; transactionId: string; transactionNumber: string; displayLabel: string; reason: string; deletedBy: string; deletedAt: string; restoredAt: string | null; restoredBy: string | null;
 };
 
+type GoogleBackupHistoryRow = {
+  id: string; createdAt: string; triggerType: string; destination: string; status: string; filename: string;
+  fileSize: number | null; googleDriveFileId: string | null; errorMessage: string | null; cleanupWarning: string | null;
+};
+
+type GoogleBackupStatus = {
+  ok: boolean; error?: string; enabled: boolean; connected: boolean; reconnectRequired: boolean; email: string | null;
+  folderName: string | null; schedule: string; timezone: string; history: GoogleBackupHistoryRow[];
+};
+
 type TransactionManagerData = {
   ok: boolean; error?: string; payments: ManagedPaymentTransaction[]; expenses: ManagedExpenseTransaction[]; history: DeletedTransactionHistory[];
 };
@@ -669,6 +680,11 @@ export default function Home() {
   const [installBannerVisible, setInstallBannerVisible] = useState(false);
   const [installInstalling, setInstallInstalling] = useState(false);
   const notificationRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const requestedView = new URLSearchParams(window.location.search).get("view");
+    if (requestedView === "settings") setView("settings");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1528,7 +1544,7 @@ function reminderIcon(type: string): LucideIcon {
   return Wrench;
 }
 
-function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
+function Dashboard({ userName, rentals, reservations, bookings, vehicles, metrics, reminders, openRental, openVehicle, openReservation, openBooking, openNotifications, openPendingPayments, goTo, sendBookingWhatsApp }: { userName: string; rentals: Rental[]; reservations: Reservation[]; bookings: BookingRecord[]; vehicles: Vehicle[]; metrics: Metrics; reminders: ReminderRow[]; openRental: (rental: Rental) => void; openVehicle: (vehicle: Vehicle) => void; openReservation: (reservation: Reservation) => void; openBooking: (vehicleId: string, date: string) => void; openNotifications: () => void; openPendingPayments: () => void; goTo: (view: View) => void; sendBookingWhatsApp: (reservation: Reservation, purpose?: "confirmation" | "reminder") => void }) {
   const [dashboardCalendarOpen, setDashboardCalendarOpen] = useState(false);
   // MECARDEE_DYNAMIC_GREETING_BUTTON_SIZE_V8_9_52
   // Greeting follows the browser/device local time.
@@ -2866,6 +2882,43 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
   const [passwordUserTarget, setPasswordUserTarget] = useState<AuthUser | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<AuthUser | null>(null);
   const [deleteUserConfirmation, setDeleteUserConfirmation] = useState("");
+  const [googleBackup, setGoogleBackup] = useState<GoogleBackupStatus | null>(null);
+  const [googleBackupLoading, setGoogleBackupLoading] = useState(currentUser.role === "superadmin");
+  const [googleBackupBusy, setGoogleBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupError, setBackupError] = useState("");
+
+  const loadGoogleBackup = useCallback(async () => {
+    if (currentUser.role !== "superadmin") return;
+    setGoogleBackupLoading(true);
+    try {
+      const response = await fetch("/api/settings/backup/google", { cache: "no-store" });
+      const payload = await readApiResponse<GoogleBackupStatus>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not load Google Drive backup.");
+      setGoogleBackup(payload);
+    } catch (loadError) {
+      setBackupError(loadError instanceof Error ? loadError.message : "Could not load Google Drive backup.");
+    } finally {
+      setGoogleBackupLoading(false);
+    }
+  }, [currentUser.role]);
+
+  useEffect(() => {
+    if (currentUser.role !== "superadmin") return;
+    const parameters = new URLSearchParams(window.location.search);
+    const googleResult = parameters.get("googleDrive");
+    const detail = parameters.get("message");
+    if (googleResult === "connected") setBackupMessage("Google Drive connected successfully.");
+    if (googleResult === "error") setBackupError(detail || "Google Drive could not be connected.");
+    if (googleResult) {
+      parameters.delete("view");
+      parameters.delete("googleDrive");
+      parameters.delete("message");
+      const query = parameters.toString();
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+    }
+    void loadGoogleBackup();
+  }, [currentUser.role, loadGoogleBackup]);
 
   const loadManagedUsers = useCallback(async () => {
     if (currentUser.role !== "superadmin") return;
@@ -3017,6 +3070,51 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
     }
   };
   const syncLabel = lastSyncedAt ? new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(lastSyncedAt) : "Not synced yet";
+
+  const backupNow = async () => {
+    if (googleBackupBusy) return;
+    setGoogleBackupBusy(true);
+    setBackupError("");
+    setBackupMessage("");
+    try {
+      const response = await fetch("/api/settings/backup/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "backup-now" }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not upload the backup to Google Drive.");
+      setBackupMessage(payload.message || "Backup successfully uploaded to Google Drive.");
+      await loadGoogleBackup();
+    } catch (backupNowError) {
+      setBackupError(backupNowError instanceof Error ? backupNowError.message : "Could not upload the backup to Google Drive.");
+    } finally {
+      setGoogleBackupBusy(false);
+    }
+  };
+
+  const disconnectGoogleBackup = async () => {
+    if (!window.confirm("Disconnect Google Drive backup? Automatic daily backups will stop. Existing backup files in Google Drive will be kept.")) return;
+    setGoogleBackupBusy(true);
+    setBackupError("");
+    setBackupMessage("");
+    try {
+      const response = await fetch("/api/settings/backup/google", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: "DISCONNECT" }),
+      });
+      const payload = await readApiResponse<{ ok: boolean; message?: string; error?: string }>(response);
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not disconnect Google Drive.");
+      setBackupMessage(payload.message || "Google Drive backup disconnected.");
+      await loadGoogleBackup();
+    } catch (disconnectError) {
+      setBackupError(disconnectError instanceof Error ? disconnectError.message : "Could not disconnect Google Drive.");
+    } finally {
+      setGoogleBackupBusy(false);
+    }
+  };
+
   const [tab, setTab] = useState<"bookings" | "rentals" | "returns" | "payments" | "expenses" | "history">("rentals");
   const [data, setData] = useState<TransactionManagerData>({ ok: true, payments: [], expenses: [], history: [] });
   const [loading, setLoading] = useState(true);
@@ -3268,13 +3366,28 @@ function SettingsView({ rentals, vehicles, customers, bookings, lastSyncedAt, sy
   const historyRows = data.history;
 
   return <>
-    <PageHeading eyebrow="APP" title="Settings" description="Sync live data, edit active bookings, safely correct rentals, and manage transaction corrections without touching the database directly." />
+    <PageHeading eyebrow="APP" title="Settings" description="Sync live data, manage access, safely correct business records, and back up to Google Drive." />
     <section className="settings-grid">
       <article className="settings-card"><span className="settings-icon"><RefreshCw size={19} /></span><div><h3>Live data sync</h3><p>Last synced: {syncLabel}. The app also refreshes automatically after saves and settlements.</p></div><button className="secondary-button" onClick={onSync} disabled={syncing}><RefreshCw size={15} className={syncing ? "spin" : ""} />{syncing ? "Syncing…" : "Sync now"}</button></article>
       <article className={`settings-card transaction-safety ${currentUser.role === "superadmin" ? "" : "role-hidden-correction"}`}><span className="settings-icon"><ShieldCheck size={19} /></span><div><h3>Safe corrections</h3><p>Edit active booking and rental details, update completed settlements without reopening rentals, and manage payments or expenses with correction history.</p></div></article>
+      {currentUser.role === "superadmin" && <article className="settings-card database-backup-card">
+        <span className="settings-icon"><DatabaseBackup size={19} /></span>
+        <div><h3>Google Drive Backup</h3><p>Connect a Google account to securely store portable Mecardee database backups. Automatic backup runs every day at 7:00 PM Asia/Kolkata.</p></div>
+        {googleBackupLoading ? <div className="google-backup-loading"><RefreshCw size={15} className="spin" />Loading Google Drive status…</div> : googleBackup?.connected ? <>
+          <div className="google-backup-details"><span>Connected</span><strong>{googleBackup.email} <Check size={14} /></strong><span>Folder</span><strong>{googleBackup.folderName}</strong><span>Automatic backup</span><strong>{googleBackup.schedule}</strong><span>Timezone</span><strong>{googleBackup.timezone}</strong></div>
+          <div className="database-backup-actions"><button className="primary-button" type="button" onClick={() => void backupNow()} disabled={googleBackupBusy}><DatabaseBackup size={15} />{googleBackupBusy ? "Backing up…" : "Backup Now"}</button><button className="secondary-button" type="button" onClick={() => void disconnectGoogleBackup()} disabled={googleBackupBusy}>Disconnect Google Drive</button></div>
+        </> : <div className="database-backup-actions"><button className="primary-button" type="button" onClick={() => window.location.assign("/api/settings/backup/google/connect")} disabled={googleBackupBusy || googleBackup?.enabled === false}>{googleBackup?.reconnectRequired ? "Reconnect Google Drive" : "Connect Google Drive"}</button>{googleBackup?.enabled === false && <small>Google Drive backup is not enabled in the server environment yet.</small>}</div>}
+      </article>}
     </section>
 
-        <section className="data-panel user-access-manager">
+    {(backupMessage || backupError) && <div role="status" className={`database-backup-feedback ${backupError ? "error" : "success"}`}>{backupError || backupMessage}</div>}
+
+    {currentUser.role === "superadmin" && Boolean(googleBackup?.history.length) && <section className="data-panel google-backup-history">
+      <div className="panel-heading"><div><h2>Backup History</h2><p>Latest Google Drive backup attempts</p></div><button className="secondary-button" type="button" onClick={() => void loadGoogleBackup()} disabled={googleBackupLoading || googleBackupBusy}><RefreshCw size={15} className={googleBackupLoading ? "spin" : ""} />Refresh</button></div>
+      <div className="google-backup-history-list">{googleBackup?.history.map((item) => <article key={item.id}><div><strong>{new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(item.createdAt))}</strong><small>{item.triggerType} · {item.filename}</small></div><span className={item.status.toLowerCase()}>{item.status}</span>{item.errorMessage && <small className="google-backup-history-error">{item.errorMessage}</small>}{item.cleanupWarning && <small className="google-backup-history-warning">Backup saved; cleanup warning: {item.cleanupWarning}</small>}</article>)}</div>
+    </section>}
+
+    <section className="data-panel user-access-manager">
       <div className="panel-heading user-access-heading">
         <div>
           <h2>User access</h2>

@@ -40,6 +40,31 @@ export function getDb() {
 export type AppDb = ReturnType<typeof getDb>;
 
 /**
+ * Run one HTTP request against a raw PostgreSQL client.
+ *
+ * Most routes should use withRequestDb(). Backup/restore is the exception: it
+ * needs PostgreSQL transactions plus safe, parameterised inserts across a
+ * versioned list of tables that are not all represented in the Drizzle schema.
+ */
+export async function withRequestClient<T>(work: (client: Client) => Promise<T>): Promise<T> {
+  const client = new Client({
+    connectionString: connectionString(),
+    connectionTimeoutMillis: 10_000,
+  });
+
+  await client.connect();
+  try {
+    return await work(client);
+  } finally {
+    try {
+      await client.end();
+    } catch (error) {
+      console.error("Could not close PostgreSQL request client", error);
+    }
+  }
+}
+
+/**
  * Run one HTTP request against one PostgreSQL client and always close it.
  *
  * Vinext local development uses the Cloudflare Workers runtime. Workers tie
@@ -49,20 +74,8 @@ export type AppDb = ReturnType<typeof getDb>;
  * Railway without exposing any API key.
  */
 export async function withRequestDb<T>(work: (db: AppDb) => Promise<T>): Promise<T> {
-  const client = new Client({
-    connectionString: connectionString(),
-    connectionTimeoutMillis: 10_000,
-  });
-
-  await client.connect();
-  try {
+  return withRequestClient(async (client) => {
     const db = drizzle(client, { schema }) as unknown as AppDb;
     return await work(db);
-  } finally {
-    try {
-      await client.end();
-    } catch (error) {
-      console.error("Could not close PostgreSQL request client", error);
-    }
-  }
+  });
 }

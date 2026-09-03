@@ -367,8 +367,45 @@ export const appUserSessions = pgTable(
   ],
 );
 
+export const googleBackupConnections = pgTable(
+  "google_backup_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountEmail: varchar("account_email", { length: 320 }).notNull(),
+    refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
+    folderId: varchar("folder_id", { length: 180 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    reconnectRequired: boolean("reconnect_required").notNull().default(false),
+    connectedBy: varchar("connected_by", { length: 120 }).notNull(),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("google_backup_connections_active_idx").on(table.active)],
+);
+
+export const backupHistory = pgTable(
+  "backup_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    triggerType: varchar("trigger_type", { length: 32 }).notNull(),
+    destination: varchar("destination", { length: 32 }).notNull(),
+    status: varchar("status", { length: 24 }).notNull(),
+    filename: varchar("filename", { length: 220 }).notNull(),
+    fileSize: integer("file_size"),
+    googleDriveFileId: varchar("google_drive_file_id", { length: 180 }),
+    errorMessage: text("error_message"),
+    cleanupWarning: text("cleanup_warning"),
+    createdBy: varchar("created_by", { length: 120 }).notNull(),
+  },
+  (table) => [index("backup_history_created_at_idx").on(table.createdAt)],
+);
+
 export type AppUser = typeof appUsers.$inferSelect;
 export type AppUserSession = typeof appUserSessions.$inferSelect;
+export type GoogleBackupConnection = typeof googleBackupConnections.$inferSelect;
+export type BackupHistory = typeof backupHistory.$inferSelect;
 
 export type Vehicle = typeof vehicles.$inferSelect;
 export type Customer = typeof customers.$inferSelect;

@@ -9,7 +9,7 @@
     "dev": "node scripts/generate-pwa-version.mjs && vinext dev",
     "build": "node scripts/generate-pwa-version.mjs && vinext build",
     "start": "vinext start",
-    "test": "npm run build && tsx --test tests/rendered-html.test.mjs tests/rental-calculations.test.ts tests/user-access.test.ts tests/viewer-demo.test.ts",
+    "test": "npm run build && tsx --test tests/database-backup.test.ts tests/google-drive-backup.test.ts tests/rendered-html.test.mjs tests/rental-calculations.test.ts tests/user-access.test.ts tests/viewer-demo.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node db/migrate.mjs",
@@ -18,11 +18,13 @@
     "db:studio": "drizzle-kit studio",
     "db:ensure-live": "node db/ensure-live-schema.mjs",
     "db:setup-live": "npm run db:migrate && npm run db:ensure-live",
-    "db:verify-live": "node db/verify-live-schema.mjs"
+    "db:verify-live": "node db/verify-live-schema.mjs",
+    "backup:daily": "node scripts/run-daily-backup.mjs"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20",
     "drizzle-orm": "0.45.2",
+    "fflate": "^0.7.4",
     "lucide-react": "^1.31.0",
     "pdfmake": "^0.3.11",
     "pg": "^8.23.0",

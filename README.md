@@ -53,6 +53,26 @@ npm run db:seed      # load/update the matching demo records
 npm run db:studio    # inspect data with Drizzle Studio
 ```
 
+## Google Drive backup
+
+Super Admin users can connect Google Drive from **Settings → Google Drive Backup**, run **Backup Now**, view recent backup results, or disconnect. Backups are portable ZIP files stored in an app-created `Mecardee Backups` folder; the newest 30 app-managed files are retained.
+
+Enable the Google Drive API in Google Cloud, configure the OAuth consent screen, and create a **Web application** OAuth client. Add this exact production redirect URI:
+
+```text
+https://YOUR-APP-DOMAIN/api/settings/backup/google/callback
+```
+
+Set the server variables listed in `.dev.vars.example`. `GOOGLE_REDIRECT_URI` must exactly match the Google Cloud redirect URI. Generate separate strong values for `GOOGLE_TOKEN_ENCRYPTION_KEY` and `BACKUP_CRON_SECRET`; never expose them to browser code or commit them.
+
+For automatic backups on Railway, create a second service from this same repository with start command:
+
+```bash
+npm run backup:daily
+```
+
+Set its cron schedule to `30 13 * * *` (Railway cron is UTC, so this is 7:00 PM Asia/Kolkata), and give it `MECARDEE_APP_URL` plus the same `BACKUP_CRON_SECRET` as the web service. The web service also needs `BACKUP_CRON_SECRET`. The cron service exits after each run as Railway requires.
+
 ## Verify
 
 ```bash
