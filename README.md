@@ -67,13 +67,9 @@ For **Connect Google Drive**, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `G
 
 `GOOGLE_DRIVE_BACKUP_ENABLED` is optional and defaults to enabled. Once the Google client ID, client secret, redirect URI, and token encryption key are configured, **Connect Google Drive** opens Google authorization, saves the connection, and returns to Settings. Missing setup is reported in Settings; the Connect button is not disabled by a missing flag.
 
-For automatic backups on Railway, create a second service from this same repository with start command:
+For automatic backups on Railway, create a second service from this same repository and set its **Railway Config File** to `/railway.backup.toml`. This uses the small `Dockerfile.backup` image, runs `node run-daily-backup.mjs`, and schedules it for `30 13 * * *` (7:00 PM Asia/Kolkata). Do not use the web service's `/railway.toml`: it starts a persistent web server instead of a one-off backup job.
 
-```bash
-npm run backup:daily
-```
-
-Set its cron schedule to `30 13 * * *` (Railway cron is UTC, so this is 7:00 PM Asia/Kolkata), and give it `MECARDEE_APP_URL` plus the same `BACKUP_CRON_SECRET` as the web service. The web service also needs `BACKUP_CRON_SECRET`. The cron service exits after each run as Railway requires.
+Give the backup service `MECARDEE_APP_URL` (the deployed web app's HTTPS URL) and `BACKUP_CRON_SECRET`. Set the same strong secret on the web service, preferably using a Railway variable reference from the backup service to the web service's secret. Deploy the web service after adding the secret, then deploy/run the backup service once and check Settings → Google Drive Backup for a successful **Scheduled** upload. The cron service exits after each run as Railway requires; it needs no healthcheck or public domain. The Settings schedule label alone does not configure a Railway cron service.
 
 ## Verify
 
