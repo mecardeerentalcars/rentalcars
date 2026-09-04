@@ -63,7 +63,9 @@ Enable the Google Drive API in Google Cloud, configure the OAuth consent screen,
 https://YOUR-APP-DOMAIN/api/settings/backup/google/callback
 ```
 
-Set the server variables listed in `.dev.vars.example`. `GOOGLE_REDIRECT_URI` must exactly match the Google Cloud redirect URI. Generate separate strong values for `GOOGLE_TOKEN_ENCRYPTION_KEY` and `BACKUP_CRON_SECRET`; never expose them to browser code or commit them.
+For **Connect Google Drive**, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `GOOGLE_TOKEN_ENCRYPTION_KEY` in the Railway web service. `GOOGLE_REDIRECT_URI` must exactly match the Google Cloud redirect URI. Use a securely generated 32-byte base64/hex token encryption key. Never expose these values to browser code or commit them. The remaining variables in `.dev.vars.example` are for scheduled backups.
+
+`GOOGLE_DRIVE_BACKUP_ENABLED` is optional and defaults to enabled. Once the Google client ID, client secret, redirect URI, and token encryption key are configured, **Connect Google Drive** opens Google authorization, saves the connection, and returns to Settings. Missing setup is reported in Settings; the Connect button is not disabled by a missing flag.
 
 For automatic backups on Railway, create a second service from this same repository with start command:
 

@@ -10,6 +10,7 @@ const MANAGED_APP_PROPERTY_KEY = "mecardeeManaged";
 const MANAGED_APP_PROPERTY_VALUE = "true";
 const RETENTION_COUNT = 30;
 const DRIVE_LOCK_ID = 6_412_030_907;
+export const GOOGLE_BACKUP_STATE_COOKIE = "mecardee_google_backup_oauth_state";
 
 type GoogleConnectionRow = {
   id: string;
@@ -44,16 +45,35 @@ function requiredEnvironment(name: string) {
 }
 
 export function googleDriveBackupEnabled() {
-  return process.env.GOOGLE_DRIVE_BACKUP_ENABLED?.trim().toLowerCase() === "true";
+  // Optional opt-out; an unset flag must not block the normal Connect flow.
+  return process.env.GOOGLE_DRIVE_BACKUP_ENABLED?.trim().toLowerCase() !== "false";
 }
 
 export function googleOAuthConfig() {
   if (!googleDriveBackupEnabled()) throw new GoogleBackupError("Google Drive backup is not enabled on this installation.", 503);
+  const missing = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "GOOGLE_TOKEN_ENCRYPTION_KEY"]
+    .filter((name) => !process.env[name]?.trim());
+  if (missing.length) {
+    throw new GoogleBackupError(`Google Drive needs one-time setup in Railway. Add: ${missing.join(", ")}.`, 503);
+  }
   return {
     clientId: requiredEnvironment("GOOGLE_CLIENT_ID"),
     clientSecret: requiredEnvironment("GOOGLE_CLIENT_SECRET"),
     redirectUri: requiredEnvironment("GOOGLE_REDIRECT_URI"),
   };
+}
+
+export function googleBackupSettingsUrl(requestUrl: string, result: "connected" | "error", detail?: string) {
+  // The registered callback supplies the public origin even behind a Railway proxy.
+  let url = new URL("/", requestUrl);
+  try {
+    const configured = process.env.GOOGLE_REDIRECT_URI?.trim();
+    if (configured) url = new URL("/", configured);
+  } catch { /* Report invalid configuration on the requesting app's Settings page. */ }
+  url.searchParams.set("view", "settings");
+  url.searchParams.set("googleDrive", result);
+  if (detail) url.searchParams.set("message", detail.slice(0, 500));
+  return url;
 }
 
 function encryptionKey() {
@@ -87,6 +107,8 @@ export function decryptRefreshToken(value: string) {
 
 export function googleAuthorizationUrl(state: string) {
   const config = googleOAuthConfig();
+  // Fail before sending the admin to Google if the returned token cannot be stored safely.
+  encryptionKey();
   const parameters = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: config.redirectUri,

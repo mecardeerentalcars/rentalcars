@@ -1,16 +1,11 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { withRequestClient } from "@/db";
-import { exchangeAuthorizationCode, saveGoogleConnection } from "@/lib/google-drive-backup";
+import { GOOGLE_BACKUP_STATE_COOKIE, exchangeAuthorizationCode, googleBackupSettingsUrl, saveGoogleConnection } from "@/lib/google-drive-backup";
 import { requireSuperAdminAccess } from "@/lib/mecardee-auth";
-import { GOOGLE_BACKUP_STATE_COOKIE } from "../connect/route";
 
 function settingsRedirect(request: Request, result: "connected" | "error", detail?: string) {
-  const url = new URL("/", request.url);
-  url.searchParams.set("view", "settings");
-  url.searchParams.set("googleDrive", result);
-  if (detail) url.searchParams.set("message", detail.slice(0, 180));
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(googleBackupSettingsUrl(request.url, result, detail));
 }
 export async function GET(request: Request) {
   const auth = await requireSuperAdminAccess();

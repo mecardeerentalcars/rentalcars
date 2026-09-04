@@ -4,6 +4,7 @@ DATABASE_URL="postgresql://postgres:password@host:port/railway"
 DATABASE_POOL_MAX="5"
 
 # Google Drive backups (server-side only)
+# Optional: defaults to enabled; set false only to intentionally disable backups.
 GOOGLE_DRIVE_BACKUP_ENABLED="true"
 GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
