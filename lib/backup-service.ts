@@ -111,19 +111,25 @@ function backupColumns(rows: ColumnRow[]): BackupColumn[] {
 }
 
 async function schemaSql(client: Client, tableNames: string[], allColumns: ColumnRow[]) {
-  const constraints = await client.query<{ table_name: string; constraint_name: string; definition: string }>(`
-    SELECT c.relname AS table_name, con.conname AS constraint_name, pg_get_constraintdef(con.oid, true) AS definition
+  const constraints = await client.query<{ table_name: string; constraint_name: string; constraint_type: string; definition: string }>(`
+    SELECT c.relname AS table_name, con.conname AS constraint_name, con.contype AS constraint_type,
+           pg_get_constraintdef(con.oid, true) AS definition
       FROM pg_catalog.pg_constraint con
       JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = 'public' AND c.relname = ANY($1::text[])
+       AND con.contype <> 'n'
      ORDER BY c.relname, con.conname`, [tableNames]);
   const indexes = await client.query<{ tablename: string; indexname: string; indexdef: string }>(`
     SELECT i.tablename, i.indexname, i.indexdef
       FROM pg_indexes i
      WHERE i.schemaname = 'public'
        AND i.tablename = ANY($1::text[])
-       AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conname = i.indexname)
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_constraint c
+          WHERE c.conindid = format('%I.%I', i.schemaname, i.indexname)::regclass
+            AND c.contype IN ('p', 'u', 'x')
+       )
      ORDER BY i.tablename, i.indexname`, [tableNames]);
 
   const lines = [
@@ -142,11 +148,18 @@ async function schemaSql(client: Client, tableNames: string[], allColumns: Colum
     }).join(",\n"));
     lines.push(");", "");
   }
-  for (const constraint of constraints.rows) {
+  // Every referenced key must exist before any foreign key, regardless of table name.
+  // NOT NULL is already emitted inline above, including on PostgreSQL 18 sources.
+  for (const constraint of constraints.rows.filter((constraint) => constraint.constraint_type !== "f")) {
     lines.push(`ALTER TABLE ${quoteIdentifier(constraint.table_name)} ADD CONSTRAINT ${quoteIdentifier(constraint.constraint_name)} ${constraint.definition};`);
   }
   if (constraints.rowCount) lines.push("");
-  for (const index of indexes.rows) lines.push(`${index.indexdef.replace(/^CREATE INDEX /, "CREATE INDEX IF NOT EXISTS ")};`);
+  // Foreign keys can reference standalone unique indexes as well as constraints.
+  for (const index of indexes.rows) lines.push(`${index.indexdef.replace(/^CREATE (UNIQUE )?INDEX /, "CREATE $1INDEX IF NOT EXISTS ")};`);
+  lines.push("");
+  for (const constraint of constraints.rows.filter((constraint) => constraint.constraint_type === "f")) {
+    lines.push(`ALTER TABLE ${quoteIdentifier(constraint.table_name)} ADD CONSTRAINT ${quoteIdentifier(constraint.constraint_name)} ${constraint.definition};`);
+  }
   lines.push("");
   return lines.join("\n");
 }
@@ -232,8 +245,14 @@ export async function generatePortableDatabaseBackup(client: Client, createdBy: 
       continue;
     }
     const orderColumn = safeColumns.some((column) => column.column_name === "id") ? "id" : safeColumns[0].column_name;
+    // pg parses date columns as local-midnight Date objects. Export calendar
+    // dates as text so ISO conversion cannot shift them to the previous day.
+    const selectColumns = safeColumns.map((column) => {
+      const name = quoteIdentifier(column.column_name);
+      return column.sql_type === "date" ? `${name}::text AS ${name}` : name;
+    });
     const result = await client.query<Record<string, unknown>>(
-      `SELECT ${safeColumns.map((column) => quoteIdentifier(column.column_name)).join(", ")} FROM ${quoteIdentifier(tableName)} ORDER BY ${quoteIdentifier(orderColumn)}`,
+      `SELECT ${selectColumns.join(", ")} FROM ${quoteIdentifier(tableName)} ORDER BY ${quoteIdentifier(orderColumn)}`,
     );
     exportedTables.push({
       name: tableName,
