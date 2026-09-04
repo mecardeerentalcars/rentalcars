@@ -67,7 +67,15 @@ For **Connect Google Drive**, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `G
 
 `GOOGLE_DRIVE_BACKUP_ENABLED` is optional and defaults to enabled. Once the Google client ID, client secret, redirect URI, and token encryption key are configured, **Connect Google Drive** opens Google authorization, saves the connection, and returns to Settings. Missing setup is reported in Settings; the Connect button is not disabled by a missing flag.
 
-For automatic backups on Railway, create a second service from this same repository and set its **Railway Config File** to `/railway.backup.toml`. This uses the small `Dockerfile.backup` image, runs `node run-daily-backup.mjs`, and schedules it for `30 13 * * *` (7:00 PM Asia/Kolkata). Do not use the web service's `/railway.toml`: it starts a persistent web server instead of a one-off backup job.
+For automatic backups on Railway, create a second service from this same repository with these service settings:
+
+- Dockerfile path: `Dockerfile.backup` (Railway builds this image directly).
+- Start command: `node run-daily-backup.mjs`.
+- Cron schedule: `30 13 * * *` (7:00 PM Asia/Kolkata).
+- Restart policy: **Never**; leave the healthcheck and pre-deploy command empty.
+- Watch paths: `/scripts/run-daily-backup.mjs` and `/Dockerfile.backup`.
+
+New Railway services use service settings or Infrastructure as Code. Do not attach the web service's legacy `/railway.toml`: it starts a persistent web server instead of a one-off backup job. The backup image only contains the small HTTP runner and needs no application dependencies.
 
 Give the backup service `MECARDEE_APP_URL` (the deployed web app's HTTPS URL) and `BACKUP_CRON_SECRET`. Set the same strong secret on the web service, preferably using a Railway variable reference from the backup service to the web service's secret. Deploy the web service after adding the secret, then deploy/run the backup service once and check Settings → Google Drive Backup for a successful **Scheduled** upload. The cron service exits after each run as Railway requires; it needs no healthcheck or public domain. The Settings schedule label alone does not configure a Railway cron service.
 
