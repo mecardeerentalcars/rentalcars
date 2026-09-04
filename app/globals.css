@@ -4631,6 +4631,24 @@ body { font-size: 15px; line-height: 1.45; }
 /* MECARDEE_SEGMENT_FUEL_FINAL_SETTLEMENT_CSS_V8_9_45
    Final settlement: show fuel charge under the exact vehicle segment. */
 
+.segment-charge-preview .guest-rental-charge-breakdown,
+.settlement-segment-preview .guest-rental-charge-breakdown {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.segment-charge-preview .guest-rental-charge-breakdown small,
+.settlement-segment-preview .guest-rental-charge-breakdown small {
+  font-size: 0.875rem;
+}
+
+.segment-charge-preview .guest-rental-charge-breakdown strong,
+.settlement-segment-preview .guest-rental-charge-breakdown b {
+  font-size: 1rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .settlement-segment-preview .segment-fuel-breakdown {
   border-color: #fed7aa;
   background: #fff7ed;
