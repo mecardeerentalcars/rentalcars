@@ -240,6 +240,8 @@ type WhatsAppSettlement = {
   rentalAmount: number;
   discountAmount: number;
   discountRemark?: string | null;
+  additionalChargeAmount?: number;
+  additionalChargeDescription?: string | null;
   calculation: SettlementCalculation;
   segments?: {
     sequence: number;
@@ -309,6 +311,12 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
         lines.push(`   Return KM: ${segment.endingKilometer}`);
         lines.push(`   Total run: ${Math.max(0, segment.endingKilometer - segment.startingKilometer)} km`);
       }
+      if (typeof segment.startingFuelRangeKm === "number") {
+        lines.push(`   Starting fuel range: ${segment.startingFuelRangeKm} km`);
+      }
+      if (typeof segment.returnFuelRangeKm === "number") {
+        lines.push(`   Return fuel range: ${segment.returnFuelRangeKm} km`);
+      }
       lines.push("");
     }
   } else {
@@ -321,6 +329,8 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     lines.push(`Starting KM: ${input.startingKilometer}`);
     lines.push(`Return KM: ${input.actualReturnKilometer}`);
     lines.push(`Total run: ${totalRun} km`);
+    lines.push(`Starting fuel range: ${input.startingFuelRangeKm} km`);
+    lines.push(`Return fuel range: ${input.returnFuelRangeKm} km`);
   }
 
   if (calculation.extraKilometers > 0) {
@@ -331,7 +341,12 @@ export function buildSettlementWhatsAppMessage(input: WhatsAppSettlement) {
     lines.push(`Fuel shortage: ${calculation.fuelRangeShortageKm} km · ${formatMoney(calculation.fuelCharge)}`);
   }
   const otherCharges = Math.max(0, calculation.additionalCharges - calculation.extraKmCharge - calculation.fuelCharge);
-  if (otherCharges > 0) lines.push(`Other charges: ${formatMoney(otherCharges)}`);
+  if (otherCharges > 0) {
+    const additionalRemark = (input.additionalChargeAmount ?? 0) > 0 && input.additionalChargeDescription?.trim()
+      ? ` · ${input.additionalChargeDescription.trim()}`
+      : "";
+    lines.push(`Other charges: ${formatMoney(otherCharges)}${additionalRemark}`);
+  }
   if (input.discountAmount > 0) {
     lines.push(`Discount: -${formatMoney(input.discountAmount)}${input.discountRemark?.trim() ? ` · ${input.discountRemark.trim()}` : ""}`);
   }

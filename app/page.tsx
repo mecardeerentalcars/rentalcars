@@ -354,10 +354,14 @@ type SettlementSegmentRow = {
   endAt: string;
   startingKilometer: number;
   endingKilometer: number | null;
+  startingFuelRangeKm: number;
+  returnFuelRangeKm: number | null;
   rentalDays: number;
   rentalCharge: number;
+  extraKilometers: number;
   extraKmCharge: number;
   fuelRangeShortageKm: number;
+  fuelPricePerLitre: number;
   fuelCharge: number;
 };
 
@@ -365,6 +369,11 @@ type SettlementResult = {
   settlementId: string;
   bookingNumber: string;
   vehicleStatus: "available" | "maintenance";
+  amountAlreadyPaid: number;
+  lateRentalDays: number;
+  lateRentalCharge: number;
+  chargeableRentalDays: number;
+  adjustedRentalAmount: number;
   calculation: ReturnType<typeof calculateSettlement>;
   segments?: SettlementSegmentRow[];
   whatsappMessage: string;
@@ -1223,6 +1232,8 @@ export default function Home() {
         rentalAmount: settlement.rentalAmount,
         discountAmount: settlement.discountAmount,
         discountRemark: settlement.discountRemark,
+        additionalChargeAmount: settlement.additionalCharge,
+        additionalChargeDescription: settlement.additionalDescription,
         calculation,
         segments: rental.segments.map((segment) => ({
           sequence: segment.sequence,
@@ -1293,11 +1304,11 @@ export default function Home() {
     openWhatsAppSafely(phone, text);
   }
 
-  function exportPayments() {
+  function exportPayments(paymentsToExport = paymentList) {
     if (sessionUser?.role === "viewer") return showToast("Exports are disabled in Viewer demo mode.");
-    if (!paymentList.length) return showToast("No payments to export.");
+    if (!paymentsToExport.length) return showToast("No payments to export.");
     const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-    const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentList.map((payment) => [payment.id, customerWithPlace(payment.customer, payment.place), payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
+    const rows = [["Payment", "Customer", "Place", "Date", "Associated rental", "Vehicle", "Method", "Amount", "Entered by"], ...paymentsToExport.map((payment) => [payment.id, customerWithPlace(payment.customer, payment.place), payment.place, payment.date, payment.rental, payment.vehicle, payment.method, payment.amount, displayUserName(payment.receivedBy)])];
     const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `mecardee-payments-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -1474,8 +1485,8 @@ export default function Home() {
             {view === "vehicles" && <VehiclesView vehicles={vehicleList} metrics={metrics} openNew={openNewRental} addVehicle={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("vehicle")} openVehicle={openVehicle} showToast={showToast} />}
             {view === "guest-cars" && <GuestCarsView vehicles={guestVehicleList} rentals={rentalList} addVehicle={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("guest-vehicle")} openVehicle={openVehicle} />}
             {view === "customers" && <CustomersView currentUser={sessionUser!} payments={paymentList} rentals={rentalList} customers={customerList} metrics={metrics} openNew={() => openNewRental()} openRentalById={openRentalById} addCustomer={() => sessionUser.role === "viewer" ? showToast("Viewer access is read-only.") : setDialog("customer")} editCustomer={openCustomerEdit} deleteCustomer={deleteCustomer} />}
-            {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
-            {view === "accounts" && <AccountsView expenses={expenseList} metrics={metrics} />}
+            {view === "payments" && <PaymentsView rentals={rentalList} payments={paymentList} expenses={expenseList} metrics={metrics} openPayment={openPayment} openExpense={() => openExpense()} exportPayments={exportPayments} sendWhatsApp={sendWhatsApp} />}
+            {view === "accounts" && <AccountsView rentals={rentalList} payments={paymentList} expenses={expenseList} metrics={metrics} />}
             {view === "reports" && <ReportsView rentals={rentalList} payments={paymentList} expenses={expenseList} vehicles={[...vehicleList, ...guestVehicleList]} demoMode={sessionUser.role === "viewer"} />}
             {sessionUser.role !== "viewer" && view === "settings" && <SettingsView rentals={rentalList} vehicles={[...vehicleList, ...guestVehicleList]} customers={customerList} bookings={bookingList} lastSyncedAt={lastSyncedAt} syncing={syncing} onSync={() => void settingsSync()} currentUser={sessionUser!} onLogout={logout} />}
           </div>
@@ -2286,14 +2297,46 @@ function CustomerHistoryDialog({ customer, rentals, payments, close, openRentalB
 }
 
 
-function PaymentsView({ rentals, payments, metrics, openPayment, openExpense, exportPayments, sendWhatsApp }: { rentals: Rental[]; payments: PaymentRow[]; metrics: Metrics; openPayment: () => void; openExpense: () => void; exportPayments: () => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
-  // Payments is a business accounting view, so Guest Car rental value is excluded here.
-  // Customer-facing reminders still use the rental's real full balance.
+function PaymentsView({ rentals, payments, expenses, metrics, openPayment, openExpense, exportPayments, sendWhatsApp }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[]; metrics: Metrics; openPayment: () => void; openExpense: () => void; exportPayments: (rows?: PaymentRow[]) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void }) {
+  // Guest Car value is already excluded from these business payment rows.
+  const currentMonth = indiaDateKey(new Date()).slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const monthLabel = new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${selectedMonth}-01T00:00:00+05:30`));
+  const filteredPayments = payments.filter((payment) => indiaDateKey(payment.receivedAt).slice(0, 7) === selectedMonth);
+  const filteredExpenses = expenses.filter((expense) => indiaDateKey(expense.rawDate).slice(0, 7) === selectedMonth);
+  const collected = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const spent = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const net = collected - spent;
   const outstanding = [...rentals].filter((rental) => rental.state === "completed" && rental.businessBalance > 0).sort((a, b) => b.businessBalance - a.businessBalance);
+
   return <>
-    <PageHeading eyebrow="MONEY" title="Expenses & Payments" description="Record business expenses, customer collections and outstanding balances from one place." action={<div className="payments-page-actions"><button className="secondary-button expense-action-button" onClick={openExpense}><ReceiptIndianRupee size={17} />Add expense</button><button className="primary-button" onClick={openPayment}><Plus size={17} />Receive payment</button></div>} />
-    <section className="payment-summary"><article className="featured"><span>Collected this month</span><strong>{money(metrics.collectedMonth)}</strong><small><TrendingUp size={14} /> {metrics.collectionChangePercent >= 0 ? "+" : ""}{metrics.collectionChangePercent}% vs last month</small></article><article><span>Collected today</span><strong>{money(metrics.collectedToday)}</strong><small>{metrics.paymentsToday} payments</small></article><article><span>Settlement due</span><strong>{money(metrics.settledOutstanding)}</strong><small className="red-text">Across {metrics.settledOutstandingRentals} completed rentals</small></article><article><span>Expenses this month</span><strong>{money(metrics.expensesMonth)}</strong><small>Business expenses recorded</small></article></section>
-    <div className="payments-layout"><section className="data-panel"><div className="panel-heading"><div><h2>Recent payments</h2><p>Latest customer collections</p></div><button onClick={exportPayments}><Download size={15} />Export</button></div><div className="payments-table"><div className="payments-head"><span>Customer</span><span>Rental</span><span>Date</span><span>Method</span><span>Amount</span></div>{payments.map((payment) => <article key={payment.id}><span><i>{payment.customer.split(" ").map((part) => part[0]).join("")}</i><span><strong>{customerWithPlace(payment.customer, payment.place)}</strong><small>{payment.id}</small></span></span><span><strong>{payment.rental}</strong><small>{payment.vehicle} · Entered by {displayUserName(payment.receivedBy)}</small></span><span>{payment.date}</span><span><b>{payment.method}</b></span><strong className="green-text">+ {money(payment.amount)}</strong></article>)}</div></section><aside className="outstanding-card"><div className="panel-heading"><div><h2>Settlement due</h2><p>Follow up with {metrics.settledOutstandingCustomers} customers</p></div></div>{outstanding.slice(0,3).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.vehicle} · {rental.statusText}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${customerWithPlace(rental.customer, rental.city)}`}><Send size={14} /></button></article>)}<button className="full-link" onClick={() => window.alert(outstanding.length ? outstanding.map((rental) => `${customerWithPlace(rental.customer, rental.city)} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n") : "No outstanding balances.")}>View outstanding report <ChevronRight size={15} /></button></aside></div>
+    <PageHeading eyebrow="MONEY" title="Expenses & Payments" description="Choose a month to see money received, money spent and the balance between them." action={<div className="payments-page-actions"><button className="secondary-button expense-action-button" onClick={openExpense}><ReceiptIndianRupee size={17} />Add expense</button><button className="primary-button" onClick={openPayment}><Plus size={17} />Receive payment</button></div>} />
+    <section className="finance-month-toolbar" aria-label="Finance month filter">
+      <div><CalendarDays size={18} /><span><small>Showing records for</small><strong>{monthLabel}</strong></span></div>
+      <label><span>Month</span><input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value || currentMonth)} /></label>
+      {selectedMonth !== currentMonth && <button type="button" onClick={() => setSelectedMonth(currentMonth)}>Current month</button>}
+    </section>
+    <section className="finance-month-summary">
+      <article className="income"><span>Payments received</span><strong>{money(collected)}</strong><small>{filteredPayments.length} payment{filteredPayments.length === 1 ? "" : "s"}</small></article>
+      <article className="expense"><span>Expenses paid</span><strong>{money(spent)}</strong><small>{filteredExpenses.length} expense{filteredExpenses.length === 1 ? "" : "s"}</small></article>
+      <article className={net < 0 ? "net negative" : "net"}><span>Net cash</span><strong>{money(net)}</strong><small>Payments minus expenses</small></article>
+      <article><span>Settlement still due</span><strong>{money(metrics.settledOutstanding)}</strong><small>All completed rentals · {metrics.settledOutstandingRentals} open</small></article>
+    </section>
+    <div className="finance-record-columns">
+      <section className="data-panel finance-record-panel">
+        <div className="panel-heading"><div><h2>Payments received</h2><p>{monthLabel} · {money(collected)}</p></div><button type="button" onClick={() => exportPayments(filteredPayments)} disabled={!filteredPayments.length}><Download size={15} />Export month</button></div>
+        <div className="finance-transaction-list">{filteredPayments.length ? filteredPayments.map((payment) => <article key={payment.id}><span className="finance-transaction-icon income"><CircleDollarSign size={17} /></span><div><strong>{customerWithPlace(payment.customer, payment.place)}</strong><small>{payment.rental} · {payment.vehicle}</small><small>{payment.date} · {payment.method} · {displayUserName(payment.receivedBy)}</small></div><b className="green-text">+ {money(payment.amount)}</b></article>) : <div className="finance-empty"><CircleDollarSign size={20} /><span>No payments received in {monthLabel}.</span></div>}</div>
+      </section>
+      <section className="data-panel finance-record-panel">
+        <div className="panel-heading"><div><h2>Expenses paid</h2><p>{monthLabel} · {money(spent)}</p></div></div>
+        <div className="finance-transaction-list">{filteredExpenses.length ? filteredExpenses.map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="finance-transaction-icon expense"><Icon size={17} /></span><div><strong>{expense.category}</strong><small>{expense.description || "No description"}{expense.vehicle && expense.vehicle !== "—" ? ` · ${expense.vehicle}` : ""}</small><small>{expense.date} · {expense.method} · {displayUserName(expense.createdBy)}</small></div><b className="red-text">− {money(expense.amount)}</b></article>; }) : <div className="finance-empty"><ReceiptIndianRupee size={20} /><span>No expenses recorded in {monthLabel}.</span></div>}</div>
+      </section>
+    </div>
+    <section className="data-panel finance-outstanding-panel">
+      <div className="panel-heading"><div><h2>Completed rentals awaiting payment</h2><p>{metrics.settledOutstandingCustomers} customer{metrics.settledOutstandingCustomers === 1 ? "" : "s"} · {money(metrics.settledOutstanding)} due</p></div></div>
+      <div className="finance-outstanding-list">{outstanding.length ? outstanding.slice(0, 4).map((rental) => <article key={rental.id}><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.id} · {rental.vehicle}</small></div><b>{money(rental.businessBalance)}</b><button onClick={() => sendWhatsApp(rental, "payment reminder")} aria-label={`Send reminder to ${customerWithPlace(rental.customer, rental.city)}`}><Send size={15} /></button></article>) : <div className="finance-empty"><CheckCircle2 size={20} /><span>No completed settlements are awaiting payment.</span></div>}</div>
+      {outstanding.length > 4 && <button className="full-link" onClick={() => window.alert(outstanding.map((rental) => `${customerWithPlace(rental.customer, rental.city)} · ${rental.id} · ${money(rental.businessBalance)}`).join("\n"))}>View all {outstanding.length} pending settlements <ChevronRight size={15} /></button>}
+    </section>
   </>;
 }
 
@@ -2328,6 +2371,198 @@ function downloadExcelTable(
   link.download = filename.endsWith(".xls") ? filename : `${filename}.xls`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+type SettlementPdfVehicleUsage = {
+  sequence: number;
+  vehicleName: string;
+  registrationNumber: string;
+  isGuest: boolean;
+  bookingStart: string;
+  bookingEnd: string;
+  rentalDays: number;
+  startingKilometer: number;
+  endingKilometer: number | null;
+  startingFuelRangeKm: number;
+  returnFuelRangeKm: number | null;
+  rentalCharge: number;
+  extraKilometers: number;
+  extraKmCharge: number;
+  fuelRangeShortageKm: number;
+  fuelCharge: number;
+};
+
+type SettlementPdfData = {
+  bookingNumber: string;
+  customerName: string;
+  customerPlace: string;
+  phone: string;
+  licence: string;
+  bookingStart: string;
+  actualReturnAt: string;
+  rentalDays: number;
+  vehicles: SettlementPdfVehicleUsage[];
+  rentalAmount: number;
+  existingCharges: number;
+  extraKilometers: number;
+  extraKmCharge: number;
+  fuelRangeShortageKm: number;
+  fuelCharge: number;
+  lateFee: number;
+  additionalCharge: number;
+  additionalDescription: string;
+  subtotal: number;
+  discountAmount: number;
+  discountRemark: string;
+  finalAmount: number;
+  amountPaid: number;
+  amountDue: number;
+  vehicleCondition: string;
+};
+
+function completedSettlementPdfData(rental: Rental): SettlementPdfData | null {
+  const settlement = rental.settlement;
+  if (!settlement) return null;
+  return {
+    bookingNumber: rental.id,
+    customerName: rental.customer,
+    customerPlace: rental.city,
+    phone: rental.whatsappNumber || rental.phone,
+    licence: rental.licence,
+    bookingStart: formatIndiaWhen(rental.startAt),
+    actualReturnAt: formatIndiaWhen(settlement.actualReturnAt),
+    rentalDays: rental.days,
+    vehicles: rental.segments.map((segment) => ({
+      sequence: segment.sequence,
+      vehicleName: segment.vehicle,
+      registrationNumber: segment.plate,
+      isGuest: segment.isGuest,
+      bookingStart: segment.start,
+      bookingEnd: segment.end,
+      rentalDays: segment.rentalDays,
+      startingKilometer: segment.startingKilometer,
+      endingKilometer: segment.endingKilometer,
+      startingFuelRangeKm: segment.startingFuelRangeKm,
+      returnFuelRangeKm: segment.returnFuelRangeKm,
+      rentalCharge: rental.segments.length === 1 ? settlement.rentalAmount : segment.rentalCharge,
+      extraKilometers: segment.extraKilometers,
+      extraKmCharge: segment.extraKmCharge,
+      fuelRangeShortageKm: segment.fuelRangeShortageKm,
+      fuelCharge: segment.fuelCharge,
+    })),
+    rentalAmount: settlement.rentalAmount,
+    existingCharges: settlement.existingCharges,
+    extraKilometers: settlement.totalExtraKilometers,
+    extraKmCharge: settlement.totalExtraKmCharge,
+    fuelRangeShortageKm: settlement.fuelRangeShortageKm,
+    fuelCharge: settlement.fuelCharge,
+    lateFee: settlement.lateFee,
+    additionalCharge: settlement.additionalCharge,
+    additionalDescription: settlement.additionalDescription ?? "",
+    subtotal: settlement.subtotal,
+    discountAmount: settlement.discountAmount,
+    discountRemark: settlement.discountRemark ?? "",
+    finalAmount: settlement.finalAmount,
+    amountPaid: rental.paid,
+    amountDue: rental.balance,
+    vehicleCondition: settlement.vehicleCondition ?? "",
+  };
+}
+
+async function downloadSettlementPdf(input: SettlementPdfData) {
+  const [{ default: pdfMake }, { default: pdfFonts }] = await Promise.all([
+    import("pdfmake/build/pdfmake"),
+    import("pdfmake/build/vfs_fonts"),
+  ]);
+  const pdfMakeClient = pdfMake as unknown as {
+    addVirtualFileSystem?: (fonts: unknown) => void;
+    vfs?: unknown;
+    createPdf: (definition: unknown) => { download: (name: string) => void };
+  };
+  if (typeof pdfMakeClient.addVirtualFileSystem === "function") pdfMakeClient.addVirtualFileSystem(pdfFonts);
+  else pdfMakeClient.vfs = pdfFonts;
+
+  const detailCell = (label: string, value: string) => ({
+    stack: [{ text: label.toUpperCase(), style: "detailLabel" }, { text: value || "—", style: "detailValue" }],
+    margin: [0, 2, 0, 7],
+  });
+  const financialRows: unknown[][] = [
+    [{ text: `Rental charges · ${input.rentalDays} day${input.rentalDays === 1 ? "" : "s"}` }, { text: money(input.rentalAmount), alignment: "right" }],
+  ];
+  if (input.existingCharges > 0) financialRows.push([{ text: "Existing charges" }, { text: money(input.existingCharges), alignment: "right" }]);
+  financialRows.push([{ text: `Extra KM charge · ${input.extraKilometers} km` }, { text: money(input.extraKmCharge), alignment: "right" }]);
+  financialRows.push([{ text: `Fuel shortage · ${input.fuelRangeShortageKm} km` }, { text: money(input.fuelCharge), alignment: "right" }]);
+  if (input.lateFee > 0) financialRows.push([{ text: "Late return charge" }, { text: money(input.lateFee), alignment: "right" }]);
+  if (input.additionalCharge > 0) financialRows.push([{ text: "Additional charge" }, { text: money(input.additionalCharge), alignment: "right" }]);
+  financialRows.push(
+    [{ text: "Subtotal", bold: true }, { text: money(input.subtotal), bold: true, alignment: "right" }],
+    [{ text: input.discountRemark ? `Discount · ${input.discountRemark}` : "Discount", color: "#24744a" }, { text: `− ${money(input.discountAmount)}`, color: "#24744a", alignment: "right" }],
+    [{ text: "Final settlement amount", style: "totalLabel" }, { text: money(input.finalAmount), style: "totalValue", alignment: "right" }],
+    [{ text: "Amount paid" }, { text: money(input.amountPaid), alignment: "right" }],
+    [{ text: "Balance due", style: "balanceLabel" }, { text: money(input.amountDue), style: "balanceValue", alignment: "right" }],
+  );
+
+  const notes: { label: string; value: string }[] = [];
+  if (input.additionalDescription) notes.push({ label: "Additional charge remark", value: input.additionalDescription });
+  if (input.vehicleCondition) notes.push({ label: "Vehicle condition", value: input.vehicleCondition });
+
+  const definition = {
+    pageSize: "A4",
+    pageMargins: [38, 38, 38, 42],
+    defaultStyle: { font: "Roboto", fontSize: 9, color: "#1f2937", lineHeight: 1.2 },
+    footer: (currentPage: number, pageCount: number) => ({ text: `Mecardee Rental Cars · ${input.bookingNumber} · Page ${currentPage} of ${pageCount}`, alignment: "center", color: "#718078", fontSize: 8, margin: [0, 14, 0, 0] }),
+    styles: {
+      brand: { fontSize: 11, bold: true, color: "#ffffff", characterSpacing: 1.1 },
+      title: { fontSize: 23, bold: true, color: "#ffffff", margin: [0, 5, 0, 3] },
+      headerMeta: { fontSize: 9, color: "#d8ebe5" },
+      sectionTitle: { fontSize: 12, bold: true, color: "#142c27", margin: [0, 18, 0, 8] },
+      detailLabel: { fontSize: 7, bold: true, color: "#6b7773", characterSpacing: .5 },
+      detailValue: { fontSize: 10, bold: true, color: "#18221f", margin: [0, 3, 0, 0] },
+      vehicleName: { fontSize: 11, bold: true, color: "#18221f" },
+      vehiclePlate: { fontSize: 8, color: "#66736f", margin: [0, 2, 0, 0] },
+      totalLabel: { fontSize: 11, bold: true, color: "#312e65", margin: [0, 3, 0, 3] },
+      totalValue: { fontSize: 14, bold: true, color: "#5145cd", margin: [0, 3, 0, 3] },
+      balanceLabel: { fontSize: 11, bold: true, color: "#9f3934", margin: [0, 3, 0, 3] },
+      balanceValue: { fontSize: 14, bold: true, color: "#b74740", margin: [0, 3, 0, 3] },
+    },
+    content: [
+      { table: { widths: ["*"], body: [[{ stack: [{ text: "MECARDEE RENTAL CARS", style: "brand" }, { text: "Final Settlement Receipt", style: "title" }, { text: `${input.bookingNumber} · Completed`, style: "headerMeta" }], fillColor: "#102b25", margin: [18, 16, 18, 16] }]] }, layout: "noBorders" },
+      { text: "Customer & rental", style: "sectionTitle" },
+      { table: { widths: ["*", "*"], body: [
+        [detailCell("Customer", customerWithPlace(input.customerName, input.customerPlace)), detailCell("Phone / WhatsApp", input.phone)],
+        [detailCell("Booking started", input.bookingStart), detailCell("Returned", input.actualReturnAt)],
+        [detailCell("Driving licence", input.licence || "Not recorded"), detailCell("Final rental period", `${input.rentalDays} day${input.rentalDays === 1 ? "" : "s"}`)],
+      ] }, layout: { hLineColor: () => "#e3e8e6", vLineColor: () => "#e3e8e6", paddingLeft: () => 10, paddingRight: () => 10, paddingTop: () => 6, paddingBottom: () => 3 } },
+      { text: "Vehicle usage", style: "sectionTitle" },
+      ...input.vehicles.map((vehicle) => ({
+        unbreakable: true,
+        margin: [0, 0, 0, 9],
+        table: { widths: ["*"], body: [[{
+          stack: [
+            { columns: [{ stack: [{ text: `${vehicle.sequence}. ${vehicle.vehicleName}${vehicle.isGuest ? " · Guest Car" : ""}`, style: "vehicleName" }, { text: vehicle.registrationNumber, style: "vehiclePlate" }] }, { text: `${vehicle.rentalDays} day${vehicle.rentalDays === 1 ? "" : "s"}`, bold: true, alignment: "right", color: "#5145cd" }] },
+            { text: `${vehicle.bookingStart}  →  ${vehicle.bookingEnd}`, color: "#5f6c68", fontSize: 8, margin: [0, 7, 0, 7] },
+            { table: { widths: ["*", "*", "*"], body: [[
+              detailCell("Odometer", `${vehicle.startingKilometer.toLocaleString("en-IN")} → ${vehicle.endingKilometer === null ? "—" : vehicle.endingKilometer.toLocaleString("en-IN")} km`),
+              detailCell("Fuel range", `${vehicle.startingFuelRangeKm} → ${vehicle.returnFuelRangeKm ?? "—"} km`),
+              detailCell("Total run", vehicle.endingKilometer === null ? "—" : `${Math.max(0, vehicle.endingKilometer - vehicle.startingKilometer).toLocaleString("en-IN")} km`),
+            ]] }, layout: "noBorders" },
+            { columns: [{ text: `Rental ${money(vehicle.rentalCharge)}`, bold: true }, { text: `Extra KM ${vehicle.extraKilometers} km · ${money(vehicle.extraKmCharge)}`, alignment: "center" }, { text: `Fuel ${vehicle.fuelRangeShortageKm} km · ${money(vehicle.fuelCharge)}`, alignment: "right" }], margin: [0, 5, 0, 0], fontSize: 8 },
+          ],
+          fillColor: "#f6f8f7",
+          margin: [12, 10, 12, 10],
+        }]] },
+        layout: { hLineColor: () => "#dce4e1", vLineColor: () => "#dce4e1" },
+      })),
+      { text: "Settlement calculation", style: "sectionTitle" },
+      { table: { widths: ["*", 110], body: financialRows }, layout: { hLineColor: () => "#e2e7e5", vLineWidth: () => 0, paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => 6, paddingBottom: () => 6 } },
+      ...(notes.length ? [{ text: "Remarks", style: "sectionTitle" }, { ul: notes.map((note) => `${note.label}: ${note.value}`), color: "#46534f" }] : []),
+      { text: input.amountDue > 0 ? "Settlement completed with a balance pending." : "Settlement completed and payment is clear.", alignment: "center", bold: true, color: input.amountDue > 0 ? "#9f3934" : "#24744a", margin: [0, 20, 0, 3] },
+      { text: "Thank you for choosing Mecardee Rental Cars.", alignment: "center", color: "#66736f", fontSize: 9 },
+    ],
+  };
+
+  const safeBooking = input.bookingNumber.replace(/[^a-z0-9_-]+/gi, "-");
+  pdfMakeClient.createPdf(definition).download(`mecardee-settlement-${safeBooking}.pdf`);
 }
 
 async function downloadPdfTable(
@@ -3566,17 +3801,31 @@ function expenseIcon(category: string): LucideIcon {
   return FileText;
 }
 
-function AccountsView({ expenses, metrics }: { expenses: ExpenseRow[]; metrics: Metrics }) {
-  const [showAllExpenses, setShowAllExpenses] = useState(false);
+function AccountsView({ rentals, payments, expenses, metrics }: { rentals: Rental[]; payments: PaymentRow[]; expenses: ExpenseRow[]; metrics: Metrics }) {
+  const [selectedMonth, setSelectedMonth] = useState("all");
+  const availableMonths = [...new Set([
+    ...payments.map((payment) => indiaDateKey(payment.receivedAt).slice(0, 7)),
+    ...expenses.map((expense) => indiaDateKey(expense.rawDate).slice(0, 7)),
+    ...rentals.map((rental) => indiaDateKey(rental.actualReturnAt || rental.startAt).slice(0, 7)),
+  ])].filter(Boolean).sort((a, b) => b.localeCompare(a));
+  const inSelectedMonth = (value: string) => selectedMonth === "all" || indiaDateKey(value).slice(0, 7) === selectedMonth;
+  const selectedPayments = payments.filter((payment) => inSelectedMonth(payment.receivedAt));
+  const selectedExpenses = expenses.filter((expense) => inSelectedMonth(expense.rawDate));
+  const selectedRentals = rentals.filter((rental) => inSelectedMonth(rental.actualReturnAt || rental.startAt));
+  const periodLabel = selectedMonth === "all" ? "All records" : new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${selectedMonth}-01T00:00:00+05:30`));
+  const rentalRevenue = selectedRentals.reduce((sum, rental) => sum + rental.businessFinancialTotal, 0);
+  const collected = selectedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const totalExpenses = selectedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const openBalance = selectedMonth === "all" ? metrics.outstanding : selectedRentals.reduce((sum, rental) => sum + rental.businessBalance, 0);
+  const netIncome = collected - totalExpenses;
   const chart = metrics.monthlyCollected.length ? metrics.monthlyCollected : Array.from({ length: 12 }, (_, index) => ({ key: String(index), label: "—", amount: 0 }));
   const max = Math.max(1, ...chart.map((item) => item.amount));
   const latestMonthlyCollection = metrics.monthlyCollected[metrics.monthlyCollected.length - 1];
   const year = latestMonthlyCollection?.key.slice(0, 4) ?? new Date().getFullYear();
-  const shownExpenses = showAllExpenses ? expenses : expenses.slice(0, 12);
   return <>
-    <PageHeading eyebrow="MONEY & ACCOUNTS" title="Business overview" description="Simple income and expenses—only what you need to understand the business." />
-    <section className="accounts-summary"><article><span>Rental revenue</span><strong>{money(metrics.rentalRevenueMonth)}</strong><small className="green-text"><TrendingUp size={13} /> Current month</small></article><article><span>Amount collected</span><strong>{money(metrics.collectedMonth)}</strong><small>{metrics.rentalRevenueMonth ? Math.round((metrics.collectedMonth / metrics.rentalRevenueMonth) * 1000) / 10 : 0}% collection rate</small></article><article><span>Open balance</span><strong>{money(metrics.outstanding)}</strong><small className="red-text">Active + settled rental balances</small></article><article><span>Total expenses</span><strong>{money(metrics.expensesMonth)}</strong><small>Recorded this month</small></article><article className="net"><span>Approx. net income</span><strong>{money(metrics.netIncomeMonth)}</strong><small>Collected income less recorded expenses</small></article></section>
-    <div className="accounts-layout"><section className="data-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p>Income collected over the last 12 months</p></div><button>{year} <ChevronDown size={14} /></button></div><div className="chart-total"><span>Total collected</span><strong>{money(metrics.twelveMonthCollected)}</strong></div><div className="bar-chart">{chart.map((item, index) => <div key={item.key}><span style={{ height: `${Math.max(4, Math.round((item.amount / max) * 100))}%` }} className={index === chart.length - 1 ? "current" : ""} /><small>{item.label}</small></div>)}</div></section><section className="data-panel expense-panel"><div className="panel-heading"><div><h2>{showAllExpenses ? "All expenses" : "Recent expenses"}</h2><p>{showAllExpenses ? `${expenses.length} recorded expenses` : `${money(metrics.expensesMonth)} recorded this month`}</p></div></div><div className="expense-list">{shownExpenses.map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="expense-icon"><Icon size={16} /></span><div><strong>{expense.category}</strong><small>{expense.description || "No description"}{expense.vehicle && expense.vehicle !== "—" ? ` · ${expense.vehicle}` : ""}</small></div><span><strong>− {money(expense.amount)}</strong><small>{expense.date} · {expense.method} · {expense.createdBy}</small></span></article>; })}</div>{expenses.length > 12 && <button className="full-link" onClick={() => setShowAllExpenses((value) => !value)}>{showAllExpenses ? "Show recent expenses" : `View all ${expenses.length} expenses`} <ChevronRight size={15} /></button>}</section></div>
+    <PageHeading eyebrow="MONEY & ACCOUNTS" title="Business overview" description="All records are shown by default. Choose a month only when you want a narrower view." />
+    <section className="accounts-summary"><article><span>Rental revenue</span><strong>{money(rentalRevenue)}</strong><small className="green-text"><TrendingUp size={13} /> {periodLabel}</small></article><article><span>Amount collected</span><strong>{money(collected)}</strong><small>{rentalRevenue ? Math.round((collected / rentalRevenue) * 1000) / 10 : 0}% collection rate</small></article><article><span>Open balance</span><strong>{money(openBalance)}</strong><small className="red-text">{selectedMonth === "all" ? "Active + completed rentals" : `Rentals in ${periodLabel}`}</small></article><article><span>Total expenses</span><strong>{money(totalExpenses)}</strong><small>{selectedExpenses.length} record{selectedExpenses.length === 1 ? "" : "s"}</small></article><article className="net"><span>Approx. net income</span><strong>{money(netIncome)}</strong><small>Collected income less recorded expenses</small></article></section>
+    <div className="accounts-layout"><section className="data-panel revenue-panel"><div className="panel-heading"><div><h2>Revenue overview</h2><p>Income collected over the last 12 months</p></div><div className="accounts-period-controls"><label><span>View</span><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}><option value="all">All records</option>{availableMonths.map((month) => <option value={month} key={month}>{new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${month}-01T00:00:00+05:30`))}</option>)}</select></label><button type="button" aria-label={`Revenue year ${year}`}>{year} <ChevronDown size={14} /></button></div></div><div className="chart-total"><span>Collected · {periodLabel}</span><strong>{money(collected)}</strong></div><div className="bar-chart">{chart.map((item, index) => <div key={item.key}><span style={{ height: `${Math.max(4, Math.round((item.amount / max) * 100))}%` }} className={index === chart.length - 1 ? "current" : ""} /><small>{item.label}</small></div>)}</div></section><section className="data-panel expense-panel"><div className="panel-heading"><div><h2>Expenses</h2><p>{periodLabel} · {selectedExpenses.length} record{selectedExpenses.length === 1 ? "" : "s"} · {money(totalExpenses)}</p></div></div><div className="expense-list">{selectedExpenses.length ? selectedExpenses.map((expense) => { const Icon = expenseIcon(expense.category); return <article key={expense.id}><span className="expense-icon"><Icon size={16} /></span><div><strong>{expense.category}</strong><small>{expense.description || "No description"}{expense.vehicle && expense.vehicle !== "—" ? ` · ${expense.vehicle}` : ""}</small></div><span><strong>− {money(expense.amount)}</strong><small>{expense.date} · {expense.method} · {expense.createdBy}</small></span></article>; }) : <div className="finance-empty"><ReceiptIndianRupee size={20} /><span>No expenses found for {periodLabel}.</span></div>}</div></section></div>
   </>;
 }
 
@@ -4342,6 +4591,7 @@ function NewRentalDialog({ vehicles, guestVehicles, bookings, rentals, customers
 function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp, addExpense }: { rental: Rental; close: () => void; switchDialog: (dialog: DialogType) => void; sendWhatsApp: (rental: Rental, purpose?: string) => void; addExpense: () => void }) {
   const collectedPercent = rental.total > 0 ? Math.min(100, Math.round((rental.paid / rental.total) * 100)) : 100;
   const completed = rental.state === "completed";
+  const completedPdf = completedSettlementPdfData(rental);
   const totalRunKilometers = rental.segments.reduce((sum, segment) => sum + (segment.endingKilometer === null ? 0 : Math.max(0, segment.endingKilometer - segment.startingKilometer)), 0);
   const showOriginalContext = rental.replacementUsed || rental.segments.length > 1 || rental.vehicleId !== rental.originalVehicleId;
   const formatOriginalPeriod = `${formatIndiaWhen(rental.originalStartAt)} → ${formatIndiaWhen(rental.originalEndAt)}`;
@@ -4350,7 +4600,7 @@ function RentalDetailDialog({ rental, close, switchDialog, sendWhatsApp, addExpe
     <div className="detail-hero"><img src={rental.image} alt={`${rental.vehicle} vehicle`} /><div><span className={`status-pill ${rental.state}`}><i />{rental.statusText}</span>{rental.isGuestCurrent && <span className="guest-inline-badge">Guest Car</span>}<h2>{rental.vehicle}</h2><p>{rental.plate}</p></div><div className="detail-contact"><a href={`tel:${rental.phone.replace(/\s/g, "")}`}><Phone size={16} />Call</a><button onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />WhatsApp</button></div></div>
     <div className="detail-layout"><div className="detail-main"><section className="detail-section"><div className="detail-title"><span><UserRound size={17} /></span><div><h3>Customer</h3><p>Verified customer details</p></div></div><div className="customer-detail-card"><span>{rental.customer.split(" ").map((part) => part[0]).join("")}</span><div><strong>{customerWithPlace(rental.customer, rental.city)}</strong><small>{rental.phone}</small></div><div><small>Driving licence</small><strong>{rental.licence || "Not recorded"}</strong></div><ShieldCheck size={18} /></div></section><section className="detail-section"><div className="detail-title"><span><CalendarDays size={17} /></span><div><h3>Rental schedule</h3><p>{completed ? "Finalized from the actual return" : "Original booking dates"}</p></div></div><div className="timeline"><div><i /><span><small>Rental started</small><strong>{rental.start}</strong></span></div><b /><div><i /><span><small>{completed ? "Returned" : "Expected return"}</small><strong>{rental.returnDate}</strong></span></div></div><div className="rental-facts"><div><small>{completed ? "Final rental days" : "Rental days"}</small><strong>{rental.days} days</strong></div><div><small>Current vehicle rate</small><strong>{money(rental.rate)}</strong></div><div><small>Current segment start KM</small><strong>{rental.startingKilometer.toLocaleString("en-IN")} km</strong></div><div><small>{completed ? "Final return KM" : "Current expected return KM"}</small><strong>{(completed && rental.returnKilometer !== null ? rental.returnKilometer : calculateExpectedReturnKilometer(rental.startingKilometer, rental.days, rental.allowedKmPerDay)).toLocaleString("en-IN")} km</strong></div><div><small>Fuel range at handover</small><strong>{rental.startingFuelRangeKm} km</strong></div><div><small>Allowed per day</small><strong>{rental.allowedKmPerDay} km</strong></div></div></section>
       {(rental.segments.length > 1 || rental.replacementUsed) && <section className="detail-section"><div className="detail-title"><span><RotateCcw size={17} /></span><div><h3>Vehicle usage</h3><p>All vehicles used within this same customer rental</p></div></div><div className="rental-segment-list">{rental.segments.map((segment) => <article key={segment.id} className={`rental-segment-card ${segment.status === "active" ? "active" : ""}`}><div className="segment-vehicle"><img src={segment.image} alt="" /><span><strong>{segment.vehicle}</strong><small>{segment.plate}{segment.isGuest ? " · Guest Car" : ""}</small></span><b>#{segment.sequence}</b></div><div className="segment-facts"><span><small>Used from</small><strong>{segment.start}</strong></span><span><small>Used to</small><strong>{segment.end}</strong></span><span><small>Start KM</small><strong>{segment.startingKilometer.toLocaleString("en-IN")}</strong></span><span><small>End KM</small><strong>{segment.endingKilometer === null ? "Current" : segment.endingKilometer.toLocaleString("en-IN")}</strong></span><span className="total-run-preview"><small>Total run KM</small><strong>{segment.endingKilometer === null ? "Pending" : `${Math.max(0, segment.endingKilometer - segment.startingKilometer).toLocaleString("en-IN")} km`}</strong></span><span><small>Rental period</small><strong>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"}</strong></span><span><small>Vehicle charge</small><strong>{money(segment.rentalCharge + segment.extraKmCharge)}</strong></span></div></article>)}</div></section>}
-      </div>{completed && rental.settlement ? <aside className="financial-card completed-settlement-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Final settlement bill</h3><p>Complete finalized return calculation</p></div></div><div className="completed-settlement-readings"><span><small>Return KM</small><strong>{rental.settlement.actualReturnKilometer.toLocaleString("en-IN")} km</strong></span><span className="total-run-preview"><small>Total run KM</small><strong>{totalRunKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Extra KM used</small><strong>{rental.settlement.totalExtraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Return fuel</small><strong>{rental.settlement.returnFuelRangeKm} km</strong></span><span><small>Fuel price</small><strong>{money(rental.settlement.fuelPricePerLitre)}/L</strong></span></div><div className="financial-line"><span>Final rental · {rental.days} day{rental.days === 1 ? "" : "s"}</span><strong>{money(rental.settlement.rentalAmount)}</strong></div>{rental.settlement.existingCharges > 0 && <div className="financial-line"><span>Existing charges</span><strong>{money(rental.settlement.existingCharges)}</strong></div>}<div className="financial-line"><span>Extra KM charge · {rental.settlement.totalExtraKilometers} km</span><strong>{money(rental.settlement.totalExtraKmCharge)}</strong></div><div className="financial-line"><span>Fuel shortage · {rental.settlement.fuelRangeShortageKm} km</span><strong>{money(rental.settlement.fuelCharge)}</strong></div>{rental.settlement.lateFee > 0 && <div className="financial-line"><span>Late return charge</span><strong>{money(rental.settlement.lateFee)}</strong></div>}<div className="financial-line settlement-described-line"><span>Additional charge{rental.settlement.additionalDescription ? <small>{rental.settlement.additionalDescription}</small> : null}</span><strong>{money(rental.settlement.additionalCharge)}</strong></div><div className="financial-line settlement-subtotal"><span>Subtotal</span><strong>{money(rental.settlement.subtotal)}</strong></div><div className="financial-line settlement-described-line settlement-discount"><span>Discount{rental.settlement.discountRemark ? <small>{rental.settlement.discountRemark}</small> : null}</span><strong>− {money(rental.settlement.discountAmount)}</strong></div><div className="financial-total"><span>Final amount</span><strong>{money(rental.settlement.finalAmount)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button><button className="completed-settlement-whatsapp" onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />Send settlement on WhatsApp</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside> : <aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>Updated live</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside>}</div>
+      </div>{completed && rental.settlement ? <aside className="financial-card completed-settlement-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Final settlement bill</h3><p>Complete finalized return calculation</p></div></div><div className="completed-settlement-readings"><span><small>Return KM</small><strong>{rental.settlement.actualReturnKilometer.toLocaleString("en-IN")} km</strong></span><span className="total-run-preview"><small>Total run KM</small><strong>{totalRunKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Extra KM used</small><strong>{rental.settlement.totalExtraKilometers.toLocaleString("en-IN")} km</strong></span><span><small>Starting fuel</small><strong>{rental.settlement.startingFuelRangeKm} km</strong></span><span><small>Return fuel</small><strong>{rental.settlement.returnFuelRangeKm} km</strong></span><span><small>Fuel price</small><strong>{money(rental.settlement.fuelPricePerLitre)}/L</strong></span></div><div className="financial-line"><span>Final rental · {rental.days} day{rental.days === 1 ? "" : "s"}</span><strong>{money(rental.settlement.rentalAmount)}</strong></div>{rental.settlement.existingCharges > 0 && <div className="financial-line"><span>Existing charges</span><strong>{money(rental.settlement.existingCharges)}</strong></div>}<div className="financial-line"><span>Extra KM charge · {rental.settlement.totalExtraKilometers} km</span><strong>{money(rental.settlement.totalExtraKmCharge)}</strong></div><div className="financial-line"><span>Fuel shortage · {rental.settlement.fuelRangeShortageKm} km</span><strong>{money(rental.settlement.fuelCharge)}</strong></div>{rental.settlement.lateFee > 0 && <div className="financial-line"><span>Late return charge</span><strong>{money(rental.settlement.lateFee)}</strong></div>}<div className="financial-line settlement-described-line"><span>Additional charge{rental.settlement.additionalDescription ? <small>{rental.settlement.additionalDescription}</small> : null}</span><strong>{money(rental.settlement.additionalCharge)}</strong></div><div className="financial-line settlement-subtotal"><span>Subtotal</span><strong>{money(rental.settlement.subtotal)}</strong></div><div className="financial-line settlement-described-line settlement-discount"><span>Discount{rental.settlement.discountRemark ? <small>{rental.settlement.discountRemark}</small> : null}</span><strong>− {money(rental.settlement.discountAmount)}</strong></div><div className="financial-total"><span>Final amount</span><strong>{money(rental.settlement.finalAmount)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button><button className="completed-settlement-whatsapp" onClick={() => sendWhatsApp(rental)}><MessageCircle size={16} />Send settlement on WhatsApp</button><button className="completed-settlement-pdf" onClick={() => { if (completedPdf) void downloadSettlementPdf(completedPdf); }} disabled={!completedPdf}><Download size={16} />Download settlement PDF</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside> : <aside className="financial-card"><div className="detail-title"><span><ReceiptIndianRupee size={17} /></span><div><h3>Financial summary</h3><p>Updated live</p></div></div><div className="financial-line"><span>Rental amount</span><strong>{money(rental.rentalAmount)}</strong></div><div className="financial-line"><span>Additional charges</span><strong>{money(rental.otherCharges)}</strong></div><div className="financial-line"><span>Discount</span><strong>− {money(rental.bookingDiscount)}</strong></div><div className="financial-total"><span>Total</span><strong>{money(rental.total)}</strong></div><div className="financial-line paid"><span>Amount paid</span><strong>{money(rental.paid)}</strong></div><div className="financial-balance"><span>Balance pending</span><strong>{money(rental.balance)}</strong></div><div className="paid-progress"><span style={{ width: `${collectedPercent}%` }} /></div><small className="paid-caption">{collectedPercent}% collected</small><button className="receive-button" onClick={() => switchDialog("payment")} disabled={rental.balance <= 0}><CreditCard size={16} />{rental.balance > 0 ? "Receive payment" : "Payment complete"}</button>{rental.guestRentalAmount > 0 && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car usage stays on this customer bill but is excluded from main business revenue/payment reports.</span></div>}</aside>}</div>
     {completed ? (rental.balance > 0 ? <footer className="detail-actions completed-payment-only"><button onClick={() => switchDialog("payment")} className="return-button"><CreditCard size={16} />Receive balance payment</button></footer> : null) : <footer className="detail-actions rental-workflow-footer"><button className="rental-expense-action" onClick={addExpense}><ReceiptIndianRupee size={16} />Add expense</button><div className="rental-workflow-actions"><button onClick={() => switchDialog("extend")}><CalendarRange size={16} /><span>Edit / extend date</span></button><button onClick={() => switchDialog("change-vehicle")}><RotateCcw size={16} /><span>Change vehicle</span></button><button onClick={() => switchDialog("return")} className="return-button"><CarFront size={16} /><span>Return car</span></button></div></footer>}
   </DialogShell>;
 }
@@ -4608,6 +4858,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<SettlementResult | null>(null);
+  const [showMessagePreview, setShowMessagePreview] = useState(false);
 
   const actualReturnMs = new Date(actualReturnIso).getTime();
   const scheduledReturnMs = new Date(rental.endAt).getTime();
@@ -4688,6 +4939,45 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
     fuelPricePerLitre,
     fuelCharge: calculation.fuelCharge,
   } : segment);
+  const previewMessage = buildSettlementWhatsAppMessage({
+    customerName: rental.customer,
+    phone: rental.whatsappNumber || rental.phone,
+    vehicleName: rental.vehicle,
+    registrationNumber: rental.plate,
+    bookingNumber: rental.id,
+    bookingStart: formatIndiaWhen(rental.startAt),
+    bookingEnd: formatIndiaWhen(actualReturnIso),
+    rentalDays: singleOriginalSegment ? legacyRentalCharge.chargeableRentalDays : previewSegments.reduce((sum, segment) => sum + segment.rentalDays, 0),
+    startingKilometer: rental.startingKilometer,
+    actualReturnKilometer,
+    startingFuelRangeKm: rental.startingFuelRangeKm,
+    returnFuelRangeKm,
+    rentalAmount: rentalBaseAmount,
+    discountAmount,
+    discountRemark,
+    additionalChargeAmount: additionalCharge,
+    additionalChargeDescription: returnNotes,
+    calculation,
+    segments: previewSegments.map((segment) => ({
+      sequence: segment.sequence,
+      vehicleName: segment.vehicle,
+      registrationNumber: segment.plate,
+      isGuest: segment.isGuest,
+      bookingStart: segment.start,
+      bookingEnd: segment.end,
+      rentalDays: segment.rentalDays,
+      startingKilometer: segment.startingKilometer,
+      endingKilometer: segment.endingKilometer,
+      rentalCharge: segment.rentalCharge,
+      extraKilometers: segment.extraKilometers,
+      extraKmCharge: segment.extraKmCharge,
+      startingFuelRangeKm: segment.startingFuelRangeKm,
+      returnFuelRangeKm: segment.returnFuelRangeKm,
+      fuelRangeShortageKm: segment.fuelRangeShortageKm,
+      fuelPricePerLitre: segment.fuelPricePerLitre,
+      fuelCharge: segment.fuelCharge,
+    })),
+  });
 
   async function confirmSettlement(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -4717,9 +5007,54 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
     sendSettlementWhatsApp(phone, confirmed.whatsappMessage);
   };
 
+  const confirmedPdfData = confirmed ? {
+    bookingNumber: rental.id,
+    customerName: rental.customer,
+    customerPlace: rental.city,
+    phone: rental.whatsappNumber || rental.phone,
+    licence: rental.licence,
+    bookingStart: formatIndiaWhen(rental.startAt),
+    actualReturnAt: formatIndiaWhen(actualReturnIso),
+    rentalDays: singleOriginalSegment ? confirmed.chargeableRentalDays : (confirmed.segments ?? []).reduce((sum, segment) => sum + segment.rentalDays, 0),
+    vehicles: (confirmed.segments ?? []).map((segment) => ({
+      sequence: segment.sequence,
+      vehicleName: segment.vehicleName,
+      registrationNumber: segment.registrationNumber,
+      isGuest: segment.isGuest,
+      bookingStart: segment.bookingStart,
+      bookingEnd: segment.bookingEnd,
+      rentalDays: segment.rentalDays,
+      startingKilometer: segment.startingKilometer,
+      endingKilometer: segment.endingKilometer,
+      startingFuelRangeKm: segment.startingFuelRangeKm,
+      returnFuelRangeKm: segment.returnFuelRangeKm,
+      rentalCharge: segment.rentalCharge,
+      extraKilometers: segment.extraKilometers,
+      extraKmCharge: segment.extraKmCharge,
+      fuelRangeShortageKm: segment.fuelRangeShortageKm,
+      fuelCharge: segment.fuelCharge,
+    })),
+    rentalAmount: confirmed.adjustedRentalAmount,
+    existingCharges: settlementExistingOtherCharges,
+    extraKilometers: confirmed.calculation.extraKilometers,
+    extraKmCharge: confirmed.calculation.extraKmCharge,
+    fuelRangeShortageKm: confirmed.calculation.fuelRangeShortageKm,
+    fuelCharge: confirmed.calculation.fuelCharge,
+    lateFee: confirmed.lateRentalCharge,
+    additionalCharge,
+    additionalDescription: returnNotes,
+    subtotal: confirmed.calculation.subtotal,
+    discountAmount: confirmed.calculation.discountAmount,
+    discountRemark,
+    finalAmount: confirmed.calculation.finalAmount,
+    amountPaid: confirmed.amountAlreadyPaid,
+    amountDue: confirmed.calculation.amountDue,
+    vehicleCondition,
+  } satisfies SettlementPdfData : null;
+
   if (confirmed) {
     return <DialogShell title={editCompleted ? "Settlement updated" : "Settlement confirmed"} subtitle={`${rental.id} · final customer bill`} close={close} wide>
-      <div className="settlement-success"><span><CheckCircle2 size={25} /></span><h3>Return settlement {editCompleted ? "updated" : "saved"}</h3><p>{rental.id} remains completed and its corrected final bill is saved.</p>{confirmed.segments && confirmed.segments.length > 1 && <div className="settlement-segment-summary">{confirmed.segments.map((segment) => <article key={`${segment.sequence}-${segment.vehicleId}`}><div><strong>{segment.vehicleName}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.registrationNumber}</small></div><span>{segment.bookingStart} → {segment.bookingEnd}</span><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"} · {money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b>{segment.fuelCharge > 0 && <small className="segment-fuel-note">Fuel {segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</small>}</article>)}</div>}<div><small>Balance due</small><strong>{money(confirmed.calculation.amountDue)}</strong></div>{!editCompleted && <><button type="button" className="whatsapp-button" onClick={sendConfirmedWhatsApp}><MessageCircle size={17} />Send Details via WhatsApp</button><small>WhatsApp opens with the same balance due and the complete vehicle-wise settlement. Review it and press Send yourself.</small></>}<button type="button" className="save-draft" onClick={close}>Close</button></div>
+      <div className="settlement-success"><span><CheckCircle2 size={25} /></span><h3>Return settlement {editCompleted ? "updated" : "saved"}</h3><p>{editCompleted ? `${rental.id} remains completed and its corrected final bill is saved.` : `${rental.id} is completed and its final bill is saved.`}</p>{confirmed.segments && confirmed.segments.length > 1 && <div className="settlement-segment-summary">{confirmed.segments.map((segment) => <article key={`${segment.sequence}-${segment.vehicleId}`}><div><strong>{segment.vehicleName}{segment.isGuest ? " · Guest Car" : ""}</strong><small>{segment.registrationNumber}</small></div><span>{segment.bookingStart} → {segment.bookingEnd}</span><b>{segment.rentalDays} day{segment.rentalDays === 1 ? "" : "s"} · {money(segment.rentalCharge + segment.extraKmCharge + segment.fuelCharge)}</b>{segment.fuelCharge > 0 && <small className="segment-fuel-note">Fuel {segment.fuelRangeShortageKm} km · {money(segment.fuelCharge)}</small>}</article>)}</div>}<div><small>Balance due</small><strong>{money(confirmed.calculation.amountDue)}</strong></div><button type="button" className="whatsapp-button" onClick={sendConfirmedWhatsApp}><MessageCircle size={17} />Send Details via WhatsApp</button><button type="button" className="settlement-download-button" onClick={() => { if (confirmedPdfData) void downloadSettlementPdf(confirmedPdfData); }}><Download size={17} />Download settlement PDF</button><small>WhatsApp and the PDF contain the same finalized vehicle and payment details.</small><button type="button" className="save-draft" onClick={close}>Close</button></div>
     </DialogShell>;
   }
 
@@ -4772,10 +5107,26 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
         {rental.isGuestCurrent && <div className="guest-accounting-note"><ShieldCheck size={14} /><span>Guest Car will be released after settlement. No maintenance record is created.</span></div>}
         <button type="button" className={`maintenance-check final-return-confirm ${physicalReturnConfirmed ? "is-checked" : ""}`} aria-pressed={physicalReturnConfirmed} onClick={() => setPhysicalReturnConfirmed((confirmedReturn) => !confirmedReturn)}><span><ShieldCheck size={16} /><span><strong>Vehicle has physically returned</strong><small>Required before completing this rental.</small></span><span className="maintenance-check-state"><Check size={13} />{physicalReturnConfirmed ? "Confirmed" : "Tap to confirm"}</span></span></button>
         {error && <p className="form-error">{error}</p>}
-        <div className="return-submit-actions"><button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart || !physicalReturnConfirmed}>{saving ? (editCompleted ? "Updating…" : "Confirming…") : (editCompleted ? "Update settlement" : "Confirm final return")} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></div>
+        <div className="return-submit-actions"><button type="button" className="settlement-preview-button" onClick={() => setShowMessagePreview(true)} disabled={returnBeforeStart || actualReturnKilometer < automaticReturnStartKilometer || (additionalCharge > 0 && !returnNotes.trim())}><MessageCircle size={16} />Preview WhatsApp message</button><button type="submit" className="confirm-rental" disabled={saving || returnBeforeStart || !physicalReturnConfirmed}>{saving ? (editCompleted ? "Updating…" : "Confirming…") : (editCompleted ? "Update settlement" : "Confirm final return")} {!saving && <Check size={16} />}</button><button type="button" className="save-draft" onClick={close}>Cancel</button></div>
       </aside>
     </form>
+    {showMessagePreview && <SettlementMessagePreview message={previewMessage} close={() => setShowMessagePreview(false)} />}
   </DialogShell>;
+}
+
+function SettlementMessagePreview({ message, close }: { message: string; close: () => void }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [close]);
+
+  return <div className="settlement-message-preview-overlay">
+    <section className="settlement-message-preview" role="dialog" aria-modal="true" aria-labelledby="settlement-message-preview-title">
+      <header><div><span>WhatsApp message</span><h2 id="settlement-message-preview-title">Settlement preview</h2></div><button type="button" onClick={close} aria-label="Close settlement preview"><X size={20} /></button></header>
+      <div className="settlement-message-sheet"><pre>{message}</pre></div>
+    </section>
+  </div>;
 }
 
 function ExpenseDialog({ vehicles, rentals, seedRentalId, currentUser, close, done }: { vehicles: Vehicle[]; rentals: Rental[]; seedRentalId: string | null; currentUser: AuthUser; close: () => void; done: (message: string) => void }) {

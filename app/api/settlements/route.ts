@@ -386,6 +386,8 @@ async function saveSettlement(request: Request, editCompleted: boolean) {
         rentalAmount: rentalBaseAmount,
         discountAmount,
         discountRemark,
+        additionalChargeAmount: damageCharge + cleaningCharge,
+        additionalChargeDescription: returnNotes,
         calculation,
         segments: finalSegments,
       };

@@ -334,6 +334,8 @@ test("one-vehicle customer settlement is a concise final bill without exposing G
   assert.match(message, /Starting KM: 18165/);
   assert.match(message, /Return KM: 18526/);
   assert.match(message, /Total run: 361 km/);
+  assert.match(message, /Starting fuel range: 110 km/);
+  assert.match(message, /Return fuel range: 1 km/);
   assert.match(message, /Extra KM: 261 km · ₹2,088/);
   assert.match(message, /Fuel shortage: 109 km · ₹1,253\.5/);
   assert.match(message, /Final amount: ₹4,642/);
@@ -341,7 +343,7 @@ test("one-vehicle customer settlement is a concise final bill without exposing G
   assert.match(message, /Status: Completed/);
   assert.match(message, /Thank you for choosing Mecardee Rental Cars\.$/);
   assert.doesNotMatch(message, /Guest Car/i);
-  assert.doesNotMatch(message, /Starting kilometer:|Actual return kilometer:|Starting fuel range:|Return fuel range:/i);
+  assert.doesNotMatch(message, /Starting kilometer:|Actual return kilometer:/i);
   assert.ok(message.split("\n").length <= 20, "final bill should stay short enough for WhatsApp");
   assert.ok(message.length < 650, "final bill should remain concise");
 });
@@ -408,4 +410,41 @@ test("multi-vehicle settlement groups each car with separate kilometer lines", (
   assert.match(message, /2\. Maruti Ertiga \(KL 10 BB 2002\)/);
   assert.match(message, / {3}Starting KM: 5000\n {3}Return KM: 5300\n {3}Total run: 300 km/);
   assert.doesNotMatch(message, /KM: \d+ → \d+/);
+});
+
+test("settlement message includes an available additional-charge remark", () => {
+  const calculation = calculateSettlement({
+    baseRentalAmount: 2_000,
+    rentalDays: 2,
+    startingKilometer: 10_000,
+    actualReturnKilometer: 10_100,
+    allowedKmPerDay: 100,
+    extraKmRate: 8,
+    startingFuelRangeKm: 150,
+    returnFuelRangeKm: 150,
+    mileageKmPerLitre: 15,
+    fuelPricePerLitre: 105,
+    damageCharge: 250,
+  });
+  const message = buildSettlementWhatsAppMessage({
+    customerName: "Customer",
+    phone: "9999999999",
+    vehicleName: "Maruti Swift",
+    registrationNumber: "KL 10 AA 1001",
+    bookingNumber: "BKG-1001",
+    bookingStart: "1 Sep, 10:00 am",
+    bookingEnd: "3 Sep, 10:00 am",
+    rentalDays: 2,
+    startingKilometer: 10_000,
+    actualReturnKilometer: 10_100,
+    startingFuelRangeKm: 150,
+    returnFuelRangeKm: 150,
+    rentalAmount: 2_000,
+    additionalChargeAmount: 250,
+    additionalChargeDescription: "Wheel cap replacement",
+    discountAmount: 0,
+    calculation,
+  });
+
+  assert.match(message, /Other charges: ₹250\.00 · Wheel cap replacement/);
 });
