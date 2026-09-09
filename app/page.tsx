@@ -356,6 +356,7 @@ type SettlementSegmentRow = {
   endingKilometer: number | null;
   startingFuelRangeKm: number;
   returnFuelRangeKm: number | null;
+  dailyRate: number;
   rentalDays: number;
   rentalCharge: number;
   extraKilometers: number;
@@ -2385,6 +2386,7 @@ type SettlementPdfVehicleUsage = {
   endingKilometer: number | null;
   startingFuelRangeKm: number;
   returnFuelRangeKm: number | null;
+  dailyRate: number;
   rentalCharge: number;
   extraKilometers: number;
   extraKmCharge: number;
@@ -2444,6 +2446,7 @@ function completedSettlementPdfData(rental: Rental): SettlementPdfData | null {
       endingKilometer: segment.endingKilometer,
       startingFuelRangeKm: segment.startingFuelRangeKm,
       returnFuelRangeKm: segment.returnFuelRangeKm,
+      dailyRate: segment.dailyRate,
       rentalCharge: rental.segments.length === 1 ? settlement.rentalAmount : segment.rentalCharge,
       extraKilometers: segment.extraKilometers,
       extraKmCharge: segment.extraKmCharge,
@@ -2546,7 +2549,7 @@ async function downloadSettlementPdf(input: SettlementPdfData) {
               detailCell("Fuel range", `${vehicle.startingFuelRangeKm} → ${vehicle.returnFuelRangeKm ?? "—"} km`),
               detailCell("Total run", vehicle.endingKilometer === null ? "—" : `${Math.max(0, vehicle.endingKilometer - vehicle.startingKilometer).toLocaleString("en-IN")} km`),
             ]] }, layout: "noBorders" },
-            { columns: [{ text: `Rental ${money(vehicle.rentalCharge)}`, bold: true }, { text: `Extra KM ${vehicle.extraKilometers} km · ${money(vehicle.extraKmCharge)}`, alignment: "center" }, { text: `Fuel ${vehicle.fuelRangeShortageKm} km · ${money(vehicle.fuelCharge)}`, alignment: "right" }], margin: [0, 5, 0, 0], fontSize: 8 },
+            { columns: [{ stack: [{ text: `Daily rent ${money(vehicle.dailyRate)}`, bold: true }, { text: `Rental charge ${money(vehicle.rentalCharge)}`, margin: [0, 2, 0, 0] }] }, { text: `Extra KM ${vehicle.extraKilometers} km · ${money(vehicle.extraKmCharge)}`, alignment: "center" }, { text: `Fuel ${vehicle.fuelRangeShortageKm} km · ${money(vehicle.fuelCharge)}`, alignment: "right" }], margin: [0, 5, 0, 0], fontSize: 8 },
           ],
           fillColor: "#f6f8f7",
           margin: [12, 10, 12, 10],
@@ -4869,7 +4872,6 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
   const earlyReturn = singleOriginalSegment && !returnBeforeStart && actualReturnMs < scheduledReturnMs;
   const withinGracePeriod = singleOriginalSegment && !returnBeforeStart && actualReturnMs >= scheduledReturnMs && actualReturnMs <= graceReturnMs;
   const returnDateTimeFormatter = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
-  const expectedReturnLabel = returnDateTimeFormatter.format(new Date(scheduledReturnMs));
   const graceReturnLabel = returnDateTimeFormatter.format(new Date(graceReturnMs));
 
   const completedSegments = rental.segments.filter((segment) => segment.status !== "active" && segment.id !== currentSegment?.id);
@@ -5028,6 +5030,7 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
       endingKilometer: segment.endingKilometer,
       startingFuelRangeKm: segment.startingFuelRangeKm,
       returnFuelRangeKm: segment.returnFuelRangeKm,
+      dailyRate: segment.dailyRate,
       rentalCharge: segment.rentalCharge,
       extraKilometers: segment.extraKilometers,
       extraKmCharge: segment.extraKmCharge,
@@ -5069,17 +5072,16 @@ function ReturnDialog({ rental, close, onConfirmed, sendSettlementWhatsApp, edit
             <label className="field total-run-field"><span>Total run KM</span><input readOnly value={`${currentTotalRunKilometers.toLocaleString("en-IN")} km`} /><small>Calculated automatically from starting KM and return KM.</small></label>
             <label className="field"><span>Return fuel range (KM)</span><input required min="0" type="number" inputMode="numeric" placeholder="Enter dashboard range" value={returnFuelRangeInput} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setReturnFuelRangeInput(event.target.value)} /><small>Enter 0 when the dashboard shows no remaining fuel range.</small></label>
             <label className="field"><span>Today&apos;s fuel price / litre (₹)</span><input required min="0" step="0.01" type="number" inputMode="decimal" placeholder="Enter fuel price" value={blankZero(fuelPricePerLitre)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setFuelPricePerLitre(numberFromInput(event.target.value))} /></label>
-            <label className="field"><span>Additional charge amount (₹)</span><input min="0" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(additionalCharge)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setAdditionalCharge(numberFromInput(event.target.value))} /></label>
-            <label className="field return-wide-field"><span>Additional charge description</span><textarea required={additionalCharge > 0} value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Why is this charge being added?" /></label>
-            <label className="field"><span>Discount amount (₹)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label>
-            <label className="field"><span>Discount description</span><input required={discountAmount > 0} value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular customer" /></label>
+            <label className="field"><span>Additional charge (₹)</span><input min="0" step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(additionalCharge)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setAdditionalCharge(numberFromInput(event.target.value))} /></label>
+            <label className="field"><span>Discount (₹)</span><input min="0" max={calculation.subtotal} step="0.01" type="number" inputMode="decimal" placeholder="0" value={blankZero(discountAmount)} onFocus={selectZeroOnFocus} onKeyDown={numericKeyOnly} onChange={(event) => setDiscountAmount(numberFromInput(event.target.value))} /></label>
+            <label className="field"><span>Additional charge remark</span><input required={additionalCharge > 0} value={returnNotes} onChange={(event) => setReturnNotes(event.target.value)} placeholder="Reason for charge" /></label>
+            <label className="field"><span>Discount remark</span><input required={discountAmount > 0} value={discountRemark} onChange={(event) => setDiscountRemark(event.target.value)} placeholder="e.g. Regular customer" /></label>
           </div>
           <div className="return-timing-fields">
             <label className="field"><span>Actual return date</span><input required min={dateInputValue(new Date(currentSegment?.startAt ?? rental.startAt))} type="date" value={actualReturnDate} onChange={(event) => { setActualReturnDate(event.target.value); setManualActualReturnKilometer(0); }} /></label>
             <label className="field"><span>Actual return time</span><input required type="time" value={actualReturnTime} onChange={(event) => { setActualReturnTime(event.target.value); setManualActualReturnKilometer(0); }} /></label>
             <label className="field"><span>Vehicle condition</span><select value={vehicleCondition} onChange={(event) => setVehicleCondition(event.target.value)}><option>Good — no new damage</option><option>Minor new damage</option><option>Major damage</option></select></label>
           </div>
-          <div className="return-deadline-card compact"><div><span>Booked return</span><strong>{expectedReturnLabel}</strong></div><ArrowRight size={18} /><div className="grace-deadline"><span>Grace deadline</span><strong>{graceReturnLabel}</strong><small>Daily rent changes only after this 3-hour cooling period.</small></div></div>
           {returnBeforeStart && <p className="form-error">Actual return date/time cannot be before the current vehicle segment started.</p>}
           {earlyReturn && <div className="early-return-note"><CheckCircle2 size={15} /><span>Early return: the final rent is {legacyRentalCharge.chargeableRentalDays} day{legacyRentalCharge.chargeableRentalDays === 1 ? "" : "s"} × {money(rental.rate)} = {money(legacyRentalCharge.baseRentalAmount)}, based on the actual return time. The booked end date remains in history.</span></div>}
           {withinGracePeriod && <div className="grace-return-note"><Clock3 size={15} /><span>Within the 3-hour grace period. No extra rental-day charge applies until {graceReturnLabel}.</span></div>}

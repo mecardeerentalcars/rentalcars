@@ -360,6 +360,7 @@ async function saveSettlement(request: Request, editCompleted: boolean) {
           endingKilometer: isCurrent ? actualReturnKilometer : row.segment.endingKilometer,
           startingFuelRangeKm: row.segment.startingFuelRangeKm,
           returnFuelRangeKm: isCurrent ? returnFuelRangeKm : row.segment.returnFuelRangeKm,
+          dailyRate: row.segment.dailyRate,
           fuelRangeShortageKm: isCurrent ? calculation.fuelRangeShortageKm : row.segment.fuelRangeShortageKm,
           fuelPricePerLitre: isCurrent ? fuelPricePerLitre : row.segment.fuelPricePerLitre,
           fuelCharge: isCurrent ? calculation.fuelCharge : row.segment.fuelCharge,
