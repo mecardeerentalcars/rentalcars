@@ -8064,3 +8064,30 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
 
   .fleet-status-actions.has-rental-book button { width: 100%; }
 }
+
+/* Keep the complete dashboard greeting and calendar action visible in portrait. */
+@media (max-width: 720px) {
+  .dashboard-greeting .page-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .dashboard-greeting .page-heading > div { min-width: 0; }
+
+  .dashboard-greeting .page-heading > div > p:last-child {
+    display: block;
+    max-width: 100%;
+    font-size: 9px;
+    line-height: 1.3;
+  }
+
+  .dashboard-calendar-button {
+    width: auto;
+    min-width: 0;
+    padding: 0 12px;
+    gap: 6px;
+  }
+
+  .dashboard-calendar-button span { display: inline; }
+}
