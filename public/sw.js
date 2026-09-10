@@ -1,4 +1,4 @@
-const VERSION = "build-1789015375245";
+const VERSION = "build-1789016163064";
 const CACHE_PREFIX = "mecardee-shell-";
 const CACHE = `mecardee-shell-deploy-${VERSION}`;
 const SHELL = ["/manifest.webmanifest", "/icons/mecardee-192.png", "/icons/mecardee-512.png"];
