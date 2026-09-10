@@ -8055,3 +8055,12 @@ body:has(.mecardee-auth-card:not(.is-loading)) .mecardee-first-paint {
   }
   .return-timing-fields { margin-top: 12px; padding-top: 12px; }
 }
+
+@media (max-width: 390px) {
+  .fleet-status-actions.has-rental-book {
+    grid-template-columns: 1fr !important;
+    gap: 6px;
+  }
+
+  .fleet-status-actions.has-rental-book button { width: 100%; }
+}
